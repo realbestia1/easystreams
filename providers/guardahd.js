@@ -236,7 +236,7 @@ try {
 
 
 async function getStreams(id, type, season, episode) {
-    if (type !== 'movie') return [];
+    // if (type !== 'movie') return []; // Allow TV shows too if logic exists
 
     let cleanId = id.toString();
     if (cleanId.startsWith('tmdb:')) cleanId = cleanId.replace('tmdb:', '');
@@ -286,14 +286,8 @@ async function getStreams(id, type, season, episode) {
                         title: 'Watch',
                         url: extracted.url,
                         headers: extracted.headers,
-                        behaviorHints: {
-                            notWebReady: true,
-                            proxyHeaders: {
-                                request: extracted.headers
-                            }
-                        },
                         quality: 'auto',
-                        type: 'url'
+                        type: 'direct'
                     });
                 }
                 return;
@@ -310,7 +304,7 @@ async function getStreams(id, type, season, episode) {
                         url: extracted.url,
                         headers: extracted.headers,
                         quality: 'auto',
-                        type: 'url'
+                        type: 'direct'
                     });
                  }
                  return;
@@ -326,7 +320,7 @@ async function getStreams(id, type, season, episode) {
                         title: 'Watch',
                         url: extracted,
                         quality: 'auto',
-                        type: 'url'
+                        type: 'direct'
                     });
                  }
                  return;

@@ -361,7 +361,9 @@ async function getStreams(id, type, season, episode) {
                             url: extracted.url,
                             headers: extracted.headers,
                             name: `Guardaserie (DropLoad)`,
-                            title: 'Watch'
+                            title: 'Watch',
+                            quality: 'auto',
+                            type: 'direct'
                         };
                     }
                 } else if (link.includes('supervideo')) {
@@ -371,7 +373,9 @@ async function getStreams(id, type, season, episode) {
                         return {
                             url: streamUrl,
                             name: `Guardaserie (${playerName})`,
-                            title: 'Watch'
+                            title: 'Watch',
+                            quality: 'auto',
+                            type: 'direct'
                         };
                     }
                 } else if (link.includes('mixdrop')) {
@@ -380,14 +384,10 @@ async function getStreams(id, type, season, episode) {
                         return {
                             url: extracted.url,
                             headers: extracted.headers,
-                            behaviorHints: {
-                                notWebReady: true,
-                                proxyHeaders: {
-                                    request: extracted.headers
-                                }
-                            },
                             name: `Guardaserie (MixDrop)`,
-                            title: 'Watch'
+                            title: 'Watch',
+                            quality: 'auto',
+                            type: 'direct'
                         };
                     }
                 }

@@ -140,6 +140,7 @@ async function getStreams(id, type, season, episode) {
                 title: 'Watch',
                 url: streamUrl,
                 quality: '1080p',
+                type: 'direct',
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Referer': 'https://vixsrc.to/'
