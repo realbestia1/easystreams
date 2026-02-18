@@ -136,7 +136,7 @@ async function getStreams(id, type, season, episode) {
             }
             
             return [{
-                name: 'VixSrc',
+                name: 'StreamingCommunity',
                 title: 'Watch',
                 url: streamUrl,
                 quality: '1080p',
