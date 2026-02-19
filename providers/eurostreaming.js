@@ -1,5 +1,5 @@
 const BASE_URL = 'https://eurostreaming.luxe';
-const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
 
 async function getImdbId(tmdbId, type) {
@@ -8,12 +8,9 @@ async function getImdbId(tmdbId, type) {
         const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
         const response = await fetch(url);
         if (!response.ok) return null;
-        
         const data = await response.json();
-        // For TV shows, we might need external_ids to get IMDB ID if not in main response
-        // But usually name is what we need for Eurostreaming search
         if (data.imdb_id) return data.imdb_id;
-        
+
         const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
         const extResponse = await fetch(externalUrl);
         if (extResponse.ok) {
@@ -40,26 +37,25 @@ async function getShowInfo(tmdbId, type) {
     }
 }
 
-// Unpacker for Dean Edwards packer (used by MixDrop etc)
 function unPack(p, a, c, k, e, d) {
-    e = function (c) {
-        return (c < a ? '' : e(parseInt(c / a))) + ((c = c % a) > 35 ? String.fromCharCode(c + 29) : c.toString(36))
+    e = function(c) {
+        return (c < a ? "" : e(parseInt(c / a))) + ((c = c % a) > 35 ? String.fromCharCode(c + 29) : c.toString(36));
     };
-    if (!''.replace(/^/, String)) {
+    if (!"".replace(/^/, String)) {
         while (c--) {
-            d[e(c)] = k[c] || e(c)
+            d[e(c)] = k[c] || e(c);
         }
-        k = [function (e) {
-            return d[e] || e
+        k = [function(e) {
+            return d[e] || e;
         }];
-        e = function () {
-            return '\\w+'
+        e = function() {
+            return "\\w+";
         };
-        c = 1
-    };
+        c = 1;
+    }
     while (c--) {
         if (k[c]) {
-            p = p.replace(new RegExp('\\b' + e(c) + '\\b', 'g'), k[c])
+            p = p.replace(new RegExp("\\b" + e(c) + "\\b", "g"), k[c]);
         }
     }
     return p;
@@ -71,26 +67,12 @@ async function extractStreamTape(url) {
         const response = await fetch(url);
         if (!response.ok) return null;
         const html = await response.text();
-
-        // StreamTape extraction: look for robotlink
         const match = html.match(/document\.getElementById\('robotlink'\)\.innerHTML = '(.*?)'/);
         if (match) {
             let link = match[1];
-            // Sometimes it's concatenated
-            // e.g. 'part1' + 'part2'
-            // We need to clean it up? usually it is just one string in the simple regex match if we are lucky
-            // But often it is: .innerHTML = '...'+'...'
-            
-            // Let's try to match the full concatenation
-            // document.getElementById('robotlink').innerHTML = '...' + '...'
-            
-            // Better regex for the whole line
             const lineMatch = html.match(/document\.getElementById\('robotlink'\)\.innerHTML = (.*);/);
             if (lineMatch) {
                 const raw = lineMatch[1];
-                // Evaluate the string concatenation (safe-ish if it's just strings)
-                // e.g. "'https://streamtape.com/get_video?id=...' + '...'"
-                // We can just strip quotes and pluses
                 const cleanLink = raw.replace(/['"\+\s]/g, '');
                 if (cleanLink.startsWith('//')) return 'https:' + cleanLink;
                 if (cleanLink.startsWith('http')) return cleanLink;
@@ -109,8 +91,6 @@ async function extractVidoza(url) {
         const response = await fetch(url);
         if (!response.ok) return null;
         const html = await response.text();
-        
-        // Vidoza usually has sources: [{file:"..."}]
         const match = html.match(/sources:\s*\[\s*\{\s*file:\s*"(.*?)"/);
         if (match) {
             return match[1];
@@ -129,18 +109,15 @@ async function extractDeltaBit(url) {
         if (!response.ok) return null;
         const html = await response.text();
         
-        // DeltaBit often uses packer
         const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
         const match = packedRegex.exec(html);
-
+        
         if (match) {
             const p = match[1];
             const a = parseInt(match[2]);
             const c = parseInt(match[3]);
             const k = match[4].split('|');
             const unpacked = unPack(p, a, c, k, null, {});
-            
-            // Look for file:
             const fileMatch = unpacked.match(/file:\s*"(.*?)"/);
             if (fileMatch) {
                 return fileMatch[1];
@@ -159,8 +136,6 @@ async function extractUqload(url) {
         const response = await fetch(url);
         if (!response.ok) return null;
         const html = await response.text();
-        
-        // Uqload sources: ["..."]
         const match = html.match(/sources:\s*\["(.*?)"\]/);
         if (match) {
             return match[1];
@@ -181,43 +156,37 @@ async function extractMixDrop(url) {
                 'Referer': BASE_URL
             }
         });
-
         if (!response.ok) return null;
         const html = await response.text();
-
+        
         const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
         const match = packedRegex.exec(html);
-
+        
         if (match) {
             const p = match[1];
             const a = parseInt(match[2]);
             const c = parseInt(match[3]);
             const k = match[4].split('|');
-            const unpacked = unPack(p, a, c, k, null, {});
             
-            // console.log(`[EuroStreaming] MixDrop Unpacked: ${unpacked}`); // DEBUG
-
+            const unpacked = unPack(p, a, c, k, null, {});
             const wurlMatch = unpacked.match(/wurl="([^"]+)"/);
+            
             if (wurlMatch) {
                 let streamUrl = wurlMatch[1];
                 if (streamUrl.startsWith('//')) streamUrl = 'https:' + streamUrl;
                 
-                // Use origin from the input URL as Referer (handles .co, .to, .ch etc.)
                 const urlObj = new URL(url);
                 const referer = urlObj.origin + '/';
                 const origin = urlObj.origin;
-                
-                // Nuvio documentation specifies passing headers in a separate object.
-            // Do NOT append headers to the URL (e.g. |Referer=...) as this might break the URL in Nuvio's player.
-            
-            return {
-                url: streamUrl,
-                headers: {
-                    "User-Agent": USER_AGENT,
-                    "Referer": referer,
-                    "Origin": origin
-                }
-            };
+
+                return {
+                    url: streamUrl,
+                    headers: {
+                        'User-Agent': USER_AGENT,
+                        'Referer': referer,
+                        'Origin': origin
+                    }
+                };
             }
         }
         return null;
@@ -236,13 +205,12 @@ async function extractDropLoad(url) {
                 'Referer': BASE_URL
             }
         });
-
         if (!response.ok) return null;
         const html = await response.text();
-
+        
         const regex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
         const match = regex.exec(html);
-
+        
         if (match) {
             const p = match[1];
             const a = parseInt(match[2]);
@@ -250,15 +218,12 @@ async function extractDropLoad(url) {
             const k = match[4].split('|');
             const unpacked = unPack(p, a, c, k, null, {});
             
-            // Find file:"..."
             const fileMatch = unpacked.match(/file:"(.*?)"/);
             if (fileMatch) {
                 let streamUrl = fileMatch[1];
                 if (streamUrl.startsWith('//')) streamUrl = 'https:' + streamUrl;
                 
-                // Use origin as Referer
                 const referer = new URL(url).origin + '/';
-                
                 return {
                     url: streamUrl,
                     headers: {
@@ -278,6 +243,7 @@ async function extractDropLoad(url) {
 async function extractSuperVideo(url) {
     try {
         if (url.startsWith('//')) url = 'https:' + url;
+        
         let directUrl = url.replace('/e/', '/').replace('/embed-', '/');
         
         let response = await fetch(directUrl, {
@@ -288,7 +254,6 @@ async function extractSuperVideo(url) {
         });
 
         let html = await response.text();
-        
         if (html.includes('This video can be watched as embed only')) {
             let embedUrl = url;
             if (!embedUrl.includes('/e/') && !embedUrl.includes('/embed-')) {
@@ -304,12 +269,12 @@ async function extractSuperVideo(url) {
         }
 
         if (html.includes('Cloudflare') || response.status === 403) {
-            return null;
+             return null;
         }
 
         const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
         const match = packedRegex.exec(html);
-
+        
         if (match) {
             const p = match[1];
             const a = parseInt(match[2]);
@@ -338,18 +303,17 @@ async function searchShow(query) {
         params.append('do', 'search');
         params.append('subaction', 'search');
         params.append('story', query);
-
-        // Use GET instead of POST to align with Guardaserie and potential caching
+        
         const response = await fetch(`${BASE_URL}/index.php?${params.toString()}`, {
             headers: {
                 'User-Agent': USER_AGENT,
                 'Referer': BASE_URL
             }
         });
-        
+
         if (!response.ok) return [];
-        
         const html = await response.text();
+        
         const resultRegex = /<div class="post-thumb">\s*<a href="([^"]+)" title="([^"]+)">/g;
         let match;
         const results = [];
@@ -360,18 +324,18 @@ async function searchShow(query) {
                 title: match[2]
             });
         }
-        
+
         if (results.length === 0) {
-            // Fallback: if no results found, try a broader search or just return empty
-            // But let's log it clearly
             console.log(`[EuroStreaming] No results found for query: "${query}"`);
             return [];
         }
 
         console.log(`[EuroStreaming] Search results for "${query}": ${results.length} found`);
         
+        // Prioritize exact matches
         const candidates = [];
         const lowerQuery = query.toLowerCase();
+        
         const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
         const normalizedQuery = normalize(query);
 
@@ -381,32 +345,27 @@ async function searchShow(query) {
             const normalizedTitle = normalize(r.title);
 
             if (lowerTitle === lowerQuery) {
-                score = 100; // Exact match
+                score = 100;
             } else if (lowerTitle.startsWith(lowerQuery)) {
-                score = 80; // Starts with
+                score = 80;
             } else if (normalizedTitle.includes(normalizedQuery)) {
-                score = 60; // Normalized match / contains
+                score = 60;
             } else {
-                // Check word match
                 try {
-                    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const wordRegex = new RegExp(`\\b${escapedQuery}\\b`, 'i');
-                    if (wordRegex.test(r.title)) {
-                        score = 70; // Word match
-                    } else {
-                        score = 10; // Fallback
-                    }
+                     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                     const wordRegex = new RegExp(`\\b${escapedQuery}\\b`, 'i');
+                     if (wordRegex.test(r.title)) {
+                         score = 70;
+                     } else {
+                         score = 10;
+                     }
                 } catch (e) {
                     score = 10;
                 }
             }
             candidates.push({ ...r, score });
         });
-        
-        // If we have results but none matched well (score 10), keep them anyway
-        // because sometimes titles are very different (e.g. "Money Heist" vs "La Casa de Papel")
-        // But the caller will sort by score.
-        
+
         return candidates.sort((a, b) => b.score - a.score);
 
     } catch (e) {
@@ -421,8 +380,10 @@ async function getTmdbIdFromImdb(imdbId, type) {
         const response = await fetch(url);
         if (!response.ok) return null;
         const data = await response.json();
+        
         if (type === 'movie' && data.movie_results?.length > 0) return data.movie_results[0].id;
         if (type === 'tv' && data.tv_results?.length > 0) return data.tv_results[0].id;
+        
         return null;
     } catch (e) {
         console.error('[EuroStreaming] ID conversion error:', e);
@@ -431,40 +392,40 @@ async function getTmdbIdFromImdb(imdbId, type) {
 }
 
 async function getStreams(id, type, season, episode, showInfo) {
-    if (type === 'movie') return []; // EuroStreaming focuses on TV series
+    if (type === 'movie') return []; // EuroStreaming is mostly TV series
 
     try {
         let tmdbId = id;
         if (id.toString().startsWith('tt')) {
-            tmdbId = await getTmdbIdFromImdb(id, type);
-            if (!tmdbId) {
-                console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
-                return [];
-            }
+             tmdbId = await getTmdbIdFromImdb(id, type);
+             if (!tmdbId) {
+                 console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
+                 return [];
+             }
         } else if (id.toString().startsWith('tmdb:')) {
-            tmdbId = id.toString().replace('tmdb:', '');
+             tmdbId = id.toString().replace('tmdb:', '');
         }
 
+        // Get show info from TMDB to find Italian title
         let fetchedShowInfo = showInfo;
         if (!fetchedShowInfo) {
-             fetchedShowInfo = await getShowInfo(tmdbId, type);
+            fetchedShowInfo = await getShowInfo(tmdbId, type);
         }
-        
+
         if (!fetchedShowInfo) {
             console.log(`[EuroStreaming] Could not get show info for ${tmdbId}`);
             return [];
         }
-        
+
         const titlesToTry = [];
         if (fetchedShowInfo.name) titlesToTry.push(fetchedShowInfo.name);
         if (fetchedShowInfo.title) titlesToTry.push(fetchedShowInfo.title);
         if (fetchedShowInfo.original_name) titlesToTry.push(fetchedShowInfo.original_name);
         if (fetchedShowInfo.original_title) titlesToTry.push(fetchedShowInfo.original_title);
         
-        // Deduplicate
         const uniqueTitles = [...new Set(titlesToTry.filter(Boolean))];
-        
         const allCandidates = [];
+
         for (const t of uniqueTitles) {
             console.log(`[EuroStreaming] Searching title: ${t}`);
             const results = await searchShow(t);
@@ -472,34 +433,34 @@ async function getStreams(id, type, season, episode, showInfo) {
                 allCandidates.push(...results);
             }
         }
-        
-        // Deduplicate URLs (keep highest score)
+
+        // Remove duplicates based on URL
         const uniqueCandidates = [];
         const seenUrls = new Set();
-        // Sort by score first so we keep the highest scored version of a URL
+        // Sort by score first
         allCandidates.sort((a, b) => b.score - a.score);
-        
+
         for (const c of allCandidates) {
             if (!seenUrls.has(c.url)) {
                 seenUrls.add(c.url);
                 uniqueCandidates.push(c);
             }
         }
-        
+
         if (uniqueCandidates.length === 0) {
-            console.log(`[EuroStreaming] No candidates found for any title of ${tmdbId}`);
-            return [];
+             console.log(`[EuroStreaming] No candidates found for any title of ${tmdbId}`);
+             return [];
         }
 
-        // Try top candidates (up to 3)
+        // Check top 3 candidates
         const topCandidates = uniqueCandidates.slice(0, 3);
         console.log(`[EuroStreaming] Testing ${topCandidates.length} candidates for ${tmdbId}`);
 
         const streams = [];
         const promises = [];
-        
+
         for (const candidate of topCandidates) {
-            promises.push((async () => {
+            promises.push(async () => {
                 try {
                     console.log(`[EuroStreaming] Checking candidate: ${candidate.title} (${candidate.url})`);
                     const response = await fetch(candidate.url, {
@@ -508,22 +469,23 @@ async function getStreams(id, type, season, episode, showInfo) {
                             'Referer': BASE_URL
                         }
                     });
-                    
+
                     if (!response.ok) {
-                        console.log(`[EuroStreaming] Failed to fetch candidate page: ${response.status}`);
-                        return;
+                         console.log(`[EuroStreaming] Failed to fetch candidate page: ${response.status}`);
+                         return;
                     }
                     
                     const html = await response.text();
                     
-                    // Check if page has the episode
-                    // Look for data-num="{season}x{episode}"
-                    // e.g. data-num="1x1" or "1x01"
+                    // Find episode
+                    // EuroStreaming uses format: "1x01", "1x1", etc.
+                    // Look for data-num="1x01" or similar
                     const episodeStr1 = `${season}x${episode}`;
                     const episodeStr2 = `${season}x${episode.toString().padStart(2, '0')}`;
+                    
                     const episodeRegex = new RegExp(`data-num="(${episodeStr1}|${episodeStr2})"`, 'i');
                     const episodeMatch = episodeRegex.exec(html);
-                    
+
                     if (!episodeMatch) {
                         console.log(`[EuroStreaming] Episode ${season}x${episode} not found in candidate`);
                         return;
@@ -531,150 +493,139 @@ async function getStreams(id, type, season, episode, showInfo) {
 
                     console.log(`[EuroStreaming] Found episode match at index ${episodeMatch.index}`);
                     
+                    // Extract links for this episode
+                    // Usually they are in the same li or div block
                     const startIndex = episodeMatch.index;
                     const endLiIndex = html.indexOf('</li>', startIndex);
+                    
                     if (endLiIndex === -1) return;
                     
                     const episodeBlock = html.substring(startIndex, endLiIndex);
+                    
                     const linkRegex = /data-link=["']([^"']+)["']/g;
                     let linkMatch;
-                    const innerPromises = [];
                     
+                    const innerPromises = [];
+
                     while ((linkMatch = linkRegex.exec(episodeBlock)) !== null) {
-                        let name = "Source";
+                        let name = 'Source';
                         const url = linkMatch[1];
-                        if (url.includes('dropload')) name = "DropLoad";
-                        else if (url.includes('mixdrop')) name = "MixDrop";
-                        else if (url.includes('supervideo')) name = "SuperVideo";
-                        else if (url.includes('deltabit')) name = "DeltaBit";
-                        else if (url.includes('vidoza')) name = "Vidoza";
-                        else if (url.includes('streamtape')) name = "StreamTape";
-                        else if (url.includes('uqload')) name = "Uqload";
                         
-                        innerPromises.push((async () => {
+                        if (url.includes('dropload')) name = 'DropLoad';
+                        else if (url.includes('mixdrop')) name = 'MixDrop';
+                        else if (url.includes('supervideo')) name = 'SuperVideo';
+                        else if (url.includes('deltabit')) name = 'DeltaBit';
+                        else if (url.includes('vidoza')) name = 'Vidoza';
+                        else if (url.includes('streamtape')) name = 'StreamTape';
+                        else if (url.includes('uqload')) name = 'Uqload';
+                        
+                        innerPromises.push(async () => {
                              try {
-                                 let streamUrl = url;
-                                 if (streamUrl.startsWith('//')) streamUrl = 'https:' + streamUrl;
-                                 
-                                 if (streamUrl.includes('mixdrop') || streamUrl.includes('m1xdrop')) {
-                                   const extracted = await extractMixDrop(streamUrl);
-                                   if (extracted && extracted.url) {
-                                       streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted.url,
-                                           headers: extracted.headers,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                   }
-                                }
-                                else if (streamUrl.includes('dropload')) {
-                                    const extracted = await extractDropLoad(streamUrl);
+                                let streamUrl = url;
+                                if (streamUrl.startsWith('//')) streamUrl = 'https:' + streamUrl;
+
+                                if (streamUrl.includes('mixdrop') || streamUrl.includes('m1xdrop')) {
+                                    const extracted = await extractMixDrop(streamUrl);
                                     if (extracted && extracted.url) {
                                         streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted.url,
-                                           headers: extracted.headers,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted.url,
+                                            headers: extracted.headers,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                        });
                                     }
-                                }
-                                else if (streamUrl.includes('supervideo')) {
-                                    const extracted = await extractSuperVideo(streamUrl);
-                                    if (extracted) {
+                                } else if (streamUrl.includes('dropload')) {
+                                     const extracted = await extractDropLoad(streamUrl);
+                                     if (extracted && extracted.url) {
                                         streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                    }
-                                }
-                                else if (streamUrl.includes('deltabit')) {
-                                    const extracted = await extractDeltaBit(streamUrl);
-                                    if (extracted) {
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted.url,
+                                            headers: extracted.headers,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                        });
+                                     }
+                                } else if (streamUrl.includes('supervideo')) {
+                                     const extracted = await extractSuperVideo(streamUrl);
+                                     if (extracted) {
                                         streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                    }
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                        });
+                                     }
+                                } else if (streamUrl.includes('deltabit')) {
+                                     const extracted = await extractDeltaBit(streamUrl);
+                                     if (extracted) {
+                                         streams.push({
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                         });
+                                     }
+                                } else if (streamUrl.includes('vidoza')) {
+                                     const extracted = await extractVidoza(streamUrl);
+                                     if (extracted) {
+                                         streams.push({
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                         });
+                                     }
+                                } else if (streamUrl.includes('streamtape')) {
+                                     const extracted = await extractStreamTape(streamUrl);
+                                     if (extracted) {
+                                         streams.push({
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                         });
+                                     }
+                                } else if (streamUrl.includes('uqload')) {
+                                     const extracted = await extractUqload(streamUrl);
+                                     if (extracted) {
+                                         streams.push({
+                                            name: `EuroStreaming (${name})`,
+                                            title: 'Watch',
+                                            url: extracted,
+                                            quality: 'auto',
+                                            type: 'direct'
+                                         });
+                                     }
                                 }
-                                else if (streamUrl.includes('vidoza')) {
-                                    const extracted = await extractVidoza(streamUrl);
-                                    if (extracted) {
-                                        streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                    }
-                                }
-                                else if (streamUrl.includes('streamtape') || streamUrl.includes('tape')) {
-                                    const extracted = await extractStreamTape(streamUrl);
-                                    if (extracted) {
-                                        streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                    }
-                                }
-                                else if (streamUrl.includes('uqload')) {
-                                    const extracted = await extractUqload(streamUrl);
-                                    if (extracted) {
-                                        streams.push({
-                                           name: `EuroStreaming (${name})`,
-                                           title: 'Watch',
-                                           url: extracted,
-                                           quality: 'auto',
-                                           type: 'direct'
-                                       });
-                                    }
-                                }
-                             } catch(e) { console.error(e); }
-                        })());
+                             } catch (err) {
+                                 console.error(`[EuroStreaming] Error extracting ${url}:`, err);
+                             }
+                        });
                     }
                     
-                    await Promise.all(innerPromises);
-                } catch (e) {
-                    console.error(`[EuroStreaming] Error processing candidate ${candidate.title}:`, e);
-                }
-            })());
-        }
-        
-        await Promise.all(promises);
-        
-        if (streams.length > 0) {
-            console.log(`[EuroStreaming] Found ${streams.length} streams total`);
-            return streams;
-        }
-        
-        return [];
+                    await Promise.all(innerPromises.map(p => p()));
 
-    } catch (e) {
-        console.error('[EuroStreaming] Error:', e);
+                } catch (e) {
+                    console.error(`[EuroStreaming] Error checking candidate ${candidate.url}:`, e);
+                }
+            });
+        }
+        
+        await Promise.all(promises.map(p => p()));
+
+        return streams;
+
+    } catch (error) {
+        console.error('[EuroStreaming] Error:', error);
         return [];
     }
 }
 
-module.exports = { 
-    getStreams,
-    extractMixDrop,
-    extractDropLoad,
-    extractSuperVideo,
-    extractDeltaBit,
-    extractVidoza,
-    extractStreamTape,
-    extractUqload
-};
+module.exports = { getStreams };

@@ -6,10 +6,8 @@ const guardaserie = require('./guardaserie');
 async function getStreams(id, type, season, episode) {
     const streams = [];
     const errors = [];
-
     console.log(`[MultiProvider] Requesting streams for ${id} (${type})`);
 
-    // Execute in parallel
     const [scResult, guardahdResult, euroResult, guardaserieResult] = await Promise.allSettled([
         streamingcommunity.getStreams(id, type, season, episode),
         guardahd.getStreams(id, type, season, episode),
