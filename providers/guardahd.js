@@ -285,7 +285,7 @@ function getStreams(id, type, season, episode) {
       else return [];
     }
     
-    const metadata = yield getMetadata(id, type);
+    const metadata = yield getMetadata(cleanId, type);
     const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "GuardaHD";
     
     let url;

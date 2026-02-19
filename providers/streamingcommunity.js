@@ -131,7 +131,7 @@ function getStreams(id, type, season, episode) {
       }
     }
     
-    const metadata = yield getMetadata(id, type);
+    const metadata = yield getMetadata(tmdbId, type);
     const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "StreamingCommunity";
     const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
 
