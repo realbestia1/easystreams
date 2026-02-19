@@ -40,6 +40,38 @@ var __async = (__this, __arguments, generator) => {
 const BASE_URL = "https://eurostreaming.luxe";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
+function getQualityFromName(qualityStr) {
+  if (!qualityStr) return 'Unknown';
+
+  const quality = qualityStr.toUpperCase();
+
+  // Map API quality values to normalized format
+  if (quality === 'ORG' || quality === 'ORIGINAL') return 'Original';
+  if (quality === '4K' || quality === '2160P') return '4K';
+  if (quality === '1440P' || quality === '2K') return '1440p';
+  if (quality === '1080P' || quality === 'FHD') return '1080p';
+  if (quality === '720P' || quality === 'HD') return '720p';
+  if (quality === '480P' || quality === 'SD') return '480p';
+  if (quality === '360P') return '360p';
+  if (quality === '240P') return '240p';
+
+  // Try to extract number from string and format consistently
+  const match = qualityStr.match(/(\d{3,4})[pP]?/);
+  if (match) {
+    const resolution = parseInt(match[1]);
+    if (resolution >= 2160) return '4K';
+    if (resolution >= 1440) return '1440p';
+    if (resolution >= 1080) return '1080p';
+    if (resolution >= 720) return '720p';
+    if (resolution >= 480) return '480p';
+    if (resolution >= 360) return '360p';
+    return '240p';
+  }
+
+  return 'Unknown';
+}
+
 function getImdbId(tmdbId, type) {
   return __async(this, null, function* () {
     try {
@@ -506,79 +538,128 @@ function getStreams(id, type, season, episode, showInfo) {
                   if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
                     const extracted = yield extractMixDrop(streamUrl);
                     if (extracted && extracted.url) {
+                      let quality = "HD";
+                      if (extracted.url.includes("1080")) quality = "1080p";
+                      else if (extracted.url.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        name: `EuroStreaming - ${name}`,
+                        title: displayName,
                         url: extracted.url,
                         headers: extracted.headers,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("dropload")) {
                     const extracted = yield extractDropLoad(streamUrl);
                     if (extracted && extracted.url) {
+                      let quality = "HD";
+                      if (extracted.url.includes("1080")) quality = "1080p";
+                      else if (extracted.url.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        name: `EuroStreaming - ${name}`,
+                        title: displayName,
                         url: extracted.url,
                         headers: extracted.headers,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("supervideo")) {
                     const extracted = yield extractSuperVideo(streamUrl);
                     if (extracted) {
+                      let quality = "HD";
+                      if (extracted.includes("1080")) quality = "1080p";
+                      else if (extracted.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        name: `EuroStreaming - ${name}`,
+                        title: displayName,
                         url: extracted,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("deltabit")) {
                     const extracted = yield extractDeltaBit(streamUrl);
                     if (extracted) {
+                      let quality = "HD";
+                      if (extracted.includes("1080")) quality = "1080p";
+                      else if (extracted.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
                         name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        title: displayName,
                         url: extracted,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("vidoza")) {
                     const extracted = yield extractVidoza(streamUrl);
                     if (extracted) {
+                      let quality = "HD";
+                      if (extracted.includes("1080")) quality = "1080p";
+                      else if (extracted.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
                         name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        title: displayName,
                         url: extracted,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("streamtape")) {
                     const extracted = yield extractStreamTape(streamUrl);
                     if (extracted) {
+                      let quality = "HD";
+                      if (extracted.includes("1080")) quality = "1080p";
+                      else if (extracted.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
                         name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        title: displayName,
                         url: extracted,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }
                   } else if (streamUrl.includes("uqload")) {
                     const extracted = yield extractUqload(streamUrl);
                     if (extracted) {
+                      let quality = "HD";
+                      if (extracted.includes("1080")) quality = "1080p";
+                      else if (extracted.includes("720")) quality = "720p";
+                      
+                      const normalizedQuality = getQualityFromName(quality);
+
+                      const displayName = `${candidate.title} ${season}x${episode}`;
                       streams.push({
                         name: `EuroStreaming (${name})`,
-                        title: "Watch",
+                        title: displayName,
                         url: extracted,
-                        quality: "auto",
+                        quality: normalizedQuality,
                         type: "direct"
                       });
                     }

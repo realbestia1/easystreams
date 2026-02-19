@@ -21,6 +21,38 @@ var __async = (__this, __arguments, generator) => {
 const BASE_URL = "https://guardaserietv.best";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
+function getQualityFromName(qualityStr) {
+  if (!qualityStr) return 'Unknown';
+
+  const quality = qualityStr.toUpperCase();
+
+  // Map API quality values to normalized format
+  if (quality === 'ORG' || quality === 'ORIGINAL') return 'Original';
+  if (quality === '4K' || quality === '2160P') return '4K';
+  if (quality === '1440P' || quality === '2K') return '1440p';
+  if (quality === '1080P' || quality === 'FHD') return '1080p';
+  if (quality === '720P' || quality === 'HD') return '720p';
+  if (quality === '480P' || quality === 'SD') return '480p';
+  if (quality === '360P') return '360p';
+  if (quality === '240P') return '240p';
+
+  // Try to extract number from string and format consistently
+  const match = qualityStr.match(/(\d{3,4})[pP]?/);
+  if (match) {
+    const resolution = parseInt(match[1]);
+    if (resolution >= 2160) return '4K';
+    if (resolution >= 1440) return '1440p';
+    if (resolution >= 1080) return '1080p';
+    if (resolution >= 720) return '720p';
+    if (resolution >= 480) return '480p';
+    if (resolution >= 360) return '360p';
+    return '240p';
+  }
+
+  return 'Unknown';
+}
+
 function getImdbId(tmdbId, type) {
   return __async(this, null, function* () {
     try {
@@ -316,38 +348,59 @@ function getStreams(id, type, season, episode) {
           if (link.includes("dropload")) {
             const extracted = yield extractDropLoad(link);
             if (extracted && extracted.url) {
-              return {
-                url: extracted.url,
-                headers: extracted.headers,
-                name: `Guardaserie (DropLoad)`,
-                title: "Watch",
-                quality: "auto",
-                type: "direct"
-              };
-            }
-          } else if (link.includes("supervideo")) {
-            streamUrl = yield extractSuperVideo(link);
-            playerName = "SuperVideo";
-            if (streamUrl) {
-              return {
-                url: streamUrl,
-                name: `Guardaserie (${playerName})`,
-                title: "Watch",
-                quality: "auto",
-                type: "direct"
-              };
-            }
-          } else if (link.includes("mixdrop")) {
-            const extracted = yield extractMixDrop(link);
-            if (extracted && extracted.url) {
-              return {
-                url: extracted.url,
-                headers: extracted.headers,
-                name: `Guardaserie (MixDrop)`,
-                title: "Watch",
-                quality: "auto",
-                type: "direct"
-              };
+            let quality = "HD";
+            if (extracted.url.includes("1080")) quality = "1080p";
+            else if (extracted.url.includes("720")) quality = "720p";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
+            const displayName = `${title} ${season}x${episode}`;
+            return {
+              url: extracted.url,
+              headers: extracted.headers,
+              name: `Guardaserie - DropLoad`,
+              title: displayName,
+              quality: normalizedQuality,
+              type: "direct"
+            };
+          }
+        } else if (link.includes("supervideo")) {
+          streamUrl = yield extractSuperVideo(link);
+          playerName = "SuperVideo";
+          if (streamUrl) {
+            let quality = "HD";
+            if (streamUrl.includes("1080")) quality = "1080p";
+            else if (streamUrl.includes("720")) quality = "720p";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
+            const displayName = `${title} ${season}x${episode}`;
+            return {
+              url: streamUrl,
+              name: `Guardaserie - ${playerName}`,
+              title: displayName,
+              quality: normalizedQuality,
+              type: "direct"
+            };
+          }
+        } else if (link.includes("mixdrop")) {
+          const extracted = yield extractMixDrop(link);
+          if (extracted && extracted.url) {
+            let quality = "HD";
+            if (extracted.url.includes("1080")) quality = "1080p";
+            else if (extracted.url.includes("720")) quality = "720p";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
+            const displayName = `${title} ${season}x${episode}`;
+            return {
+              url: extracted.url,
+              headers: extracted.headers,
+              name: `Guardaserie - MixDrop`,
+              title: displayName,
+              quality: normalizedQuality,
+              type: "direct"
+            };
             }
           }
         } catch (e) {

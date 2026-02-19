@@ -21,11 +21,43 @@ var __async = (__this, __arguments, generator) => {
 const BASE_URL = "https://guardahd.stream";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
+function getQualityFromName(qualityStr) {
+  if (!qualityStr) return 'Unknown';
+
+  const quality = qualityStr.toUpperCase();
+
+  // Map API quality values to normalized format
+  if (quality === 'ORG' || quality === 'ORIGINAL') return 'Original';
+  if (quality === '4K' || quality === '2160P') return '4K';
+  if (quality === '1440P' || quality === '2K') return '1440p';
+  if (quality === '1080P' || quality === 'FHD') return '1080p';
+  if (quality === '720P' || quality === 'HD') return '720p';
+  if (quality === '480P' || quality === 'SD') return '480p';
+  if (quality === '360P') return '360p';
+  if (quality === '240P') return '240p';
+
+  // Try to extract number from string and format consistently
+  const match = qualityStr.match(/(\d{3,4})[pP]?/);
+  if (match) {
+    const resolution = parseInt(match[1]);
+    if (resolution >= 2160) return '4K';
+    if (resolution >= 1440) return '1440p';
+    if (resolution >= 1080) return '1080p';
+    if (resolution >= 720) return '720p';
+    if (resolution >= 480) return '480p';
+    if (resolution >= 360) return '360p';
+    return '240p';
+  }
+
+  return 'Unknown';
+}
+
 function getImdbId(tmdbId, type) {
   return __async(this, null, function* () {
     try {
       const normalizedType = String(type).toLowerCase();
-    const endpoint = normalizedType === "movie" ? "movie" : "tv";
+      const endpoint = normalizedType === "movie" ? "movie" : "tv";
       const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
       const response = yield fetch(url);
       if (!response.ok) return null;
@@ -40,6 +72,35 @@ function getImdbId(tmdbId, type) {
       return null;
     } catch (e) {
       console.error("[GuardaHD] Conversion error:", e);
+      return null;
+    }
+  });
+}
+function getMetadata(id, type) {
+  return __async(this, null, function* () {
+    try {
+      const normalizedType = String(type).toLowerCase();
+      let url;
+      if (String(id).startsWith("tt")) {
+          url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
+      } else {
+          const endpoint = normalizedType === "movie" ? "movie" : "tv";
+          url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY}&language=it-IT`;
+      }
+      
+      const response = yield fetch(url);
+      if (!response.ok) return null;
+      const data = yield response.json();
+      
+      if (String(id).startsWith("tt")) {
+          const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
+          if (results && results.length > 0) return results[0];
+      } else {
+          return data;
+      }
+      return null;
+    } catch (e) {
+      console.error("[GuardaHD] Metadata error:", e);
       return null;
     }
   });
@@ -223,6 +284,10 @@ function getStreams(id, type, season, episode) {
       if (convertedId) imdbId = convertedId;
       else return [];
     }
+    
+    const metadata = yield getMetadata(id, type);
+    const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "GuardaHD";
+    
     let url;
     const normalizedType = String(type).toLowerCase();
     if (normalizedType === "movie") {
@@ -253,6 +318,7 @@ function getStreams(id, type, season, episode) {
       while ((match = linkRegex.exec(html)) !== null) {
         links.push({ url: match[1], name: "Alternative" });
       }
+      const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
       const processUrl = (link) => __async(null, null, function* () {
         let streamUrl = link.url;
         if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
@@ -260,12 +326,19 @@ function getStreams(id, type, season, episode) {
           console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
           const extracted = yield extractMixDrop(streamUrl);
           if (extracted && extracted.url) {
+            let quality = "HD";
+            if (extracted.url.includes("1080")) quality = "1080p";
+            else if (extracted.url.includes("720")) quality = "720p";
+            else if (extracted.url.includes("4k")) quality = "4K";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
             streams.push({
-              name: "GuardaHD (MixDrop)",
-              title: "Watch",
+              name: `GuardaHD - MixDrop`,
+              title: displayName,
               url: extracted.url,
               headers: extracted.headers,
-              quality: "auto",
+              quality: normalizedQuality,
               type: "direct"
             });
           }
@@ -273,12 +346,18 @@ function getStreams(id, type, season, episode) {
           console.log(`[GuardaHD] Attempting DropLoad extraction for ${streamUrl}`);
           const extracted = yield extractDropLoad(streamUrl);
           if (extracted && extracted.url) {
+            let quality = "HD";
+            if (extracted.url.includes("1080")) quality = "1080p";
+            else if (extracted.url.includes("720")) quality = "720p";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
             streams.push({
-              name: "GuardaHD (DropLoad)",
-              title: "Watch",
+              name: `GuardaHD - DropLoad`,
+              title: displayName,
               url: extracted.url,
               headers: extracted.headers,
-              quality: "auto",
+              quality: normalizedQuality,
               type: "direct"
             });
           }
@@ -286,11 +365,17 @@ function getStreams(id, type, season, episode) {
           console.log(`[GuardaHD] Attempting SuperVideo extraction for ${streamUrl}`);
           const extracted = yield extractSuperVideo(streamUrl);
           if (extracted) {
+            let quality = "HD";
+            if (extracted.includes("1080")) quality = "1080p";
+            else if (extracted.includes("720")) quality = "720p";
+            
+            const normalizedQuality = getQualityFromName(quality);
+
             streams.push({
-              name: "GuardaHD (SuperVideo)",
-              title: "Watch",
+              name: `GuardaHD - SuperVideo`,
+              title: displayName,
               url: extracted,
-              quality: "auto",
+              quality: normalizedQuality,
               type: "direct"
             });
           }

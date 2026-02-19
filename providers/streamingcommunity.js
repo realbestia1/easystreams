@@ -32,6 +32,37 @@ const COMMON_HEADERS = {
   "Sec-Fetch-User": "?1",
   "Upgrade-Insecure-Requests": "1"
 };
+function getQualityFromName(qualityStr) {
+  if (!qualityStr) return 'Unknown';
+
+  const quality = qualityStr.toUpperCase();
+
+  // Map API quality values to normalized format
+  if (quality === 'ORG' || quality === 'ORIGINAL') return 'Original';
+  if (quality === '4K' || quality === '2160P') return '4K';
+  if (quality === '1440P' || quality === '2K') return '1440p';
+  if (quality === '1080P' || quality === 'FHD') return '1080p';
+  if (quality === '720P' || quality === 'HD') return '720p';
+  if (quality === '480P' || quality === 'SD') return '480p';
+  if (quality === '360P') return '360p';
+  if (quality === '240P') return '240p';
+
+  // Try to extract number from string and format consistently
+  const match = qualityStr.match(/(\d{3,4})[pP]?/);
+  if (match) {
+    const resolution = parseInt(match[1]);
+    if (resolution >= 2160) return '4K';
+    if (resolution >= 1440) return '1440p';
+    if (resolution >= 1080) return '1080p';
+    if (resolution >= 720) return '720p';
+    if (resolution >= 480) return '480p';
+    if (resolution >= 360) return '360p';
+    return '240p';
+  }
+
+  return 'Unknown';
+}
+
 function getTmdbId(imdbId, type) {
   return __async(this, null, function* () {
     const normalizedType = String(type).toLowerCase();
@@ -54,30 +85,64 @@ function getTmdbId(imdbId, type) {
     }
   });
 }
-function getStreams(id, type, season, episode) {
-    return __async(this, null, function* () {
+function getMetadata(id, type) {
+  return __async(this, null, function* () {
+    try {
       const normalizedType = String(type).toLowerCase();
-      let tmdbId = id.toString();
+      let url;
+      if (String(id).startsWith("tt")) {
+          url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
+      } else {
+          const endpoint = normalizedType === "movie" ? "movie" : "tv";
+          url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY}&language=it-IT`;
+      }
+      
+      const response = yield fetch(url);
+      if (!response.ok) return null;
+      const data = yield response.json();
+      
+      if (String(id).startsWith("tt")) {
+          const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
+          if (results && results.length > 0) return results[0];
+      } else {
+          return data;
+      }
+      return null;
+    } catch (e) {
+      console.error("[StreamingCommunity] Metadata error:", e);
+      return null;
+    }
+  });
+}
+function getStreams(id, type, season, episode) {
+  return __async(this, null, function* () {
+    const normalizedType = String(type).toLowerCase();
+    let tmdbId = id.toString();
     if (tmdbId.startsWith("tmdb:")) {
       tmdbId = tmdbId.replace("tmdb:", "");
     }
     if (tmdbId.startsWith("tt")) {
-        const convertedId = yield getTmdbId(tmdbId, normalizedType);
-        if (convertedId) {
-          console.log(`[StreamingCommunity] Converted ${id} to TMDB ID: ${convertedId}`);
-          tmdbId = convertedId;
-        } else {
-          console.warn(`[StreamingCommunity] Could not convert IMDb ID ${id} to TMDB ID.`);
-        }
-      }
-      let url;
-      if (normalizedType === "movie") {
-        url = `${BASE_URL}/movie/${tmdbId}`;
-      } else if (normalizedType === "tv") {
-        url = `${BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+      const convertedId = yield getTmdbId(tmdbId, normalizedType);
+      if (convertedId) {
+        console.log(`[StreamingCommunity] Converted ${id} to TMDB ID: ${convertedId}`);
+        tmdbId = convertedId;
       } else {
-        return [];
+        console.warn(`[StreamingCommunity] Could not convert IMDb ID ${id} to TMDB ID.`);
       }
+    }
+    
+    const metadata = yield getMetadata(id, type);
+    const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "StreamingCommunity";
+    const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
+
+    let url;
+    if (normalizedType === "movie") {
+      url = `${BASE_URL}/movie/${tmdbId}`;
+    } else if (normalizedType === "tv") {
+      url = `${BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+    } else {
+      return [];
+    }
     try {
       console.log(`[StreamingCommunity] Fetching page: ${url}`);
       const response = yield fetch(url, {
@@ -103,27 +168,37 @@ function getStreams(id, type, season, episode) {
           streamUrl = `${baseUrl}?token=${token}&expires=${expires}&h=1&lang=it`;
         }
         console.log(`[StreamingCommunity] Found stream URL: ${streamUrl}`);
+        let quality = "720p";
         try {
           const playlistResponse = yield fetch(streamUrl, {
             headers: COMMON_HEADERS
           });
           if (playlistResponse.ok) {
             const playlistText = yield playlistResponse.text();
-            const hasItalian = /LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"/i.test(playlistText);
+            const hasItalian = /LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita"/i.test(playlistText);
             const has1080p = /RESOLUTION=\d+x1080|RESOLUTION=1080/i.test(playlistText);
-            if (hasItalian) console.log(`[StreamingCommunity] Verified: Has Italian audio.`);
-            if (has1080p) console.log(`[StreamingCommunity] Verified: Has 1080p stream.`);
+            const has4k = /RESOLUTION=\d+x2160|RESOLUTION=2160/i.test(playlistText);
+            if (has4k) quality = "4K";
+            else if (has1080p) quality = "1080p";
+            
+            if (hasItalian) {
+              console.log(`[StreamingCommunity] Verified: Has Italian audio.`);
+            } else {
+              console.log(`[StreamingCommunity] No Italian audio found in playlist. Skipping.`);
+              return [];
+            }
           } else {
-            console.warn(`[StreamingCommunity] Playlist check failed (${playlistResponse.status}), returning anyway.`);
+            console.warn(`[StreamingCommunity] Playlist check failed (${playlistResponse.status}), skipping verification.`);
           }
         } catch (verError) {
           console.warn(`[StreamingCommunity] Playlist check error, returning anyway:`, verError);
         }
+        const normalizedQuality = getQualityFromName(quality);
         return [{
-          name: "StreamingCommunity",
-          title: "Watch",
+          name: `StreamingCommunity`,
+          title: displayName,
           url: streamUrl,
-          quality: "1080p",
+          quality: normalizedQuality,
           type: "direct",
           headers: COMMON_HEADERS
         }];
