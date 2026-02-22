@@ -569,6 +569,37 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
   }
   const normTitle = title.toLowerCase().trim();
   const normOriginal = originalTitle ? originalTitle.toLowerCase().trim() : "";
+  const preYearExactMatches = filteredCandidates.filter((c) => {
+    const t = (c.title || "").toLowerCase().trim();
+    const te = (c.title_eng || "").toLowerCase().trim();
+    return t === normTitle || te === normTitle || normOriginal && (t === normOriginal || te === normOriginal);
+  });
+  const metaYear = metadata.first_air_date ? parseInt(metadata.first_air_date.substring(0, 4)) : metadata.release_date ? parseInt(metadata.release_date.substring(0, 4)) : null;
+  if (metaYear && (season === 1 || !isTv)) {
+    const yearFiltered = filteredCandidates.filter((c) => {
+      if (!c.date || c.date === "Indeterminato" || c.date === "?") return true;
+      const match = c.date.match(/(\d{4})/);
+      if (match) {
+        const cYear = parseInt(match[1]);
+        return Math.abs(cYear - metaYear) <= 2;
+      }
+      return true;
+    });
+    if (yearFiltered.length > 0) {
+      filteredCandidates = yearFiltered;
+    } else if (filteredCandidates.length > 0) {
+      return null;
+    }
+  }
+  if (preYearExactMatches.length > 0) {
+    const anyExactMatchSurvived = filteredCandidates.some(
+      (c) => preYearExactMatches.some((pym) => pym.id === c.id)
+    );
+    if (!anyExactMatchSurvived) {
+      console.log("[AnimeUnity] All exact matches rejected by year filter. Returning null to avoid mismatch.");
+      return null;
+    }
+  }
   if (options.bypassSeasonCheck) {
     return filteredCandidates[0];
   }

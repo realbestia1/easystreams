@@ -1,6 +1,6 @@
 {
   "name": "Nuvio IT Providers",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "scrapers": [
     {
       "id": "nuvio-it-providers-eurostreaming",
@@ -57,7 +57,7 @@
     {
       "id": "nuvio-it-providers-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
