@@ -24,6 +24,45 @@ const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require('../extractors');
 
+async function getTmdbFromKitsu(kitsuId) {
+    try {
+        const id = String(kitsuId).replace("kitsu:", "");
+        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+        if (!mappingResponse.ok) return null;
+        const mappingData = await mappingResponse.json();
+        
+        if (!mappingData || !mappingData.data) return null;
+
+        // Try TVDB
+        const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb/series' || m.attributes.externalSite === 'thetvdb');
+        if (tvdbMapping) {
+            const tvdbId = String(tvdbMapping.attributes.externalId).split('/')[0];
+            const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
+            const findResponse = await fetch(findUrl);
+            const findData = await findResponse.json();
+            
+            if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+            if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+        
+        // Try IMDb
+        const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
+        if (imdbMapping) {
+             const imdbId = imdbMapping.attributes.externalId;
+             const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+             const findResponse = await fetch(findUrl);
+             const findData = await findResponse.json();
+             if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+             if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+
+        return null;
+    } catch (e) {
+        console.error("[Kitsu] Error converting ID:", e);
+        return null;
+    }
+}
+
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return 'Unknown';
 
@@ -114,14 +153,39 @@ function getStreams(id, type, season, episode) {
     if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
+      let imdbId = null;
+
       if (id.toString().startsWith("tt")) {
+        imdbId = id.toString();
         tmdbId = yield getTmdbIdFromImdb(id, type);
         if (!tmdbId) {
           console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
           return [];
         }
+      } else if (id.toString().startsWith("kitsu:")) {
+          const resolvedId = yield getTmdbFromKitsu(id);
+          if (resolvedId) {
+             tmdbId = resolvedId;
+             console.log(`[Guardaserie] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}`);
+          } else {
+             console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
+             return [];
+          }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
+      }
+      
+      // Resolve IMDb ID for verification if we don't have it yet
+      if (!imdbId && tmdbId) {
+          try {
+              const resolvedImdb = yield getImdbId(tmdbId, type);
+              if (resolvedImdb) {
+                  imdbId = resolvedImdb;
+                  console.log(`[Guardaserie] Resolved TMDB ID ${tmdbId} to IMDb ID ${imdbId} for verification`);
+              }
+          } catch (e) {
+              console.log(`[Guardaserie] Failed to resolve IMDb ID for verification: ${e.message}`);
+          }
       }
       
       let showInfo = null;
@@ -194,10 +258,10 @@ function getStreams(id, type, season, episode) {
                   if (!candidateRes.ok) continue;
                   const candidateHtml = yield candidateRes.text();
                   
-                  if (id.toString().startsWith("tt")) {
+                  if (imdbId) {
                       const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
                       if (imdbMatches && imdbMatches.length > 0) {
-                          const targetId = id.toString();
+                          const targetId = imdbId;
                           const hasTarget = imdbMatches.includes(targetId);
                           const otherIds = imdbMatches.filter(m => m !== targetId);
                           

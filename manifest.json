@@ -1,11 +1,11 @@
 {
   "name": "Nuvio IT Providers",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "scrapers": [
     {
       "id": "nuvio-it-providers-eurostreaming",
       "name": "EuroStreaming",
-      "version": "1.0.23",
+      "version": "1.0.24",
       "description": "TV Series from EuroStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -18,7 +18,7 @@
     {
       "id": "nuvio-it-providers-guardahd",
       "name": "GuardaHD",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -31,7 +31,7 @@
     {
       "id": "nuvio-it-providers-guardaserie",
       "name": "Guardaserie",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "description": "TV Series from Guardaserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -44,7 +44,7 @@
     {
       "id": "nuvio-it-providers-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.6",
+      "version": "1.1.7",
       "description": "Movies and Series from StreamingCommunity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -57,7 +57,7 @@
     {
       "id": "nuvio-it-providers-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -70,7 +70,7 @@
     {
       "id": "nuvio-it-providers-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "description": "Anime from AnimeWorld",
       "resources": ["stream"],
       "contentLanguage": ["it"],

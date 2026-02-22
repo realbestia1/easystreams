@@ -43,6 +43,45 @@ const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza } = require('../extractors');
 
+async function getTmdbFromKitsu(kitsuId) {
+    try {
+        const id = String(kitsuId).replace("kitsu:", "");
+        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+        if (!mappingResponse.ok) return null;
+        const mappingData = await mappingResponse.json();
+        
+        if (!mappingData || !mappingData.data) return null;
+
+        // Try TVDB
+        const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb/series' || m.attributes.externalSite === 'thetvdb');
+        if (tvdbMapping) {
+            const tvdbId = String(tvdbMapping.attributes.externalId).split('/')[0];
+            const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
+            const findResponse = await fetch(findUrl);
+            const findData = await findResponse.json();
+            
+            if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+            if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+        
+        // Try IMDb
+        const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
+        if (imdbMapping) {
+             const imdbId = imdbMapping.attributes.externalId;
+             const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+             const findResponse = await fetch(findUrl);
+             const findData = await findResponse.json();
+             if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+             if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+
+        return null;
+    } catch (e) {
+        console.error("[Kitsu] Error converting ID:", e);
+        return null;
+    }
+}
+
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return 'Unknown';
 
@@ -245,14 +284,39 @@ function getStreams(id, type, season, episode, showInfo) {
     if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
+      let imdbId = null;
+
       if (id.toString().startsWith("tt")) {
+        imdbId = id.toString();
         tmdbId = yield getTmdbIdFromImdb(id, type);
         if (!tmdbId) {
           console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
           return [];
         }
+      } else if (id.toString().startsWith("kitsu:")) {
+          const resolvedId = yield getTmdbFromKitsu(id);
+          if (resolvedId) {
+             tmdbId = resolvedId;
+             console.log(`[EuroStreaming] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}`);
+          } else {
+             console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
+             return [];
+          }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
+      }
+
+      // Resolve IMDb ID for verification if we don't have it yet
+      if (!imdbId && tmdbId) {
+          try {
+              const resolvedImdb = yield getImdbId(tmdbId, type);
+              if (resolvedImdb) {
+                  imdbId = resolvedImdb;
+                  console.log(`[EuroStreaming] Resolved TMDB ID ${tmdbId} to IMDb ID ${imdbId} for verification`);
+              }
+          } catch (e) {
+              console.log(`[EuroStreaming] Failed to resolve IMDb ID for verification: ${e.message}`);
+          }
       }
       let fetchedShowInfo = showInfo;
       if (!fetchedShowInfo) {
@@ -309,8 +373,8 @@ function getStreams(id, type, season, episode, showInfo) {
               return;
             }
             const html = yield response.text();
-            if (id.toString().startsWith("tt")) {
-              const targetImdbId = id.toString();
+            if (imdbId) {
+              const targetImdbId = imdbId;
               const imdbMatches = html.match(/tt\d{7,8}/g);
               if (imdbMatches && imdbMatches.length > 0) {
                 const hasTargetId = imdbMatches.includes(targetImdbId);

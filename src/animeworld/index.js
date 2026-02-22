@@ -2,10 +2,61 @@ const BASE_URL = "https://www.animeworld.ac";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
+async function getTmdbFromKitsu(kitsuId) {
+    try {
+        const id = String(kitsuId).replace("kitsu:", "");
+        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+        if (!mappingResponse.ok) return null;
+        const mappingData = await mappingResponse.json();
+        
+        if (!mappingData || !mappingData.data) return null;
+
+        // Try TVDB
+        const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb/series' || m.attributes.externalSite === 'thetvdb');
+        if (tvdbMapping) {
+            const tvdbId = String(tvdbMapping.attributes.externalId).split('/')[0];
+            const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
+            const findResponse = await fetch(findUrl);
+            const findData = await findResponse.json();
+            
+            if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+            if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+        
+        // Try IMDb
+        const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
+        if (imdbMapping) {
+             const imdbId = imdbMapping.attributes.externalId;
+             const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+             const findResponse = await fetch(findUrl);
+             const findData = await findResponse.json();
+             if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+             if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+
+        return null;
+    } catch (e) {
+        console.error("[Kitsu] Error converting ID:", e);
+        return null;
+    }
+}
+
 async function getMetadata(id, type) {
     try {
         const normalizedType = String(type).toLowerCase();
         let tmdbId = id;
+
+        // Handle Kitsu ID
+        if (String(id).startsWith("kitsu:")) {
+            const resolvedId = await getTmdbFromKitsu(id);
+            if (resolvedId) {
+                tmdbId = resolvedId;
+                console.log(`[AnimeWorld] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}`);
+            } else {
+                console.error(`[AnimeWorld] Failed to resolve Kitsu ID ${id}`);
+                return null;
+            }
+        }
 
         // Strip tmdb: prefix
         if (String(id).startsWith("tmdb:")) {

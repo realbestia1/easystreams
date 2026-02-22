@@ -56,6 +56,76 @@ function getQualityFromName(qualityStr) {
   }
   return "Unknown";
 }
+async function getTmdbFromKitsu(kitsuId) {
+    try {
+        const id = String(kitsuId).replace("kitsu:", "");
+        
+        // Fetch Mappings
+        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+        if (mappingResponse.ok) {
+            const mappingData = await mappingResponse.json();
+            if (mappingData && mappingData.data) {
+                // Try IMDb first
+                const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
+                if (imdbMapping) {
+                     const imdbId = imdbMapping.attributes.externalId;
+                     const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+                     const findResponse = await fetch(findUrl);
+                     const findData = await findResponse.json();
+                     if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+                     if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+                }
+
+                // Try TheTVDB
+                const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb');
+                if (tvdbMapping) {
+                     const tvdbId = tvdbMapping.attributes.externalId;
+                     const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
+                     const findResponse = await fetch(findUrl);
+                     const findData = await findResponse.json();
+                     if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+                     if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+                }
+            }
+        }
+
+        // Fallback: Search by Title from Kitsu Details
+        const detailsResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}`);
+        if (!detailsResponse.ok) return null;
+        const detailsData = await detailsResponse.json();
+        
+        if (detailsData && detailsData.data && detailsData.data.attributes) {
+            const attributes = detailsData.data.attributes;
+            const title = attributes.titles.en || attributes.titles.en_jp || attributes.canonicalTitle;
+            const year = attributes.startDate ? attributes.startDate.substring(0, 4) : null;
+            const subtype = attributes.subtype;
+            
+            const type = (subtype === 'movie') ? 'movie' : 'tv';
+            
+            if (title) {
+                const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}`;
+                const searchResponse = await fetch(searchUrl);
+                const searchData = await searchResponse.json();
+                
+                if (searchData.results && searchData.results.length > 0) {
+                    if (year) {
+                        const match = searchData.results.find(r => {
+                            const date = type === 'movie' ? r.release_date : r.first_air_date;
+                            return date && date.startsWith(year);
+                        });
+                        if (match) return match.id;
+                    }
+                    return searchData.results[0].id;
+                }
+            }
+        }
+
+        return null;
+    } catch (e) {
+        console.error("[Kitsu] Error converting ID:", e);
+        return null;
+    }
+}
 function getTmdbId(imdbId, type) {
   return __async(this, null, function* () {
     const normalizedType = String(type).toLowerCase();
@@ -109,6 +179,16 @@ function getStreams(id, type, season, episode) {
   return __async(this, null, function* () {
     const normalizedType = String(type).toLowerCase();
     let tmdbId = id.toString();
+    if (tmdbId.startsWith("kitsu:")) {
+        const resolvedId = yield getTmdbFromKitsu(tmdbId);
+        if (resolvedId) {
+            console.log(`[StreamingCommunity] Resolved Kitsu ID ${tmdbId} to TMDB ID ${resolvedId}`);
+            tmdbId = resolvedId.toString();
+        } else {
+            console.warn(`[StreamingCommunity] Could not convert Kitsu ID ${tmdbId} to TMDB ID.`);
+            return [];
+        }
+    }
     if (tmdbId.startsWith("tmdb:")) {
       tmdbId = tmdbId.replace("tmdb:", "");
     } else if (tmdbId.startsWith("tt")) {

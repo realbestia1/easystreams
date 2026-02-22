@@ -55,6 +55,40 @@ function getQualityFromName(qualityStr) {
   return 'Unknown';
 }
 
+async function resolveKitsuId(kitsuId) {
+    try {
+        const id = String(kitsuId).replace("kitsu:", "");
+        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+        if (!mappingResponse.ok) return null;
+        const mappingData = await mappingResponse.json();
+        
+        if (!mappingData || !mappingData.data) return null;
+
+        // 1. Prefer IMDb (Direct for GuardaHD)
+        const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
+        if (imdbMapping) {
+             return imdbMapping.attributes.externalId;
+        }
+
+        // 2. Fallback to TVDB -> TMDB
+        const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb/series' || m.attributes.externalSite === 'thetvdb');
+        if (tvdbMapping) {
+            const tvdbId = String(tvdbMapping.attributes.externalId).split('/')[0];
+            const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
+            const findResponse = await fetch(findUrl);
+            const findData = await findResponse.json();
+            
+            if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
+            if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
+        }
+        
+        return null;
+    } catch (e) {
+        console.error("[Kitsu] Error converting ID:", e);
+        return null;
+    }
+}
+
 function getImdbId(tmdbId, type) {
   return __async(this, null, function* () {
     try {
@@ -64,13 +98,20 @@ function getImdbId(tmdbId, type) {
       const response = yield fetch(url);
       if (!response.ok) return null;
       const data = yield response.json();
-      if (data.imdb_id) return data.imdb_id;
+      if (data.imdb_id) {
+        console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
+        return data.imdb_id;
+      }
       const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
       const extResponse = yield fetch(externalUrl);
       if (extResponse.ok) {
         const extData = yield extResponse.json();
-        if (extData.imdb_id) return extData.imdb_id;
+        if (extData.imdb_id) {
+            console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
+            return extData.imdb_id;
+        }
       }
+      console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
       return null;
     } catch (e) {
       console.error("[GuardaHD] Conversion error:", e);
@@ -82,19 +123,32 @@ function getMetadata(id, type) {
   return __async(this, null, function* () {
     try {
       const normalizedType = String(type).toLowerCase();
+      let queryId = id;
+
+      if (String(id).startsWith("kitsu:")) {
+          const resolvedId = yield resolveKitsuId(id);
+          if (resolvedId) {
+             queryId = resolvedId;
+             console.log(`[GuardaHD] Resolved Kitsu ID ${id} to ID ${queryId}`);
+          } else {
+             console.log(`[GuardaHD] Could not convert ${id} to usable ID`);
+             return null;
+          }
+      }
+
       let url;
-      if (String(id).startsWith("tt")) {
-          url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
+      if (String(queryId).startsWith("tt")) {
+          url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
       } else {
           const endpoint = normalizedType === "movie" ? "movie" : "tv";
-          url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY}&language=it-IT`;
+          url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY}&language=it-IT`;
       }
       
       const response = yield fetch(url);
       if (!response.ok) return null;
       const data = yield response.json();
       
-      if (String(id).startsWith("tt")) {
+      if (String(queryId).startsWith("tt")) {
           const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
           if (results && results.length > 0) return results[0];
       } else {
@@ -110,6 +164,18 @@ function getMetadata(id, type) {
 function getStreams(id, type, season, episode) {
   return __async(this, null, function* () {
     let cleanId = id.toString();
+    
+    if (cleanId.startsWith("kitsu:")) {
+        const resolvedId = yield resolveKitsuId(cleanId);
+        if (resolvedId) {
+            console.log(`[GuardaHD] Resolved Kitsu ID ${cleanId} to ID ${resolvedId}`);
+            cleanId = resolvedId.toString();
+        } else {
+            console.log(`[GuardaHD] Could not convert ${cleanId} to usable ID`);
+            return [];
+        }
+    }
+    
     if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
     let imdbId = cleanId;
     if (!cleanId.startsWith("tt")) {
