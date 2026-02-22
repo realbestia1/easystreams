@@ -271,7 +271,11 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
       return !hasNumberSuffix(t);
     });
     if (noNumberMatch) return noNumberMatch;
-    return sorted[0];
+    const first = sorted[0];
+    if (checkSimilarity(first.title, title) || checkSimilarity(first.title, originalTitle)) {
+      return first;
+    }
+    return null;
   }
   return candidates[0];
 }

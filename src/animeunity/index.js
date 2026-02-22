@@ -30,7 +30,24 @@ async function getMetadata(id, type) {
         
         const response = await fetch(url);
         if (!response.ok) return null;
-        return await response.json();
+        // Get Alternative Titles
+        let alternatives = [];
+        try {
+            const endpoint = normalizedType === "movie" ? "movie" : "tv";
+            const altUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/alternative_titles?api_key=${TMDB_API_KEY}`;
+            const altResponse = await fetch(altUrl);
+            if (altResponse.ok) {
+                const altData = await altResponse.json();
+                alternatives = altData.titles || altData.results || [];
+            }
+        } catch (e) {
+            console.error("[AnimeUnity] Alt titles fetch error:", e);
+        }
+
+        return {
+            ...await response.json(),
+            alternatives
+        };
     } catch (e) {
         console.error("[AnimeUnity] Metadata error:", e);
         return null;
@@ -340,16 +357,31 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
         const noNumberMatch = sorted.find(c => {
             const t = (c.title || "").trim();
             const te = (c.title_eng || "").trim();
-            return !hasNumberSuffix(t) && !hasNumberSuffix(te);
+            if (hasNumberSuffix(t) || hasNumberSuffix(te)) return false;
+            
+            // Check similarity
+            if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+            if (metadata.alternatives) {
+                return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+            }
+            return false;
         });
         
         if (noNumberMatch) return noNumberMatch;
         
-        // If all have numbers, return the shortest one (or first sorted)
-        return sorted[0];
+        // If all have numbers or fail similarity, try to find ANY that passes similarity
+        const anyMatch = sorted.find(c => {
+             if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+             if (metadata.alternatives) {
+                 return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+             }
+             return false;
+        });
+        
+        if (anyMatch) return anyMatch;
     }
 
-    return filteredCandidates[0];
+    return null; // Return null if no suitable match found
 }
 
 async function searchAnime(query) {
@@ -535,6 +567,54 @@ async function getStreams(id, type, season, episode) {
         if ((!candidates || candidates.length === 0) && originalTitle && originalTitle !== title) {
             console.log(`[AnimeUnity] No results for ${title}, trying ${originalTitle}`);
             candidates = await searchAnime(originalTitle);
+
+            // Check relevance
+            if (candidates.length > 0) {
+                const valid = candidates.some(c => {
+                    if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+                    if (metadata.alternatives) {
+                        return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+                    }
+                    return false;
+                });
+                
+                if (!valid) {
+                    console.log("[AnimeUnity] Original title search results seem irrelevant. Discarding.");
+                    candidates = [];
+                }
+            }
+        }
+
+        // Strategy 4: Alternative Titles Search
+        if ((!candidates || candidates.length === 0) && metadata.alternatives) {
+             const altTitles = metadata.alternatives
+                 .map(t => t.title)
+                 .filter(t => /^[a-zA-Z0-9\s\-\.\:\(\)]+$/.test(t)) // Only Latin chars
+                 .filter(t => t !== title && t !== originalTitle);
+             
+             const uniqueAlts = [...new Set(altTitles)];
+             
+             for (const altTitle of uniqueAlts) {
+                 if (altTitle.length < 4) continue;
+                 
+                 console.log(`[AnimeUnity] Trying alternative title: ${altTitle}`);
+                 const res = await searchAnime(altTitle);
+                 
+                 if (res && res.length > 0) {
+                      const valid = res.some(c => {
+                          if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+                          if (metadata.alternatives) {
+                              return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+                          }
+                          return false;
+                      });
+                      
+                      if (valid) {
+                          candidates = res;
+                          break;
+                      }
+                 }
+             }
         }
 
         if (!candidates || candidates.length === 0) {
@@ -611,7 +691,7 @@ async function getStreams(id, type, season, episode) {
             
             const epToUse = isSeasonEntry ? episode : absEpisode;
             console.log(`[AnimeUnity] Using episode ${epToUse} for SUB (Is Season Entry: ${isSeasonEntry})`);
-            tasks.push(getEpisodeStreams(bestSub, epToUse, "SUB ITA"));
+            tasks.push(getEpisodeStreams(bestSub, epToUse, "SUB ITA", isMovie));
         }
         if (bestDub) {
             console.log(`[AnimeUnity] Found DUB match: ${bestDub.title || bestDub.title_eng} (ID: ${bestDub.id})`);
@@ -621,7 +701,7 @@ async function getStreams(id, type, season, episode) {
             
             const epToUse = isSeasonEntry ? episode : absEpisode;
             console.log(`[AnimeUnity] Using episode ${epToUse} for DUB (Is Season Entry: ${isSeasonEntry})`);
-            tasks.push(getEpisodeStreams(bestDub, epToUse, "ITA"));
+            tasks.push(getEpisodeStreams(bestDub, epToUse, "ITA", isMovie));
         }
 
         const results = await Promise.all(tasks);
@@ -633,7 +713,7 @@ async function getStreams(id, type, season, episode) {
     }
 }
 
-async function getEpisodeStreams(anime, episodeNumber, langTag = "") {
+async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = false) {
     try {
         const animeUrl = `${BASE_URL}/anime/${anime.id}-${anime.slug}`;
         
@@ -676,9 +756,16 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "") {
         const countMatch = episodesCountRegex.exec(animeHtml);
         const totalEpisodes = countMatch ? parseInt(countMatch[1]) : episodes.length;
 
-        let targetEpisode = episodes.find(ep => ep.number == episodeNumber);
+        let targetEpisode;
+        
+        if (isMovie && episodes.length > 0) {
+            // For movies, just take the first available episode/stream
+            targetEpisode = episodes[0];
+        } else {
+            targetEpisode = episodes.find(ep => ep.number == episodeNumber);
+        }
 
-        if (!targetEpisode && totalEpisodes > episodes.length) {
+        if (!targetEpisode && !isMovie && totalEpisodes > episodes.length) {
             console.log(`[AnimeUnity] Episode ${episodeNumber} not found in initial list. Checking API...`);
             
             // Calculate range

@@ -1,6 +1,6 @@
 {
   "name": "Nuvio IT Providers",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "scrapers": [
     {
       "id": "nuvio-it-providers-eurostreaming",
@@ -57,7 +57,7 @@
     {
       "id": "nuvio-it-providers-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -70,7 +70,7 @@
     {
       "id": "nuvio-it-providers-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "description": "Anime from AnimeWorld",
       "resources": ["stream"],
       "contentLanguage": ["it"],

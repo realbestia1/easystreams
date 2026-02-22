@@ -40,10 +40,24 @@ async function getMetadata(id, type) {
             }
         }
 
+        // Get Alternative Titles
+        let alternatives = [];
+        try {
+            const altUrl = `https://api.themoviedb.org/3/${normalizedType === "movie" ? "movie" : "tv"}/${tmdbId}/alternative_titles?api_key=${TMDB_API_KEY}`;
+            const altResponse = await fetch(altUrl);
+            if (altResponse.ok) {
+                const altData = await altResponse.json();
+                alternatives = altData.titles || altData.results || [];
+            }
+        } catch (e) {
+            console.error("[AnimeWorld] Alt titles fetch error:", e);
+        }
+
         return {
             ...details,
             imdb_id,
-            tmdb_id: tmdbId
+            tmdb_id: tmdbId,
+            alternatives
         };
     } catch (e) {
         console.error("[AnimeWorld] Metadata error:", e);
@@ -324,8 +338,26 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             return !hasNumberSuffix(t);
         });
         
-        if (noNumberMatch) return noNumberMatch;
-        return sorted[0];
+        if (noNumberMatch) {
+            if (checkSimilarity(noNumberMatch.title, title) || checkSimilarity(noNumberMatch.title, originalTitle)) {
+                 return noNumberMatch;
+            }
+        }
+        
+        // Final fallback: use checkSimilarity to ensure the best match is actually relevant
+        // Try finding ANY candidate that passes similarity
+        const anyMatch = sorted.find(c => {
+             if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+             if (metadata.alternatives) {
+                 return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+             }
+             return false;
+        });
+        if (anyMatch) {
+             return anyMatch;
+        }
+        
+        return null; // No relevant match found
     }
 
     return candidates[0];
@@ -601,6 +633,15 @@ async function getStreams(id, type, season, episode) {
         if (candidates.length === 0) {
              console.log(`[AnimeWorld] Standard search: ${title}`);
              candidates = await searchAnime(title);
+             
+             // Check if results are relevant
+             if (candidates.length > 0) {
+                 const valid = candidates.some(c => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
+                 if (!valid) {
+                     console.log("[AnimeWorld] Standard search results seem irrelevant. Discarding.");
+                     candidates = [];
+                 }
+             }
         }
 
         // Strategy 2.5: For Movies, try additional search variations to ensure we find the content
@@ -668,6 +709,54 @@ async function getStreams(id, type, season, episode) {
         if ((!candidates || candidates.length === 0) && originalTitle && originalTitle !== title) {
             console.log(`[AnimeWorld] Trying original title: ${originalTitle}`);
             candidates = await searchAnime(originalTitle);
+            
+            // Check relevance
+            if (candidates.length > 0) {
+                const valid = candidates.some(c => {
+                    if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+                    if (metadata.alternatives) {
+                        return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+                    }
+                    return false;
+                });
+                
+                if (!valid) {
+                    console.log("[AnimeWorld] Original title search results seem irrelevant. Discarding.");
+                    candidates = [];
+                }
+            }
+        }
+
+        // Strategy 4: Alternative Titles Search
+        if ((!candidates || candidates.length === 0) && metadata.alternatives) {
+             const altTitles = metadata.alternatives
+                 .map(t => t.title)
+                 .filter(t => /^[a-zA-Z0-9\s\-\.\:\(\)]+$/.test(t)) // Only Latin chars
+                 .filter(t => t !== title && t !== originalTitle);
+             
+             const uniqueAlts = [...new Set(altTitles)];
+             
+             for (const altTitle of uniqueAlts) {
+                 if (altTitle.length < 4) continue;
+                 
+                 console.log(`[AnimeWorld] Trying alternative title: ${altTitle}`);
+                 const res = await searchAnime(altTitle);
+                 
+                 if (res && res.length > 0) {
+                      const valid = res.some(c => {
+                          if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+                          if (metadata.alternatives) {
+                              return metadata.alternatives.some(alt => checkSimilarity(c.title, alt.title));
+                          }
+                          return false;
+                      });
+                      
+                      if (valid) {
+                          candidates = res;
+                          break;
+                      }
+                 }
+             }
         }
 
         if (!candidates || candidates.length === 0) {
@@ -761,7 +850,15 @@ async function getStreams(id, type, season, episode) {
                     }
                 }
                 
-                let targetEp = episodes.find(e => e.num == episode);
+                let targetEp;
+                if (type === "movie") {
+                    // For movies, just take the first available episode/stream
+                    if (episodes.length > 0) {
+                        targetEp = episodes[0];
+                    }
+                } else {
+                    targetEp = episodes.find(e => e.num == episode);
+                }
                 
                 // Fallback to absolute episode if not found and season > 1
                 if (!targetEp && season > 1) {
@@ -815,7 +912,10 @@ async function getStreams(id, type, season, episode) {
                             const serverName = host ? `${baseName} - ${host}` : baseName;
                             
                             // Avoid duplicating (ITA) if already in title
-                            let displayTitle = `${match.title} - Ep ${episode}`;
+                            let displayTitle = match.title;
+                            if (episode) {
+                                displayTitle += ` - Ep ${episode}`;
+                            }
                             if (isDub && !displayTitle.includes("(ITA)")) displayTitle += " (ITA)";
                             if (!isDub && !displayTitle.includes("(SUB ITA)")) displayTitle += " (SUB ITA)";
 
