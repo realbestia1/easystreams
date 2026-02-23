@@ -406,7 +406,7 @@ app.get('/', (req, res) => {
         </div>
 
         <div class="footer">
-            Powered by <a href="https://github.com/realbestia1/" target="_blank">realbestia1</a>
+            Powered by <a href="https://github.com/realbestia1/" target="_blank">realbestia</a>
         </div>
 
         <script>
