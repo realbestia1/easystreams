@@ -2,9 +2,10 @@
   "name": "nuvio-providers-it",
   "version": "1.0.30",
   "description": "",
-  "main": "index.js",
+  "main": "stremio_addon.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node stremio_addon.js",
     "start-addon": "node stremio_addon.js"
   },
   "keywords": [],
