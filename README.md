@@ -1,4 +1,4 @@
-# Nuvio Providers & Stremio Addon
+# Nuvio Plugin & Stremio Addon
 
 Questo repository contiene una collezione di provider italiani per lo streaming di Film, Serie TV e Anime.
 Il progetto è progettato per essere versatile e può essere utilizzato in due modi diversi:
