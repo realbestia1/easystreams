@@ -121,9 +121,16 @@ const getSimilarityScore = (candTitle, targetTitle) => {
     };
     const nums1 = extractNumbers(t1);
     const nums2 = extractNumbers(t2);
+    
     if (nums1.length > 0 && nums2.length > 0) {
         const hasOverlap = nums1.some(n => nums2.includes(n));
         if (!hasOverlap) return 0;
+    } else if (nums2.length === 0 && nums1.length > 0) {
+        // If target has NO numbers, but candidate has numbers, checks if they are sequel numbers
+        // We allow '1' (implicit) and years (likely release year)
+        // We penalize '2' up to '1900' (sequel numbers)
+        const invalidExtra = nums1.some(n => n > 1 && n < 1900);
+        if (invalidExtra) return 0;
     }
     
     // Word overlap
@@ -131,7 +138,9 @@ const getSimilarityScore = (candTitle, targetTitle) => {
         // English
         "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "by", "for", "with", "is", "are", "was", "were", "be", "been",
         // Italian
-        "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "o", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che", "no"
+        "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "o", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che", "no",
+        // Common Metadata
+        "movie", "film", "ita", "sub", "dub", "serie", "tv"
     ]);
 
     const numberWords = {
@@ -204,7 +213,9 @@ const getSimilarityScore = (candTitle, targetTitle) => {
     const hasText = w2.some(w => !/^\d+$/.test(w));
     if (hasText && textMatches === 0) return 0;
 
-    const score = matches / w2.length;
+    // Use Dice coefficient (F1 Score) for better discrimination of partial matches
+    // This penalizes candidates that are significantly longer than the target (e.g. "Title Subtitle" vs "Title")
+    const score = (2 * matches) / (w1.length + w2.length);
     // console.log(`[AnimeWorld] Similarity: "${t1}" vs "${t2}" -> score ${score} (matches: ${matches}/${w2.length})`);
     
     return score;
@@ -349,6 +360,41 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
         }
     }
 
+    // Filter by Type (using enriched data)
+    if (candidates && candidates.length > 0) {
+        const typeFiltered = candidates.filter(c => {
+            // Only apply if candidate was enriched (checked for type)
+            if (c.enriched) {
+                if (!isTv) { 
+                    // Looking for Movie/OVA/Special
+                    // If enriched and has NO type (no badge), it's likely TV -> Discard
+                    if (!c.type) {
+                        // console.log(`[AnimeWorld] Filtered out "${c.title}" (No Type Badge, likely TV)`);
+                        return false; 
+                    }
+                    // If has type 'tv' -> Discard
+                    if (c.type === 'tv') return false;
+                } else { 
+                    // Looking for TV Series
+                    // If has type 'movie' -> Discard
+                    if (c.type === 'movie') {
+                        // console.log(`[AnimeWorld] Filtered out "${c.title}" (Type: Movie)`);
+                        return false; 
+                    }
+                    // Keep 'tv' (null/undefined) or 'ova'/'special'
+                }
+            }
+            return true;
+        });
+        
+        if (typeFiltered.length > 0) {
+            candidates = typeFiltered;
+        } else {
+            // console.log("[AnimeWorld] All candidates filtered out by Enriched Type check");
+            return null;
+        }
+    }
+
     // Filter out Movies/Specials if looking for a TV Series (Season 1)
     if (isTv && season === 1) {
         candidates = candidates.filter(c => {
@@ -378,8 +424,15 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
              preYearExactMatches.some(pym => pym.href === c.href) // Use href as ID
          );
          if (!anyExactMatchSurvived) {
-             // console.log("[AnimeWorld] All exact matches rejected by year filter. Returning null to avoid mismatch.");
-             return null;
+             // console.log("[AnimeWorld] All exact matches rejected by year filter.");
+             
+             // If we are looking for a TV series, losing the exact match is usually fatal 
+             // (implies we found the wrong show or wrong year).
+             // But if we are looking for a Movie, the exact match might have been the TV series (filtered by type),
+             // so we should proceed to check other candidates (like "Title Movie").
+             if (isTv) {
+                 return null;
+             }
          }
     }
 
@@ -393,6 +446,9 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
         // console.log(`[AnimeWorld] Checking season 0 match for ${title}`);
         const specialTypes = ['special', 'ova', 'movie']; 
         
+        // Sort candidates by similarity score first
+        candidates.sort((a, b) => (b.similarityScore || 0) - (a.similarityScore || 0));
+
         // Try to find one with "Special" in title if multiple
         const specialTitleMatch = candidates.find(c => (c.title || "").toLowerCase().includes("special"));
         if (specialTitleMatch) {
@@ -402,15 +458,23 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
              }
         }
         
-        // Otherwise return the first candidate IF it passes similarity check
+        // Otherwise return the first candidate IF it passes similarity check OR contains the title
         const first = candidates[0];
-        // console.log(`[AnimeWorld] First candidate: ${first.title}`);
-        const sim1 = checkSimilarity(first.title, title);
-        const sim2 = checkSimilarity(first.title, originalTitle);
-        // console.log(`[AnimeWorld] Similarity check: ${sim1} / ${sim2}`);
+        if (first) {
+            const sim1 = checkSimilarity(first.title, title);
+            const sim2 = checkSimilarity(first.title, originalTitle);
+            
+            if (sim1 || sim2) {
+                return first;
+            }
 
-        if (sim1 || sim2) {
-             return first;
+            // Relaxed check for Movies: if the title is contained in the candidate title
+            // and we have already filtered by Year/Type, we can trust it.
+            const t = first.title.toLowerCase();
+            if (t.includes(normTitle) || (normOriginal && t.includes(normOriginal))) {
+                // console.log(`[AnimeWorld] Accepting "${first.title}" based on containment check`);
+                return first;
+            }
         }
         
         // If first candidate failed, try finding ANY candidate that passes similarity
@@ -737,8 +801,8 @@ async function searchAnime(query) {
     }
 }
 
-async function fetchTooltipDate(tooltipUrl) {
-    if (!tooltipUrl) return null;
+async function fetchTooltipInfo(tooltipUrl) {
+    if (!tooltipUrl) return { year: null, type: null };
     try {
         const url = `${BASE_URL}/${tooltipUrl}`;
         const response = await fetch(url, {
@@ -749,22 +813,30 @@ async function fetchTooltipDate(tooltipUrl) {
             }
         });
         
-        if (!response.ok) return null;
+        if (!response.ok) return { year: null, type: null };
         const html = await response.text();
         
-        // Extract Year from "Data di uscita: ... 20 Ottobre 1999"
-        // Look for "Data di uscita:" label and then subsequent text (either in span or dd)
+        // Extract Year
+        let year = null;
         const dateMatch = /Data di uscita:[\s\S]*?(?:<dd>|<span>)([\s\S]*?)(?:<\/dd>|<\/span>)/i.exec(html);
         if (dateMatch) {
             const dateStr = dateMatch[1].trim();
-            // Try to extract year (last 4 digits)
             const yearMatch = /(\d{4})/.exec(dateStr);
-            if (yearMatch) return yearMatch[1];
+            if (yearMatch) year = yearMatch[1];
         }
-        return null;
+
+        // Extract Type (Movie, OVA, ONA, Special)
+        let type = null;
+        if (html.includes('class="movie"')) type = 'movie';
+        else if (html.includes('class="ova"')) type = 'ova';
+        else if (html.includes('class="ona"')) type = 'ona';
+        else if (html.includes('class="special"')) type = 'special';
+        else if (html.includes('class="tv"')) type = 'tv'; // Unlikely to exist based on analysis, but good to have
+        
+        return { year, type };
     } catch (e) {
         console.error("[AnimeWorld] Tooltip fetch error:", e);
-        return null;
+        return { year: null, type: null };
     }
 }
 
@@ -886,6 +958,23 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
         // and a search for "One Piece Film Red" might only return the series.
         if (isMovie) {
               const variantCandidates = [];
+
+              // Try padded numbers for "Movie X" -> "Movie 0X" (e.g. "Movie 1" -> "Movie 01")
+              const movieNumMatch = /\b(movie|film)\s*(\d+)\b/i.exec(title);
+              if (movieNumMatch) {
+                   const typeWord = movieNumMatch[1];
+                   const numStr = movieNumMatch[2];
+                   if (numStr.length === 1) { // Single digit
+                       const padded = `0${numStr}`;
+                       // Replace ONLY the first occurrence to avoid messing up if multiple numbers exist (rare)
+                       // Use a regex with replacement to ensure we target the matched part
+                       const paddedTitle = title.replace(new RegExp(`\\b${typeWord}\\s*${numStr}\\b`, 'i'), `${typeWord} ${padded}`);
+                       
+                       console.log(`[AnimeWorld] Padded search: ${paddedTitle}`);
+                       const paddedRes = await searchAnime(paddedTitle);
+                       if (paddedRes && paddedRes.length > 0) variantCandidates.push(...paddedRes);
+                   }
+              }
               
               // 0. Detect separators
               let parts = [];
@@ -1167,14 +1256,12 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
 
             for (const c of combined) {
                 if (!c.date && c.tooltipUrl) {
-                    const year = await fetchTooltipDate(c.tooltipUrl);
-                    if (year) {
-                        c.date = year;
-                        // console.log(`[AnimeWorld] Enriched "${c.title}" with year: ${year}`);
-                    } else {
-                        // console.log(`[AnimeWorld] Failed to enrich "${c.title}" (no year found)`);
-                    }
+                    const { year, type } = await fetchTooltipInfo(c.tooltipUrl);
+                    if (year) c.date = year;
+                    if (type) c.type = type;
+                    // console.log(`[AnimeWorld] Enriched "${c.title}" with year: ${year}, type: ${type}`);
                 }
+                c.enriched = true;
             }
             return combined;
         };

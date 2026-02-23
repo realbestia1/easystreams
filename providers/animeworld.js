@@ -298,6 +298,9 @@ var getSimilarityScore = (candTitle, targetTitle) => {
   if (nums1.length > 0 && nums2.length > 0) {
     const hasOverlap = nums1.some((n) => nums2.includes(n));
     if (!hasOverlap) return 0;
+  } else if (nums2.length === 0 && nums1.length > 0) {
+    const invalidExtra = nums1.some((n) => n > 1 && n < 1900);
+    if (invalidExtra) return 0;
   }
   const stopWords = /* @__PURE__ */ new Set([
     // English
@@ -342,7 +345,15 @@ var getSimilarityScore = (candTitle, targetTitle) => {
     "tra",
     "fra",
     "che",
-    "no"
+    "no",
+    // Common Metadata
+    "movie",
+    "film",
+    "ita",
+    "sub",
+    "dub",
+    "serie",
+    "tv"
   ]);
   const numberWords = {
     "one": 1,
@@ -414,7 +425,7 @@ var getSimilarityScore = (candTitle, targetTitle) => {
   }
   const hasText = w2.some((w) => !/^\d+$/.test(w));
   if (hasText && textMatches === 0) return 0;
-  const score = matches / w2.length;
+  const score = 2 * matches / (w1.length + w2.length);
   return score;
 };
 var checkSimilarity = (candTitle, targetTitle) => {
@@ -505,6 +516,28 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
       return null;
     }
   }
+  if (candidates && candidates.length > 0) {
+    const typeFiltered = candidates.filter((c) => {
+      if (c.enriched) {
+        if (!isTv) {
+          if (!c.type) {
+            return false;
+          }
+          if (c.type === "tv") return false;
+        } else {
+          if (c.type === "movie") {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+    if (typeFiltered.length > 0) {
+      candidates = typeFiltered;
+    } else {
+      return null;
+    }
+  }
   if (isTv && season === 1) {
     candidates = candidates.filter((c) => {
       const t = (c.title || "").toLowerCase();
@@ -525,7 +558,9 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
       // Use href as ID
     );
     if (!anyExactMatchSurvived) {
-      return null;
+      if (isTv) {
+        return null;
+      }
     }
   }
   if (options.bypassSeasonCheck) {
@@ -533,6 +568,7 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
   }
   if (season === 0) {
     const specialTypes = ["special", "ova", "movie"];
+    candidates.sort((a, b) => (b.similarityScore || 0) - (a.similarityScore || 0));
     const specialTitleMatch = candidates.find((c) => (c.title || "").toLowerCase().includes("special"));
     if (specialTitleMatch) {
       if (checkSimilarity(specialTitleMatch.title, title) || checkSimilarity(specialTitleMatch.title, originalTitle)) {
@@ -540,10 +576,16 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
       }
     }
     const first = candidates[0];
-    const sim1 = checkSimilarity(first.title, title);
-    const sim2 = checkSimilarity(first.title, originalTitle);
-    if (sim1 || sim2) {
-      return first;
+    if (first) {
+      const sim1 = checkSimilarity(first.title, title);
+      const sim2 = checkSimilarity(first.title, originalTitle);
+      if (sim1 || sim2) {
+        return first;
+      }
+      const t = first.title.toLowerCase();
+      if (t.includes(normTitle) || normOriginal && t.includes(normOriginal)) {
+        return first;
+      }
     }
     const anyMatch = candidates.find((c) => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
     if (anyMatch) {
@@ -754,9 +796,9 @@ function searchAnime(query) {
     }
   });
 }
-function fetchTooltipDate(tooltipUrl) {
+function fetchTooltipInfo(tooltipUrl) {
   return __async(this, null, function* () {
-    if (!tooltipUrl) return null;
+    if (!tooltipUrl) return { year: null, type: null };
     try {
       const url = `${BASE_URL}/${tooltipUrl}`;
       const response = yield fetch(url, {
@@ -766,18 +808,25 @@ function fetchTooltipDate(tooltipUrl) {
           "X-Requested-With": "XMLHttpRequest"
         }
       });
-      if (!response.ok) return null;
+      if (!response.ok) return { year: null, type: null };
       const html = yield response.text();
+      let year = null;
       const dateMatch = /Data di uscita:[\s\S]*?(?:<dd>|<span>)([\s\S]*?)(?:<\/dd>|<\/span>)/i.exec(html);
       if (dateMatch) {
         const dateStr = dateMatch[1].trim();
         const yearMatch = /(\d{4})/.exec(dateStr);
-        if (yearMatch) return yearMatch[1];
+        if (yearMatch) year = yearMatch[1];
       }
-      return null;
+      let type = null;
+      if (html.includes('class="movie"')) type = "movie";
+      else if (html.includes('class="ova"')) type = "ova";
+      else if (html.includes('class="ona"')) type = "ona";
+      else if (html.includes('class="special"')) type = "special";
+      else if (html.includes('class="tv"')) type = "tv";
+      return { year, type };
     } catch (e) {
       console.error("[AnimeWorld] Tooltip fetch error:", e);
-      return null;
+      return { year: null, type: null };
     }
   });
 }
@@ -867,6 +916,18 @@ function getStreams(id, type, season, episode, providedMetadata = null) {
       }
       if (isMovie) {
         const variantCandidates = [];
+        const movieNumMatch = /\b(movie|film)\s*(\d+)\b/i.exec(title);
+        if (movieNumMatch) {
+          const typeWord = movieNumMatch[1];
+          const numStr = movieNumMatch[2];
+          if (numStr.length === 1) {
+            const padded = `0${numStr}`;
+            const paddedTitle = title.replace(new RegExp(`\\b${typeWord}\\s*${numStr}\\b`, "i"), `${typeWord} ${padded}`);
+            console.log(`[AnimeWorld] Padded search: ${paddedTitle}`);
+            const paddedRes = yield searchAnime(paddedTitle);
+            if (paddedRes && paddedRes.length > 0) variantCandidates.push(...paddedRes);
+          }
+        }
         let parts = [];
         if (title.includes(" - ")) {
           parts = title.split(" - ");
@@ -1039,12 +1100,11 @@ function getStreams(id, type, season, episode, providedMetadata = null) {
         const combined = [...promising, ...originalTop].slice(0, 6);
         for (const c of combined) {
           if (!c.date && c.tooltipUrl) {
-            const year = yield fetchTooltipDate(c.tooltipUrl);
-            if (year) {
-              c.date = year;
-            } else {
-            }
+            const { year, type: type2 } = yield fetchTooltipInfo(c.tooltipUrl);
+            if (year) c.date = year;
+            if (type2) c.type = type2;
           }
+          c.enriched = true;
         }
         return combined;
       });

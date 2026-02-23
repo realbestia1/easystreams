@@ -1,6 +1,6 @@
 {
   "name": "Nuvio IT Providers",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "scrapers": [
     {
       "id": "nuvio-it-providers-eurostreaming",
@@ -70,7 +70,7 @@
     {
       "id": "nuvio-it-providers-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "description": "Anime from AnimeWorld",
       "resources": ["stream"],
       "contentLanguage": ["it"],
