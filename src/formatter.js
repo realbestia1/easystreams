@@ -67,12 +67,12 @@ function formatStream(stream, providerName) {
     if (desc) titleText += ` | ${desc}`;
     if (language) titleText += `\n🗣️ ${language}`;
 
-    // Move headers to behaviorHints if present
+    // Move headers to behaviorHints if present, but keep original for compatibility
     const behaviorHints = stream.behaviorHints || {};
     if (stream.headers) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = stream.headers;
-        delete stream.headers; // Clean up
+        // Do not delete stream.headers as some players might still use it
     }
 
     return {
