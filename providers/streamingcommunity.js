@@ -233,9 +233,9 @@ function getStreams(id, type, season, episode) {
         const baseUrl = urlMatch[1];
         let streamUrl;
         if (baseUrl.includes("?b=1")) {
-          streamUrl = `${baseUrl}&token=${token}&expires=${expires}&h=1&lang=it`;
+          streamUrl = baseUrl.replace("?", ".m3u8?") + `&token=${token}&expires=${expires}&h=1&lang=it`;
         } else {
-          streamUrl = `${baseUrl}?token=${token}&expires=${expires}&h=1&lang=it`;
+          streamUrl = `${baseUrl}.m3u8?token=${token}&expires=${expires}&h=1&lang=it`;
         }
         console.log(`[StreamingCommunity] Found stream URL: ${streamUrl}`);
         let quality = "720p";

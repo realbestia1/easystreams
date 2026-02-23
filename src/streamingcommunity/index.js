@@ -1,6 +1,7 @@
 
 const BASE_URL = "https://vixsrc.to";
 const { formatStream } = require('../formatter.js');
+const { checkQualityFromText } = require('../quality_helper.js');
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 const COMMON_HEADERS = {
@@ -145,9 +146,9 @@ async function getStreams(id, type, season, episode) {
         const baseUrl = urlMatch[1];
         let streamUrl;
         if (baseUrl.includes("?b=1")) {
-          streamUrl = `${baseUrl}&token=${token}&expires=${expires}&h=1&lang=it`;
+          streamUrl = baseUrl.replace('?', '.m3u8?') + `&token=${token}&expires=${expires}&h=1&lang=it`;
         } else {
-          streamUrl = `${baseUrl}?token=${token}&expires=${expires}&h=1&lang=it`;
+          streamUrl = `${baseUrl}.m3u8?token=${token}&expires=${expires}&h=1&lang=it`;
         }
         console.log(`[StreamingCommunity] Found stream URL: ${streamUrl}`);
         
@@ -160,11 +161,9 @@ async function getStreams(id, type, season, episode) {
             const playlistText = await playlistResponse.text();
             // Basic quality detection from playlist content
             const hasItalian = /LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita"/i.test(playlistText);
-            const has1080p = /RESOLUTION=\d+x1080|RESOLUTION=1080/i.test(playlistText);
-            const has4k = /RESOLUTION=\d+x2160|RESOLUTION=2160/i.test(playlistText);
             
-            if (has4k) quality = "4K";
-            else if (has1080p) quality = "1080p";
+            const detected = checkQualityFromText(playlistText);
+            if (detected) quality = detected;
             
             if (hasItalian) {
               console.log(`[StreamingCommunity] Verified: Has Italian audio.`);

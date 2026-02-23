@@ -378,7 +378,7 @@ var require_vidoza = __commonJS({
 var require_vixcloud = __commonJS({
   "src/extractors/vixcloud.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2 } = require_common();
-    function extractVixCloud(url) {
+    function extractVixCloud2(url) {
       return __async(this, null, function* () {
         try {
           const response = yield fetch(url, {
@@ -390,6 +390,25 @@ var require_vixcloud = __commonJS({
           if (!response.ok) return null;
           const html = yield response.text();
           const streams = [];
+          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
+          const downloadMatch = downloadRegex.exec(html);
+          if (downloadMatch) {
+            const downloadUrl = downloadMatch[1];
+            let quality = "Unknown";
+            if (downloadUrl.includes("1080p")) quality = "1080p";
+            else if (downloadUrl.includes("720p")) quality = "720p";
+            else if (downloadUrl.includes("480p")) quality = "480p";
+            else if (downloadUrl.includes("360p")) quality = "360p";
+            streams.push({
+              url: downloadUrl,
+              quality,
+              type: "direct",
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": "https://vixcloud.co/"
+              }
+            });
+          }
           const tokenRegex = /'token':\s*'(\w+)'/;
           const expiresRegex = /'expires':\s*'(\d+)'/;
           const urlRegex = /url:\s*'([^']+)'/;
@@ -411,11 +430,11 @@ var require_vixcloud = __commonJS({
             if (fhdMatch) {
               finalUrl += "&h=1";
             }
-            const parts = finalUrl.split("?");
-            finalUrl = parts[0] + ".m3u8";
-            if (parts.length > 1) {
-              finalUrl += "?" + parts.slice(1).join("?");
+            const urlObj = new URL(finalUrl);
+            if (!urlObj.pathname.endsWith(".m3u8")) {
+              urlObj.pathname += ".m3u8";
             }
+            finalUrl = urlObj.toString();
             streams.push({
               url: finalUrl,
               quality: "Auto",
@@ -433,7 +452,54 @@ var require_vixcloud = __commonJS({
         }
       });
     }
-    module2.exports = { extractVixCloud };
+    module2.exports = { extractVixCloud: extractVixCloud2 };
+  }
+});
+
+// src/extractors/deltabit.js
+var require_deltabit = __commonJS({
+  "src/extractors/deltabit.js"(exports2, module2) {
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    function extractDeltaBit2(url) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT2
+            }
+          });
+          if (!response.ok) return null;
+          const html = yield response.text();
+          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/g;
+          let match;
+          let fileFallback = null;
+          while ((match = packedRegex.exec(html)) !== null) {
+            const p = match[1];
+            const a = parseInt(match[2]);
+            const c = parseInt(match[3]);
+            const k = match[4].split("|");
+            const unpacked = unPack(p, a, c, k, null, {});
+            const fileMatch = unpacked.match(/file:\s*"(.*?)"/);
+            if (fileMatch) {
+              return fileMatch[1];
+            }
+            const srcMatch = unpacked.match(/src:\s*"(.*?)"/);
+            if (srcMatch && !fileFallback) {
+              fileFallback = srcMatch[1];
+            }
+          }
+          if (fileFallback) {
+            return fileFallback;
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] DeltaBit extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractDeltaBit: extractDeltaBit2 };
   }
 });
 
@@ -447,7 +513,8 @@ var require_extractors = __commonJS({
     var { extractUqload } = require_uqload();
     var { extractUpstream } = require_upstream();
     var { extractVidoza } = require_vidoza();
-    var { extractVixCloud } = require_vixcloud();
+    var { extractVixCloud: extractVixCloud2 } = require_vixcloud();
+    var { extractDeltaBit: extractDeltaBit2 } = require_deltabit();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
@@ -457,7 +524,8 @@ var require_extractors = __commonJS({
       extractUqload,
       extractUpstream,
       extractVidoza,
-      extractVixCloud,
+      extractVixCloud: extractVixCloud2,
+      extractDeltaBit: extractDeltaBit2,
       USER_AGENT: USER_AGENT2,
       unPack
     };
@@ -704,7 +772,7 @@ var __async2 = (__this, __arguments, generator) => {
 var BASE_URL = "https://guardahd.stream";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-var { extractMixDrop, extractDropLoad, extractSuperVideo } = require_extractors();
+var { extractMixDrop, extractDropLoad, extractSuperVideo, extractVixCloud, extractDeltaBit } = require_extractors();
 var { getTmdbFromKitsu } = require_tmdb_helper();
 var { formatStream } = require_formatter();
 function getQualityFromName(qualityStr) {
@@ -924,6 +992,33 @@ function getStreams(id, type, season, episode) {
               url: extracted,
               quality: normalizedQuality,
               type: "direct"
+            });
+          }
+        } else if (streamUrl.includes("vixcloud") || streamUrl.includes("vixsrc") || streamUrl.includes("vidoza")) {
+          console.log(`[GuardaHD] Attempting VixCloud extraction for ${streamUrl}`);
+          const extracted = yield extractVixCloud(streamUrl);
+          if (extracted && extracted.length > 0) {
+            extracted.forEach((s) => {
+              streams.push({
+                name: `GuardaHD - VixCloud`,
+                title: displayName,
+                url: s.url,
+                headers: s.headers,
+                quality: s.quality || "Auto",
+                type: s.type || "m3u8"
+              });
+            });
+          }
+        } else if (streamUrl.includes("serversicuro") || streamUrl.includes("deltabit")) {
+          console.log(`[GuardaHD] Attempting DeltaBit extraction for ${streamUrl}`);
+          const extracted = yield extractDeltaBit(streamUrl);
+          if (extracted) {
+            streams.push({
+              name: `GuardaHD - DeltaBit`,
+              title: displayName,
+              url: extracted,
+              type: "m3u8",
+              quality: "Auto"
             });
           }
         }

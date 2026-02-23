@@ -1283,6 +1283,12 @@ function getStreams(id, type, season, episode, providedMetadata = null) {
                   host = urlObj.hostname.replace("www.", "");
                   if (host.includes("sweetpixel")) host = "SweetPixel";
                   else if (host.includes("stream")) host = "Stream";
+                  if (host.includes("vixsrc") || host.includes("vixcloud")) {
+                    if (!urlObj.pathname.endsWith(".m3u8")) {
+                      urlObj.pathname += ".m3u8";
+                      infoData.grabber = urlObj.toString();
+                    }
+                  }
                 } catch (e) {
                 }
                 const baseName = isDub ? "AnimeWorld (ITA)" : "AnimeWorld (SUB ITA)";

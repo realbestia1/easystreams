@@ -25,6 +25,7 @@ const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
 const { extractMixDrop, extractDropLoad, extractSuperVideo } = require('../extractors');
 const { getTmdbFromKitsu } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
+const { checkQualityFromPlaylist, getQualityFromUrl } = require('../quality_helper.js');
 
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return 'Unknown';
@@ -200,78 +201,84 @@ function getStreams(id, type, season, episode) {
       }
       
       const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
-      const processUrl = (link) => __async(null, null, function* () {
+      const processUrl = async (link) => {
         let streamUrl = link.url;
         if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-        if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
-          console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
-          const extracted = yield extractMixDrop(streamUrl);
-          if (extracted && extracted.url) {
-            let quality = "HD";
-            const lowerUrl = extracted.url.toLowerCase();
-            if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-            else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-            else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-            else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-            else if (lowerUrl.includes("360")) quality = "360p";
-            
-            const normalizedQuality = getQualityFromName(quality);
+        
+        try {
+          if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
+            console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
+            const extracted = await extractMixDrop(streamUrl);
+            if (extracted && extracted.url) {
+              let quality = "HD";
+              const playlistQuality = await checkQualityFromPlaylist(extracted.url, extracted.headers);
+              if (playlistQuality) quality = playlistQuality;
+              else {
+                const urlQuality = getQualityFromUrl(extracted.url);
+                if (urlQuality) quality = urlQuality;
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            streams.push({
-              name: `GuardaHD - MixDrop`,
-              title: displayName,
-              url: extracted.url,
-              headers: extracted.headers,
-              quality: normalizedQuality,
-              type: "direct"
-            });
-          }
-        } else if (streamUrl.includes("dropload")) {
-          console.log(`[GuardaHD] Attempting DropLoad extraction for ${streamUrl}`);
-          const extracted = yield extractDropLoad(streamUrl);
-          if (extracted && extracted.url) {
-            let quality = "HD";
-            const lowerUrl = extracted.url.toLowerCase();
-            if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-            else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-            else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-            else if (lowerUrl.includes("360")) quality = "360p";
-            
-            const normalizedQuality = getQualityFromName(quality);
+              streams.push({
+                name: `GuardaHD - MixDrop`,
+                title: displayName,
+                url: extracted.url,
+                headers: extracted.headers,
+                quality: normalizedQuality,
+                type: "direct"
+              });
+            }
+          } else if (streamUrl.includes("dropload")) {
+            console.log(`[GuardaHD] Attempting DropLoad extraction for ${streamUrl}`);
+            const extracted = await extractDropLoad(streamUrl);
+            if (extracted && extracted.url) {
+              let quality = "HD";
+              const playlistQuality = await checkQualityFromPlaylist(extracted.url, extracted.headers);
+              if (playlistQuality) quality = playlistQuality;
+              else {
+                const urlQuality = getQualityFromUrl(extracted.url);
+                if (urlQuality) quality = urlQuality;
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            streams.push({
-              name: `GuardaHD - DropLoad`,
-              title: displayName,
-              url: extracted.url,
-              headers: extracted.headers,
-              quality: normalizedQuality,
-              type: "direct"
-            });
-          }
-        } else if (streamUrl.includes("supervideo")) {
-          console.log(`[GuardaHD] Attempting SuperVideo extraction for ${streamUrl}`);
-          const extracted = yield extractSuperVideo(streamUrl);
-          if (extracted) {
-            let quality = "HD";
-            const lowerUrl = extracted.toLowerCase();
-            if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-            else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-            else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-            else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-            else if (lowerUrl.includes("360")) quality = "360p";
-            
-            const normalizedQuality = getQualityFromName(quality);
+              streams.push({
+                name: `GuardaHD - DropLoad`,
+                title: displayName,
+                url: extracted.url,
+                headers: extracted.headers,
+                quality: normalizedQuality,
+                type: "direct"
+              });
+            }
+          } else if (streamUrl.includes("supervideo")) {
+            console.log(`[GuardaHD] Attempting SuperVideo extraction for ${streamUrl}`);
+            const extracted = await extractSuperVideo(streamUrl);
+            if (extracted) {
+              let quality = "HD";
+              const playlistQuality = await checkQualityFromPlaylist(extracted);
+              if (playlistQuality) quality = playlistQuality;
+              else {
+                const urlQuality = getQualityFromUrl(extracted);
+                if (urlQuality) quality = urlQuality;
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            streams.push({
-              name: `GuardaHD - SuperVideo`,
-              title: displayName,
-              url: extracted,
-              quality: normalizedQuality,
-              type: "direct"
-            });
+              streams.push({
+                name: `GuardaHD - SuperVideo`,
+                title: displayName,
+                url: extracted,
+                quality: normalizedQuality,
+                type: "direct"
+              });
+            }
           }
+        } catch (e) {
+          console.error("[GuardaHD] Process URL error:", e);
         }
-      });
+      };
       yield Promise.all(links.map((link) => processUrl(link)));
       const uniqueStreams = [];
       const seenUrls = /* @__PURE__ */ new Set();

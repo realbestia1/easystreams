@@ -390,6 +390,25 @@ var require_vixcloud = __commonJS({
           if (!response.ok) return null;
           const html = yield response.text();
           const streams = [];
+          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
+          const downloadMatch = downloadRegex.exec(html);
+          if (downloadMatch) {
+            const downloadUrl = downloadMatch[1];
+            let quality = "Unknown";
+            if (downloadUrl.includes("1080p")) quality = "1080p";
+            else if (downloadUrl.includes("720p")) quality = "720p";
+            else if (downloadUrl.includes("480p")) quality = "480p";
+            else if (downloadUrl.includes("360p")) quality = "360p";
+            streams.push({
+              url: downloadUrl,
+              quality,
+              type: "direct",
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": "https://vixcloud.co/"
+              }
+            });
+          }
           const tokenRegex = /'token':\s*'(\w+)'/;
           const expiresRegex = /'expires':\s*'(\d+)'/;
           const urlRegex = /url:\s*'([^']+)'/;
@@ -411,11 +430,11 @@ var require_vixcloud = __commonJS({
             if (fhdMatch) {
               finalUrl += "&h=1";
             }
-            const parts = finalUrl.split("?");
-            finalUrl = parts[0] + ".m3u8";
-            if (parts.length > 1) {
-              finalUrl += "?" + parts.slice(1).join("?");
+            const urlObj = new URL(finalUrl);
+            if (!urlObj.pathname.endsWith(".m3u8")) {
+              urlObj.pathname += ".m3u8";
             }
+            finalUrl = urlObj.toString();
             streams.push({
               url: finalUrl,
               quality: "Auto",
@@ -437,6 +456,53 @@ var require_vixcloud = __commonJS({
   }
 });
 
+// src/extractors/deltabit.js
+var require_deltabit = __commonJS({
+  "src/extractors/deltabit.js"(exports2, module2) {
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    function extractDeltaBit(url) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT2
+            }
+          });
+          if (!response.ok) return null;
+          const html = yield response.text();
+          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/g;
+          let match;
+          let fileFallback = null;
+          while ((match = packedRegex.exec(html)) !== null) {
+            const p = match[1];
+            const a = parseInt(match[2]);
+            const c = parseInt(match[3]);
+            const k = match[4].split("|");
+            const unpacked = unPack(p, a, c, k, null, {});
+            const fileMatch = unpacked.match(/file:\s*"(.*?)"/);
+            if (fileMatch) {
+              return fileMatch[1];
+            }
+            const srcMatch = unpacked.match(/src:\s*"(.*?)"/);
+            if (srcMatch && !fileFallback) {
+              fileFallback = srcMatch[1];
+            }
+          }
+          if (fileFallback) {
+            return fileFallback;
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] DeltaBit extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractDeltaBit };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -448,6 +514,7 @@ var require_extractors = __commonJS({
     var { extractUpstream } = require_upstream();
     var { extractVidoza } = require_vidoza();
     var { extractVixCloud: extractVixCloud2 } = require_vixcloud();
+    var { extractDeltaBit } = require_deltabit();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
@@ -458,6 +525,7 @@ var require_extractors = __commonJS({
       extractUpstream,
       extractVidoza,
       extractVixCloud: extractVixCloud2,
+      extractDeltaBit,
       USER_AGENT: USER_AGENT2,
       unPack
     };
@@ -1381,6 +1449,22 @@ function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = false) 
         const match = str.match(/(\d{3,4}p)/i);
         return match ? match[1] : "Unknown";
       };
+      if (targetEpisode.link && targetEpisode.link.startsWith("http")) {
+        let quality = extractQuality(targetEpisode.link);
+        if (quality === "Unknown") quality = extractQuality(targetEpisode.file_name);
+        const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
+        streams.push({
+          name: "AnimeUnity" + labelSuffix,
+          title: displayTitle,
+          url: targetEpisode.link,
+          quality,
+          type: "direct",
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Referer": BASE_URL
+          }
+        });
+      }
       if (targetEpisode.scws_id) {
         try {
           const embedApiUrl = `${BASE_URL}/embed-url/${targetEpisode.id}`;

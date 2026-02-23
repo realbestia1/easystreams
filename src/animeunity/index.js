@@ -1,6 +1,7 @@
 const { extractVixCloud } = require('../extractors');
 const { getTmdbFromKitsu, isAnime } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
+const { checkQualityFromPlaylist } = require('../quality_helper.js');
 
 const BASE_URL = "https://www.animeunity.so";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
@@ -947,6 +948,14 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = f
         if (targetEpisode.link && targetEpisode.link.startsWith("http")) {
             let quality = extractQuality(targetEpisode.link);
             if (quality === "Unknown") quality = extractQuality(targetEpisode.file_name);
+
+            if (targetEpisode.link.includes('.m3u8')) {
+                const detected = await checkQualityFromPlaylist(targetEpisode.link, {
+                    "User-Agent": USER_AGENT,
+                    "Referer": BASE_URL
+                });
+                if (detected) quality = detected;
+            }
             
             // Ensure anime.title is not null/undefined
             const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;

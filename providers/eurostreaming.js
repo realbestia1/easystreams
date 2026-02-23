@@ -390,6 +390,25 @@ var require_vixcloud = __commonJS({
           if (!response.ok) return null;
           const html = yield response.text();
           const streams = [];
+          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
+          const downloadMatch = downloadRegex.exec(html);
+          if (downloadMatch) {
+            const downloadUrl = downloadMatch[1];
+            let quality = "Unknown";
+            if (downloadUrl.includes("1080p")) quality = "1080p";
+            else if (downloadUrl.includes("720p")) quality = "720p";
+            else if (downloadUrl.includes("480p")) quality = "480p";
+            else if (downloadUrl.includes("360p")) quality = "360p";
+            streams.push({
+              url: downloadUrl,
+              quality,
+              type: "direct",
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": "https://vixcloud.co/"
+              }
+            });
+          }
           const tokenRegex = /'token':\s*'(\w+)'/;
           const expiresRegex = /'expires':\s*'(\d+)'/;
           const urlRegex = /url:\s*'([^']+)'/;
@@ -411,11 +430,11 @@ var require_vixcloud = __commonJS({
             if (fhdMatch) {
               finalUrl += "&h=1";
             }
-            const parts = finalUrl.split("?");
-            finalUrl = parts[0] + ".m3u8";
-            if (parts.length > 1) {
-              finalUrl += "?" + parts.slice(1).join("?");
+            const urlObj = new URL(finalUrl);
+            if (!urlObj.pathname.endsWith(".m3u8")) {
+              urlObj.pathname += ".m3u8";
             }
+            finalUrl = urlObj.toString();
             streams.push({
               url: finalUrl,
               quality: "Auto",
@@ -437,6 +456,53 @@ var require_vixcloud = __commonJS({
   }
 });
 
+// src/extractors/deltabit.js
+var require_deltabit = __commonJS({
+  "src/extractors/deltabit.js"(exports2, module2) {
+    var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
+    function extractDeltaBit2(url) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT2
+            }
+          });
+          if (!response.ok) return null;
+          const html = yield response.text();
+          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/g;
+          let match;
+          let fileFallback = null;
+          while ((match = packedRegex.exec(html)) !== null) {
+            const p = match[1];
+            const a = parseInt(match[2]);
+            const c = parseInt(match[3]);
+            const k = match[4].split("|");
+            const unpacked = unPack2(p, a, c, k, null, {});
+            const fileMatch = unpacked.match(/file:\s*"(.*?)"/);
+            if (fileMatch) {
+              return fileMatch[1];
+            }
+            const srcMatch = unpacked.match(/src:\s*"(.*?)"/);
+            if (srcMatch && !fileFallback) {
+              fileFallback = srcMatch[1];
+            }
+          }
+          if (fileFallback) {
+            return fileFallback;
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] DeltaBit extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractDeltaBit: extractDeltaBit2 };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -448,6 +514,7 @@ var require_extractors = __commonJS({
     var { extractUpstream: extractUpstream2 } = require_upstream();
     var { extractVidoza: extractVidoza2 } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
+    var { extractDeltaBit: extractDeltaBit2 } = require_deltabit();
     var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
@@ -458,6 +525,7 @@ var require_extractors = __commonJS({
       extractUpstream: extractUpstream2,
       extractVidoza: extractVidoza2,
       extractVixCloud,
+      extractDeltaBit: extractDeltaBit2,
       USER_AGENT: USER_AGENT2,
       unPack: unPack2
     };
@@ -723,7 +791,7 @@ var __async2 = (__this, __arguments, generator) => {
 var BASE_URL = "https://eurostreaming.luxe";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza, extractUqload, extractUpstream } = require_extractors();
+var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza, extractUqload, extractUpstream, unPack, extractDeltaBit } = require_extractors();
 var { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require_tmdb_helper();
 var { formatStream } = require_formatter();
 function getQualityFromName(qualityStr) {
@@ -782,33 +850,6 @@ function getShowInfo(tmdbId, type) {
       return yield response.json();
     } catch (e) {
       console.error("[EuroStreaming] TMDB error:", e);
-      return null;
-    }
-  });
-}
-function extractDeltaBit(url) {
-  return __async2(this, null, function* () {
-    try {
-      if (url.startsWith("//")) url = "https:" + url;
-      const response = yield fetch(url);
-      if (!response.ok) return null;
-      const html = yield response.text();
-      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
-      const match = packedRegex.exec(html);
-      if (match) {
-        const p = match[1];
-        const a = parseInt(match[2]);
-        const c = parseInt(match[3]);
-        const k = match[4].split("|");
-        const unpacked = unPack(p, a, c, k, null, {});
-        const fileMatch = unpacked.match(/file:\s*"(.*?)"/);
-        if (fileMatch) {
-          return fileMatch[1];
-        }
-      }
-      return null;
-    } catch (e) {
-      console.error("[EuroStreaming] DeltaBit extraction error:", e);
       return null;
     }
   });

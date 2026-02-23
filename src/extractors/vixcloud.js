@@ -1,4 +1,5 @@
 const { USER_AGENT } = require('./common');
+const { checkQualityFromPlaylist } = require('../quality_helper.js');
 
 async function extractVixCloud(url) {
     try {
@@ -72,9 +73,16 @@ async function extractVixCloud(url) {
                 finalUrl += '?' + parts.slice(1).join('?');
             }
             
+            let quality = "Auto";
+            const detectedQuality = await checkQualityFromPlaylist(finalUrl, {
+                "User-Agent": USER_AGENT,
+                "Referer": "https://vixcloud.co/"
+            });
+            if (detectedQuality) quality = detectedQuality;
+            
             streams.push({
                 url: finalUrl,
-                quality: "Auto",
+                quality: quality,
                 type: "m3u8",
                 headers: {
                     "User-Agent": USER_AGENT,

@@ -1,5 +1,6 @@
 const { getTmdbFromKitsu, isAnime } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
+const { checkQualityFromPlaylist } = require('../quality_helper.js');
 
 const BASE_URL = "https://www.animeworld.ac";
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
@@ -1417,10 +1418,22 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                         if (infoData.grabber) {
                             // Extract quality from grabber URL if possible, otherwise default to "auto"
                             let quality = "auto";
-                            if (infoData.grabber.includes("1080p")) quality = "1080p";
-                            else if (infoData.grabber.includes("720p")) quality = "720p";
-                            else if (infoData.grabber.includes("480p")) quality = "480p";
-                            else if (infoData.grabber.includes("360p")) quality = "360p";
+                            
+                            // Check playlist quality if available
+                            if (infoData.grabber.includes('.m3u8')) {
+                                const playlistQuality = await checkQualityFromPlaylist(infoData.grabber, {
+                                    "User-Agent": USER_AGENT,
+                                    "Referer": animeUrl
+                                });
+                                if (playlistQuality) quality = playlistQuality;
+                            }
+                            
+                            if (quality === "auto") {
+                                if (infoData.grabber.includes("1080p")) quality = "1080p";
+                                else if (infoData.grabber.includes("720p")) quality = "720p";
+                                else if (infoData.grabber.includes("480p")) quality = "480p";
+                                else if (infoData.grabber.includes("360p")) quality = "360p";
+                            }
 
                             // The 'server' field is often displayed as the stream name.
                             // If we just use "AnimeWorld (ITA)", it might be grouped under "AnimeWorld" in the UI.

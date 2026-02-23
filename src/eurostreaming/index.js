@@ -42,6 +42,7 @@ const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza, extractUqload, extractUpstream } = require('../extractors');
+const { checkQualityFromPlaylist } = require('../quality_helper.js');
 const { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
 
@@ -700,12 +701,17 @@ function getStreams(id, type, season, episode, showInfo) {
                          const extracted = yield extractMixDrop(streamUrl);
                          if (extracted && extracted.url) {
                            let quality = "HD";
-                           const lowerUrl = extracted.url.toLowerCase();
-                           if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
-                           else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
-                           else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
-                           else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
-                           else if (lowerUrl.includes("360")) quality = "360p"; 
+                           if (extracted.url.includes('.m3u8')) {
+                               const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                               if (detected) quality = detected;
+                           } else {
+                               const lowerUrl = extracted.url.toLowerCase();
+                               if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
+                               else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
+                               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
+                               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
+                               else if (lowerUrl.includes("360")) quality = "360p"; 
+                           }
                            
                            const normalizedQuality = getQualityFromName(quality);
      
@@ -722,11 +728,16 @@ function getStreams(id, type, season, episode, showInfo) {
                          const extracted = yield extractDropLoad(streamUrl); 
                          if (extracted && extracted.url) { 
                            let quality = "HD"; 
-                           const lowerUrl = extracted.url.toLowerCase(); 
-                           if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
-                           else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
-                           else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
-                           else if (lowerUrl.includes("360")) quality = "360p"; 
+                           if (extracted.url.includes('.m3u8')) {
+                               const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                               if (detected) quality = detected;
+                           } else {
+                               const lowerUrl = extracted.url.toLowerCase();
+                               if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
+                               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
+                               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
+                               else if (lowerUrl.includes("360")) quality = "360p"; 
+                           }
                            
                            const normalizedQuality = getQualityFromName(quality); 
      
@@ -743,12 +754,17 @@ function getStreams(id, type, season, episode, showInfo) {
                          const extracted = yield extractSuperVideo(streamUrl); 
                          if (extracted) { 
                            let quality = "HD"; 
-                           const lowerUrl = extracted.toLowerCase(); 
-                           if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
-                           else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
-                           else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
-                           else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
-                           else if (lowerUrl.includes("360")) quality = "360p"; 
+                           if (extracted.includes('.m3u8')) {
+                               const detected = yield checkQualityFromPlaylist(extracted);
+                               if (detected) quality = detected;
+                           } else {
+                               const lowerUrl = extracted.toLowerCase(); 
+                               if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
+                               else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
+                               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
+                               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
+                               else if (lowerUrl.includes("360")) quality = "360p"; 
+                           }
                            
                            const normalizedQuality = getQualityFromName(quality); 
      
@@ -764,12 +780,17 @@ function getStreams(id, type, season, episode, showInfo) {
                          const extracted = yield extractDeltaBit(streamUrl); 
                          if (extracted) { 
                            let quality = "HD"; 
-                           const lowerUrl = extracted.toLowerCase(); 
-                           if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
-                           else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
-                           else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
-                           else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
-                           else if (lowerUrl.includes("360")) quality = "360p"; 
+                           if (extracted.includes('.m3u8')) {
+                               const detected = yield checkQualityFromPlaylist(extracted);
+                               if (detected) quality = detected;
+                           } else {
+                               const lowerUrl = extracted.toLowerCase(); 
+                               if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
+                               else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
+                               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
+                               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
+                               else if (lowerUrl.includes("360")) quality = "360p"; 
+                           }
                            
                            const normalizedQuality = getQualityFromName(quality); 
      
@@ -785,12 +806,17 @@ function getStreams(id, type, season, episode, showInfo) {
                          const extracted = yield extractVidoza(streamUrl); 
                          if (extracted) { 
                            let quality = "HD"; 
-                           const lowerUrl = extracted.toLowerCase(); 
-                           if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
-                           else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
-                           else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
-                           else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
-                           else if (lowerUrl.includes("360")) quality = "360p"; 
+                           if (extracted.includes('.m3u8')) {
+                               const detected = yield checkQualityFromPlaylist(extracted);
+                               if (detected) quality = detected;
+                           } else {
+                               const lowerUrl = extracted.toLowerCase(); 
+                               if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K"; 
+                               else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p"; 
+                               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p"; 
+                               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p"; 
+                               else if (lowerUrl.includes("360")) quality = "360p"; 
+                           }
                            
                            const normalizedQuality = getQualityFromName(quality); 
      
@@ -805,33 +831,51 @@ function getStreams(id, type, season, episode, showInfo) {
                        } else if (streamUrl.includes("uqload")) {
                            const extracted = yield extractUqload(streamUrl);
                            if (extracted) {
+                               let quality = 'SD';
+                               if (extracted.includes('.m3u8')) {
+                                   const detected = yield checkQualityFromPlaylist(extracted);
+                                   if (detected) quality = detected;
+                               }
+
                                streams.push({
                                    url: extracted,
                                    name: 'EuroStreaming - Uqload',
                                    title: displayName,
-                                   quality: 'SD',
+                                   quality: getQualityFromName(quality),
                                    type: "direct"
                                });
                            }
                       } else if (streamUrl.includes("upstream")) {
                            const extracted = yield extractUpstream(streamUrl);
                            if (extracted && extracted.url) {
+                               let quality = 'HD';
+                               if (extracted.url.includes('.m3u8')) {
+                                   const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                                   if (detected) quality = detected;
+                               }
+
                                streams.push({
                                    url: extracted.url,
                                    name: 'EuroStreaming - Upstream',
                                    title: displayName,
-                                   quality: 'HD',
+                                   quality: getQualityFromName(quality),
                                    type: "direct"
                                });
                            }
                       } else if (streamUrl.includes("streamtape")) {
                            const extracted = yield extractStreamTape(streamUrl);
                            if (extracted && extracted.url) {
+                               let quality = 'HD';
+                               if (extracted.url.includes('.m3u8')) {
+                                   const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                                   if (detected) quality = detected;
+                               }
+
                                streams.push({
                                    url: extracted.url,
                                    name: 'EuroStreaming - StreamTape',
                                    title: displayName,
-                                   quality: 'HD',
+                                   quality: getQualityFromName(quality),
                                    type: "direct"
                                });
                            }
