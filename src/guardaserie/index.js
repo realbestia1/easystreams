@@ -104,7 +104,17 @@ function getTmdbIdFromImdb(imdbId, type) {
       if (!response.ok) return null;
       const data = yield response.json();
       if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
-      if (type === "tv" && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+      if (type === "tv") {
+        if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+        if (Array.isArray(data.tv_episode_results) && data.tv_episode_results.length > 0) {
+          const ep = data.tv_episode_results[0];
+          if (ep && ep.show_id) return ep.show_id;
+        }
+        if (Array.isArray(data.tv_season_results) && data.tv_season_results.length > 0) {
+          const s = data.tv_season_results[0];
+          if (s && s.show_id) return s.show_id;
+        }
+      }
       return null;
     } catch (e) {
       console.error("[Guardaserie] ID conversion error:", e);
@@ -165,8 +175,9 @@ function getStreams(id, type, season, episode) {
       let imdbId = null;
 
       if (id.toString().startsWith("tt")) {
-        imdbId = id.toString();
-        tmdbId = yield getTmdbIdFromImdb(id, type);
+        const imdbCore = (id.toString().match(/tt\d{7,8}/) || [])[0] || id.toString();
+        imdbId = imdbCore;
+        tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
         if (!tmdbId) {
           console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
           return [];

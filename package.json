@@ -1,6 +1,6 @@
 {
-  "name": "nuvio-providers-it",
-  "version": "1.0.42",
+  "name": "easystreams",
+  "version": "1.0.43",
   "description": "",
   "main": "stremio_addon.js",
   "scripts": {

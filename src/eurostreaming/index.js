@@ -216,7 +216,17 @@ function getTmdbIdFromImdb(imdbId, type) {
       if (!response.ok) return null;
       const data = yield response.json();
       if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
-      if ((type === "tv" || type === "series") && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+      if ((type === "tv" || type === "series")) {
+        if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+        if (Array.isArray(data.tv_episode_results) && data.tv_episode_results.length > 0) {
+          const ep = data.tv_episode_results[0];
+          if (ep && ep.show_id) return ep.show_id;
+        }
+        if (Array.isArray(data.tv_season_results) && data.tv_season_results.length > 0) {
+          const s = data.tv_season_results[0];
+          if (s && s.show_id) return s.show_id;
+        }
+      }
       return null;
     } catch (e) {
       console.error("[EuroStreaming] ID conversion error:", e);
@@ -227,20 +237,24 @@ function getTmdbIdFromImdb(imdbId, type) {
 
 async function verifyCandidateWithTmdb(title, targetTmdbId, type) {
     try {
-        const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}&language=it-IT`;
+        const norm = (s) => String(s || "")
+            .toLowerCase()
+            .replace(/streaming|serie\s*tv|serie|stagione|episodio|italiano|sub\s*ita/gi, "")
+            .replace(/[^\p{L}\p{N}\s]/gu, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const clean = norm(title);
+        const query = clean.length > 0 ? clean : title;
+        const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&api_key=${TMDB_API_KEY}&language=it-IT`;
         const response = await fetch(searchUrl);
         if (!response.ok) return true; 
         const data = await response.json();
         
         if (data.results && data.results.length > 0) {
-            // Check if the top result matches our target ID
-            const topResult = data.results[0];
-            if (String(topResult.id) === String(targetTmdbId)) {
-                return true;
-            }
-            
-            // If top result is different, it might be a wrong match (e.g. Live Action vs Anime)
-            console.log(`[EuroStreaming] Title verification mismatch: Candidate "${title}" maps to ID ${topResult.id} (${topResult.name || topResult.title}), but expected ${targetTmdbId}`);
+            const top = data.results.slice(0, 5);
+            if (top.some(r => String(r.id) === String(targetTmdbId))) return true;
+            const r0 = data.results[0];
+            console.log(`[EuroStreaming] Title verification mismatch: Candidate "${title}" maps to ID ${r0.id} (${r0.name || r0.title}), but expected ${targetTmdbId}`);
             return false;
         }
         return true; // No results found, give benefit of doubt
@@ -309,8 +323,9 @@ function getStreams(id, type, season, episode, showInfo) {
       let imdbId = null;
 
       if (id.toString().startsWith("tt")) {
-        imdbId = id.toString();
-        tmdbId = yield getTmdbIdFromImdb(id, type);
+        const imdbCore = (id.toString().match(/tt\d{7,8}/) || [])[0] || id.toString();
+        imdbId = imdbCore;
+        tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
         if (!tmdbId) {
           console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
           return [];
@@ -353,14 +368,28 @@ function getStreams(id, type, season, episode, showInfo) {
         return [];
       }
       const cleanTitle = fetchedShowInfo.name || fetchedShowInfo.title || fetchedShowInfo.original_name || fetchedShowInfo.original_title || "Serie TV";
+      const targetYear = (fetchedShowInfo && (fetchedShowInfo.first_air_date || fetchedShowInfo.release_date))
+        ? parseInt((fetchedShowInfo.first_air_date || fetchedShowInfo.release_date).substring(0, 4))
+        : null;
       const titlesToTry = [];
       if (fetchedShowInfo.name) titlesToTry.push(fetchedShowInfo.name);
       if (fetchedShowInfo.title) titlesToTry.push(fetchedShowInfo.title);
       if (fetchedShowInfo.original_name) titlesToTry.push(fetchedShowInfo.original_name);
       if (fetchedShowInfo.original_title) titlesToTry.push(fetchedShowInfo.original_title);
       const uniqueTitles = [...new Set(titlesToTry.filter(Boolean))];
+      
+      const queries = new Set(uniqueTitles);
+      const base = uniqueTitles[0] || cleanTitle;
+      if (base && base.trim().length <= 3 && targetYear) {
+        queries.add(`${base} ${targetYear}`);
+        queries.add(`${base} serie`);
+        queries.add(`${base} serie tv`);
+        queries.add(`${base} streaming`);
+        queries.add(`${base} italiano`);
+        queries.add(`tu ${base}`);
+      }
       const allCandidates = [];
-      for (const t of uniqueTitles) {
+      for (const t of queries) {
         console.log(`[EuroStreaming] Searching title: ${t}`);
         const results = yield searchShow(t);
         if (results && results.length > 0) {
@@ -380,7 +409,7 @@ function getStreams(id, type, season, episode, showInfo) {
         console.log(`[EuroStreaming] No candidates found for any title of ${tmdbId}`);
         return [];
       }
-      const topCandidates = uniqueCandidates.slice(0, 3);
+      const topCandidates = uniqueCandidates.slice(0, 20);
       console.log(`[EuroStreaming] Testing ${topCandidates.length} candidates for ${tmdbId}`);
       const streams = [];
       const promises = [];

@@ -1,9 +1,9 @@
 {
-  "name": "Nuvio IT Providers",
-  "version": "1.0.42",
+  "name": "EasyStreams",
+  "version": "1.0.43",
   "scrapers": [
     {
-      "id": "nuvio-it-providers-eurostreaming",
+      "id": "easystreams-eurostreaming",
       "name": "EuroStreaming",
       "version": "1.0.34",
       "description": "TV Series from EuroStreaming",
@@ -16,7 +16,7 @@
       "enabled": true
     },
     {
-      "id": "nuvio-it-providers-guardahd",
+      "id": "easystreams-guardahd",
       "name": "GuardaHD",
       "version": "1.0.26",
       "description": "Movies from GuardaHD",
@@ -29,9 +29,9 @@
       "enabled": true
     },
     {
-      "id": "nuvio-it-providers-guardaserie",
+      "id": "easystreams-guardaserie",
       "name": "Guardaserie",
-      "version": "1.0.24",
+      "version": "1.0.25",
       "description": "TV Series from Guardaserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -42,7 +42,7 @@
       "enabled": true
     },
     {
-      "id": "nuvio-it-providers-streamingcommunity",
+      "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
       "version": "1.1.10",
       "description": "Movies and Series from StreamingCommunity",
@@ -55,7 +55,7 @@
       "enabled": true
     },
     {
-      "id": "nuvio-it-providers-animeunity",
+      "id": "easystreams-animeunity",
       "name": "AnimeUnity",
       "version": "1.0.13",
       "description": "Anime from AnimeUnity",
@@ -68,7 +68,7 @@
       "enabled": true
     },
     {
-      "id": "nuvio-it-providers-animeworld",
+      "id": "easystreams-animeworld",
       "name": "AnimeWorld",
       "version": "1.0.18",
       "description": "Anime from AnimeWorld",
