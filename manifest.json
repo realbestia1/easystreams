@@ -1,18 +1,30 @@
 {
   "name": "EasyStreams",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "scrapers": [
     {
       "id": "easystreams-eurostreaming",
       "name": "EuroStreaming",
       "version": "1.0.34",
       "description": "TV Series from EuroStreaming",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/eurostreaming.js",
-      "supportedTypes": ["tv"],
+      "supportedTypes": [
+        "tv"
+      ],
       "enabled": true
     },
     {
@@ -20,12 +32,24 @@
       "name": "GuardaHD",
       "version": "1.0.26",
       "description": "Movies from GuardaHD",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/guardahd.js",
-      "supportedTypes": ["movie"],
+      "supportedTypes": [
+        "movie"
+      ],
       "enabled": true
     },
     {
@@ -33,12 +57,24 @@
       "name": "Guardaserie",
       "version": "1.0.25",
       "description": "TV Series from Guardaserie",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/guardaserie.js",
-      "supportedTypes": ["tv"],
+      "supportedTypes": [
+        "tv"
+      ],
       "enabled": true
     },
     {
@@ -46,38 +82,77 @@
       "name": "StreamingCommunity",
       "version": "1.1.10",
       "description": "Movies and Series from StreamingCommunity",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/streamingcommunity.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true
     },
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.13",
+      "version": "1.0.14",
       "description": "Anime from AnimeUnity",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/animeunity.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true
     },
     {
       "id": "easystreams-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "description": "Anime from AnimeWorld",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "resources": [
+        "stream"
+      ],
+      "contentLanguage": [
+        "it"
+      ],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "idPrefixes": [
+        "tmdb:",
+        "tt"
+      ],
       "filename": "providers/animeworld.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true
     }
   ]
