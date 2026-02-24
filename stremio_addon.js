@@ -118,8 +118,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
             
             console.log(`[${name}] Searching...`);
 
+            let timeoutId;
             const timeoutPromise = new Promise((resolve) => {
-                setTimeout(() => {
+                timeoutId = setTimeout(() => {
                     console.warn(`[${name}] Timed out after ${PROVIDER_TIMEOUT}ms`);
                     resolve([]); // Resolve with empty array on timeout
                 }, PROVIDER_TIMEOUT);
@@ -133,6 +134,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
                 } catch (e) {
                     console.error(`[${name}] Execution Error:`, e.message);
                     return [];
+                } finally {
+                    if (timeoutId) clearTimeout(timeoutId);
                 }
             })();
 

@@ -1084,6 +1084,7 @@ function getStreams(id, type, season, episode) {
         }
       }
       if (!showUrl) {
+        let candidates = [];
         console.log(`[Guardaserie] Searching by Title: ${title} (${year})`);
         const params = new URLSearchParams();
         params.append("do", "search");
@@ -1099,20 +1100,19 @@ function getStreams(id, type, season, episode) {
         const searchHtml = yield searchResponse.text();
         const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
         let match;
-        const candidates2 = [];
         while ((match = resultRegex.exec(searchHtml)) !== null) {
           const foundUrl = match[1];
           const foundTitle = match[2];
           const foundYearStr = match[3];
           if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
-            candidates2.push({
+            candidates.push({
               url: foundUrl,
               title: foundTitle,
               year: foundYearStr
             });
           }
         }
-        for (const candidate of candidates2) {
+        for (const candidate of candidates) {
           let matchesYear = true;
           if (metaYear) {
             const yearMatch = candidate.year.match(/(\d{4})/);
@@ -1242,7 +1242,7 @@ function getStreams(id, type, season, episode) {
           }
         }
       }
-      if (!showUrl && candidates.length > 0) {
+      if (!showUrl) {
         console.log("[Guardaserie] No candidate matched criteria.");
       }
       if (!showUrl || !showHtml) {

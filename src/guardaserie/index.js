@@ -294,6 +294,7 @@ function getStreams(id, type, season, episode) {
 
       // 2. Fallback to Title Search (Legacy)
       if (!showUrl) {
+          let candidates = [];
           console.log(`[Guardaserie] Searching by Title: ${title} (${year})`);
           const params = new URLSearchParams();
           params.append("do", "search");
@@ -310,7 +311,7 @@ function getStreams(id, type, season, episode) {
           const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
           let match;
           
-          const candidates = [];
+          
 
           while ((match = resultRegex.exec(searchHtml)) !== null) {
             const foundUrl = match[1];
@@ -460,7 +461,7 @@ function getStreams(id, type, season, episode) {
           }
       }
       
-      if (!showUrl && candidates.length > 0) {
+      if (!showUrl) {
           console.log("[Guardaserie] No candidate matched criteria.");
       }
       if (!showUrl || !showHtml) {

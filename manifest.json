@@ -30,7 +30,7 @@
     {
       "id": "easystreams-guardaserie",
       "name": "Guardaserie",
-      "version": "1.0.26",
+      "version": "1.0.27",
       "description": "TV Series from Guardaserie",
       "resources": [
         "stream"
