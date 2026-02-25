@@ -1,4 +1,3 @@
-const cheerio = require('cheerio');
 const { USER_AGENT } = require('../extractors/common');
 const { extractLoadm, extractUqload, extractDropLoad } = require('../extractors');
 const { formatStream } = require('../formatter');
@@ -104,14 +103,29 @@ async function getStreams(id, type, season, episode) {
 
             if (!response.ok) return [];
             const searchHtml = await response.text();
-            const $ = cheerio.load(searchHtml);
             const results = [];
-            $('a.ss-title').each((i, el) => {
+            // Match title and URL more robustly
+            const itemRegex = /<a[^>]+href="([^"]+)"[^>]+class="ss-title"[^>]*>(.*?)<\/a>/g;
+            let match;
+            while ((match = itemRegex.exec(searchHtml)) !== null) {
+                const rTitle = match[2].replace(/<[^>]+>/g, '').trim();
                 results.push({
-                    title: $(el).text().trim(),
-                    url: $(el).attr('href')
+                    url: match[1],
+                    title: rTitle
                 });
-            });
+            }
+            
+            // Fallback for different attribute order
+            if (results.length === 0) {
+                const itemRegexFallback = /<a[^>]+class="ss-title"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/g;
+                while ((match = itemRegexFallback.exec(searchHtml)) !== null) {
+                    results.push({
+                        url: match[1],
+                        title: match[2].replace(/<[^>]+>/g, '').trim()
+                    });
+                }
+            }
+
             return results;
         };
 
@@ -125,66 +139,78 @@ async function getStreams(id, type, season, episode) {
         // Deduplicate results by URL
         allResults = Array.from(new Map(allResults.map(item => [item.url, item])).values());
 
+        const decodeEntities = (str) => {
+            return str.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+                      .replace(/&quot;/g, '"')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&#8211;/g, '-')
+                      .replace(/&#8217;/g, "'");
+        };
+
         let targetUrl = null;
         for (const result of allResults) {
             // Check title match first to avoid unnecessary fetches
-            const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace('iltronodispade', 'gameofthrones');
+            const norm = (s) => decodeEntities(s).toLowerCase().replace(/[^a-z0-9]/g, '').replace('iltronodispade', 'gameofthrones');
             const nTitle = norm(title);
             const nOrig = norm(originalTitle || '');
             const nResult = norm(result.title);
 
-            if (nResult === nTitle || nResult === nOrig || nResult.includes(nTitle) || (nOrig && nResult.includes(nOrig))) {
+            console.log(`[Guardoserie] Comparing: "${nResult}" vs "${nTitle}" or "${nOrig}"`);
+
+            const isExactMatch = nResult === nTitle || nResult === nOrig;
+            const isPartialMatch = nResult.includes(nTitle) || (nOrig && nResult.includes(nOrig));
+
+            if (isExactMatch || isPartialMatch) {
                 // Verify year in the page
                 try {
                     const pageRes = await fetch(result.url, { headers: { 'User-Agent': USER_AGENT } });
                     if (!pageRes.ok) continue;
                     const pageHtml = await pageRes.text();
-                    const $page = cheerio.load(pageHtml);
 
-                    // Target the year specifically in the info box as suggested by user
+                    // Target the year specifically using regex
                     let foundYear = null;
-                    const infoBox = $page('.mvic-info');
 
-                    // 1. Try "pubblicazione" link in info box
-                    const yearLink = infoBox.find('p:contains("pubblicazione") a[href*="release-year"]');
-                    if (yearLink.length) {
-                        foundYear = yearLink.text().trim();
+                    // 1. Try "pubblicazione" link in page
+                    const pubYearMatch = pageHtml.match(/pubblicazione.*?release-year\/(\d{4})/i);
+                    if (pubYearMatch) {
+                        foundYear = pubYearMatch[1];
                     }
 
-                    // 2. Try meta tags (ISO date) - look specifically inside info box or head
+                    // 2. Try meta tags (ISO date)
                     if (!foundYear) {
-                        const metaDate = $page('meta[content*="20"]').filter((i, el) => {
-                            const content = $page(el).attr('content');
-                            return content && /^20\d{2}-\d{2}-\d{2}/.test(content);
-                        }).first().attr('content');
-
-                        if (metaDate) {
-                            foundYear = metaDate.substring(0, 4);
+                        const metaDateMatch = pageHtml.match(/property="og:updated_time" content="(20\d{2})/i) || 
+                                             pageHtml.match(/itemprop="datePublished" content="(20\d{2})/i) ||
+                                             pageHtml.match(/content="(20\d{2})-\d{2}-\d{2}"/i);
+                        if (metaDateMatch) {
+                            foundYear = metaDateMatch[1];
                         }
                     }
 
-                    // 3. Last resort: ANY release-year link NOT in the related section
+                    // 3. Last resort: ANY release-year link
                     if (!foundYear) {
-                        const globalYearLink = $page('a[href*="release-year"]').filter((i, el) => {
-                            // Exclude links in the "related" or "footer" sections
-                            const isRelated = $page(el).closest('.mlw-related, footer, #footer').length > 0;
-                            return !isRelated;
-                        }).first();
-
-                        if (globalYearLink.length) {
-                            foundYear = globalYearLink.text().trim();
+                        const anyYearMatch = pageHtml.match(/release-year\/(\d{4})/i);
+                        if (anyYearMatch) {
+                            foundYear = anyYearMatch[1];
                         }
                     }
 
                     if (foundYear) {
-                        if (foundYear === year) {
+                        const targetYear = parseInt(year);
+                        const fYear = parseInt(foundYear);
+                        // If exact title match, be very lenient with year (sites often have wrong metadata)
+                        const maxDiff = isExactMatch ? 10 : 1; 
+                        if (fYear === targetYear || Math.abs(fYear - targetYear) <= maxDiff) {
                             targetUrl = result.url;
                             break;
                         }
                     } else {
-                        // If no year found at all, accept by title
-                        targetUrl = result.url;
-                        break;
+                        // If no year found at all, accept if it's an exact title match
+                        if (isExactMatch) {
+                            targetUrl = result.url;
+                            break;
+                        }
                     }
                 } catch (e) {
                     // If fetch fails, but title matches, we can still try it as fallback
@@ -203,43 +229,55 @@ async function getStreams(id, type, season, episode) {
         if (type === 'tv' || type === 'series') {
             const pageRes = await fetch(targetUrl, { headers: { 'User-Agent': USER_AGENT } });
             const pageHtml = await pageRes.text();
-            const $page = cheerio.load(pageHtml);
 
             const seasonIndex = parseInt(season) - 1;
             const episodeIndex = parseInt(episode) - 1;
 
-            // Try different selectors for seasons
-            let seasonDiv = $page('.les-content').eq(seasonIndex);
-
-            // If the structure is different (e.g. no .les-content but .tvseason)
-            if (!seasonDiv.length) {
-                const seasonBlocks = $page('.tvseason');
-                if (seasonBlocks.length > 0) {
-                    seasonDiv = seasonBlocks.eq(seasonIndex).find('.les-content');
+            // Split by les-content which contains episodes for each season
+            const seasonBlocks = pageHtml.split(/class="les-content"/i);
+            
+            if (seasonBlocks.length > seasonIndex + 1) {
+                const targetSeasonBlock = seasonBlocks[seasonIndex + 1];
+                // Limit to the end of this block to avoid matches from next seasons
+                const blockEnd = targetSeasonBlock.indexOf('</div>');
+                const cleanBlock = blockEnd !== -1 ? targetSeasonBlock.substring(0, blockEnd) : targetSeasonBlock;
+                
+                const episodeRegex = /<a[^>]+href="([^"]+)"[^>]*>/g;
+                const episodes = [];
+                let eMatch;
+                while ((eMatch = episodeRegex.exec(cleanBlock)) !== null) {
+                    episodes.push(eMatch[1]);
                 }
-            }
-
-            if (!seasonDiv.length) {
-                console.log(`[Guardoserie] Season ${season} not found at ${targetUrl}`);
+                
+                if (episodes.length > episodeIndex) {
+                    episodeUrl = episodes[episodeIndex];
+                } else {
+                    console.log(`[Guardoserie] Episode ${episode} not found in Season ${season} block`);
+                    return [];
+                }
+            } else {
+                console.log(`[Guardoserie] Season ${season} block not found at ${targetUrl}`);
                 return [];
             }
-
-            const episodeA = seasonDiv.find('a').eq(episodeIndex);
-            if (!episodeA.length) {
-                console.log(`[Guardoserie] Episode ${episode} not found in Season ${season}`);
-                return [];
-            }
-
-            episodeUrl = episodeA.attr('href');
         }
 
         console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
         const finalRes = await fetch(episodeUrl, { headers: { 'User-Agent': USER_AGENT } });
         const finalHtml = await finalRes.text();
-        const $final = cheerio.load(finalHtml);
 
-        const iframe = $final('iframe');
-        const playerLink = iframe.attr('data-src') || iframe.attr('src');
+        // Extract player link using regex
+        // Skip common SVG base64 placeholders
+        const iframeMatches = finalHtml.match(/<iframe[^>]+(?:src|data-src)="([^"]+)"/ig);
+        let playerLink = null;
+        if (iframeMatches) {
+            for (const matchStr of iframeMatches) {
+                const srcMatch = matchStr.match(/(?:src|data-src)="([^"]+)"/i);
+                if (srcMatch && !srcMatch[1].startsWith('data:')) {
+                    playerLink = srcMatch[1];
+                    break;
+                }
+            }
+        }
 
         if (!playerLink) {
             console.log(`[Guardoserie] No player iframe found`);

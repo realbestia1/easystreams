@@ -20,9 +20,8 @@ var __async = (__this, __arguments, generator) => {
 };
 const streamingcommunity = require("./streamingcommunity");
 const guardahd = require("./guardahd");
-const eurostreaming = require("./eurostreaming");
 const guardaserie = require("./guardaserie");
-const guardoserie = require("../src/guardoserie/index");
+const guardoserie = require("./guardoserie");
 const animeunity = require("./animeunity");
 function getStreams(id, type, season, episode) {
   return __async(this, null, function* () {
@@ -45,9 +44,6 @@ function getStreams(id, type, season, episode) {
       );
     }
     if (normalizedType === "tv") {
-      promises.push(
-        eurostreaming.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "EuroStreaming", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "EuroStreaming", error, status: "rejected" }))
-      );
       promises.push(
         guardaserie.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "Guardaserie", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "Guardaserie", error, status: "rejected" }))
       );

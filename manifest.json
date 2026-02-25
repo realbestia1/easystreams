@@ -5,7 +5,7 @@
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Movies and Series from Guardoserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],

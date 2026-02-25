@@ -48,7 +48,10 @@ async function transpileProviders(specificFiles = [], minify = false) {
                 minify: minify,
                 platform: 'neutral',
                 target: ['es2016'], // Target older ES version for Hermes compatibility
-                format: 'cjs'
+                format: 'cjs',
+                define: {
+                    'process.env.NODE_ENV': minify ? '"production"' : '"development"'
+                }
             });
             console.log(`✅ Transpiled ${file}`);
         } catch (e) {
@@ -100,7 +103,13 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
                 platform: 'neutral',
                 target: ['es2016'],
                 format: 'cjs',
-                external: ['cheerio', 'cheerio-select', 'crypto-js', 'axios'] // Exclude these
+                define: {
+                    'process.env.NODE_ENV': minify ? '"production"' : '"development"'
+                },
+                // Bundle everything except potentially very large or platform-specific libs
+                // For React Native/Nuvio, we generally want to bundle crypto-js 
+                // but keep cheerio external if we want to avoid huge files (and we should avoid using it)
+                external: ['cheerio', 'cheerio-select'] 
             });
             console.log(`✅ Built ${provider}`);
         } catch (e) {
