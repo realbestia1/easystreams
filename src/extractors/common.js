@@ -1,4 +1,4 @@
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
 /**
  * Get a proxied URL if a Cloudflare Worker proxy is configured
@@ -17,17 +17,17 @@ function getProxiedUrl(url) {
 }
 
 function unPack(p, a, c, k, e, d) {
-  e = function(c2) {
+  e = function (c2) {
     return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
   };
   if (!"".replace(/^/, String)) {
     while (c--) {
       d[e(c)] = k[c] || e(c);
     }
-    k = [function(e2) {
+    k = [function (e2) {
       return d[e2] || e2;
     }];
-    e = function() {
+    e = function () {
       return "\\w+";
     };
     c = 1;

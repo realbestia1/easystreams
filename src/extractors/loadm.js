@@ -38,14 +38,14 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
 
         const hexData = await response.text();
         const ciphertext = CryptoJS.enc.Hex.parse(hexData);
-        
+
         const decrypted = CryptoJS.AES.decrypt(
             { ciphertext: ciphertext },
             key,
-            { 
-                iv: iv, 
-                mode: CryptoJS.mode.CBC, 
-                padding: CryptoJS.pad.Pkcs7 
+            {
+                iv: iv,
+                mode: CryptoJS.mode.CBC,
+                padding: CryptoJS.pad.Pkcs7
             }
         );
 
@@ -54,7 +54,7 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
             console.error(`[Loadm] Decryption failed`);
             return [];
         }
-        
+
         // Find the last '}' to avoid trailing garbage
         const lastBraceIndex = decryptedStr.lastIndexOf('}');
         const cleanJson = lastBraceIndex !== -1 ? decryptedStr.substring(0, lastBraceIndex + 1) : decryptedStr;
@@ -68,11 +68,14 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
             if (streamUrl.includes('.txt')) {
                 streamUrl += '#index.m3u8';
             }
-            
+
             streams.push({
                 name: 'Loadm (Player 1)',
                 url: streamUrl,
                 title: data.title || 'HLS',
+                headers: {
+                    'Referer': baseUrl
+                },
                 behaviorHints: {
                     proxyHeaders: {
                         request: {
@@ -89,6 +92,9 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
                 name: 'Loadm (Player 2)',
                 url: data.source,
                 title: data.title || 'M3U8',
+                headers: {
+                    'Referer': baseUrl
+                },
                 behaviorHints: {
                     proxyHeaders: {
                         request: {

@@ -45,7 +45,7 @@ var __async = (__this, __arguments, generator) => {
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     function getProxiedUrl(url) {
       const proxyUrl = process.env.CF_PROXY_URL;
       if (proxyUrl && url) {
@@ -568,6 +568,9 @@ var require_loadm = __commonJS({
               name: "Loadm (Player 1)",
               url: streamUrl,
               title: data.title || "HLS",
+              headers: {
+                "Referer": baseUrl
+              },
               behaviorHints: {
                 proxyHeaders: {
                   request: {
@@ -583,6 +586,9 @@ var require_loadm = __commonJS({
               name: "Loadm (Player 2)",
               url: data.source,
               title: data.title || "M3U8",
+              headers: {
+                "Referer": baseUrl
+              },
               behaviorHints: {
                 proxyHeaders: {
                   request: {
@@ -882,10 +888,16 @@ ${pName}`;
       if (language) titleText += `
 \u{1F5E3}\uFE0F ${language}`;
       const behaviorHints = stream.behaviorHints || {};
-      if (stream.headers) {
+      let finalHeaders = stream.headers;
+      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
+        finalHeaders = behaviorHints.proxyHeaders.request;
+      } else if (behaviorHints.headers) {
+        finalHeaders = behaviorHints.headers;
+      }
+      if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
-        behaviorHints.proxyHeaders.request = stream.headers;
-        behaviorHints.headers = stream.headers;
+        behaviorHints.proxyHeaders.request = finalHeaders;
+        behaviorHints.headers = finalHeaders;
         behaviorHints.notWebReady = true;
       }
       return __spreadProps(__spreadValues({}, stream), {
@@ -898,7 +910,7 @@ ${pName}`;
         _nuvio_formatted: true,
         behaviorHints,
         // Explicitly ensure root headers are preserved for Nuvio
-        headers: stream.headers
+        headers: finalHeaders
       });
     }
     module2.exports = { formatStream: formatStream2 };

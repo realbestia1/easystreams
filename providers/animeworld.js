@@ -291,10 +291,16 @@ ${pName}`;
       if (language) titleText += `
 \u{1F5E3}\uFE0F ${language}`;
       const behaviorHints = stream.behaviorHints || {};
-      if (stream.headers) {
+      let finalHeaders = stream.headers;
+      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
+        finalHeaders = behaviorHints.proxyHeaders.request;
+      } else if (behaviorHints.headers) {
+        finalHeaders = behaviorHints.headers;
+      }
+      if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
-        behaviorHints.proxyHeaders.request = stream.headers;
-        behaviorHints.headers = stream.headers;
+        behaviorHints.proxyHeaders.request = finalHeaders;
+        behaviorHints.headers = finalHeaders;
         behaviorHints.notWebReady = true;
       }
       return __spreadProps(__spreadValues({}, stream), {
@@ -307,7 +313,7 @@ ${pName}`;
         _nuvio_formatted: true,
         behaviorHints,
         // Explicitly ensure root headers are preserved for Nuvio
-        headers: stream.headers
+        headers: finalHeaders
       });
     }
     module2.exports = { formatStream: formatStream2 };
