@@ -1946,8 +1946,45 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
 
         const results = [];
 
+        const getPartIndexFromMatch = (candidate) => {
+            const raw = String(candidate?.title || "").toLowerCase();
+            let match = raw.match(/\bpart(?:e)?\s*(\d+)\b/i);
+            if (match) return parseInt(match[1], 10);
+            match = raw.match(/\b(\d+)(?:st|nd|rd|th)\s*part\b/i);
+            if (match) return parseInt(match[1], 10);
+            match = raw.match(/\bcour\s*(\d+)\b/i);
+            if (match) return parseInt(match[1], 10);
+            match = raw.match(/\b(\d+)(?:st|nd|rd|th)\s*cour\b/i);
+            if (match) return parseInt(match[1], 10);
+            return null;
+        };
+
+        const pickNextSplitCourCandidate = (currentMatch, candidatePool = []) => {
+            const currentPart = getPartIndexFromMatch(currentMatch) || 1;
+            const seasonTokenRegex = new RegExp(`\\b${season}\\b|season\\s*${season}|stagione\\s*${season}`, "i");
+            let best = null;
+
+            for (const c of candidatePool) {
+                if (!c || c.href === currentMatch.href) continue;
+                const part = getPartIndexFromMatch(c);
+                if (!part || part <= currentPart) continue;
+
+                const raw = String(c.title || "");
+                const isRelevant = seasonTokenRegex.test(raw) ||
+                    checkSimilarity(c.title, title) ||
+                    checkSimilarity(c.title, originalTitle);
+                if (!isRelevant) continue;
+
+                if (!best || part < best.part || (part === best.part && raw.length < String(best.candidate.title || "").length)) {
+                    best = { candidate: c, part };
+                }
+            }
+
+            return best ? best.candidate : null;
+        };
+
         // Helper to process a match
-        const processMatch = async (match, isDub) => {
+        const processMatch = async (match, isDub, candidatePool, requestedEpisode = episode, allowSplitFallback = true) => {
             if (!match) return;
 
             const animeUrl = `${BASE_URL}${match.href}`;
@@ -2031,8 +2068,8 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                     }
 
                     // Also check if we calculated a valid absolute episode
-                    const absEpisode = calculateAbsoluteEpisode(metadata, season, episode);
-                    if (absEpisode == episode) prioritizeAbsolute = false;
+                    const absEpisode = calculateAbsoluteEpisode(metadata, season, requestedEpisode);
+                    if (absEpisode == requestedEpisode) prioritizeAbsolute = false;
                 }
 
                 if (type === "movie") {
@@ -2042,7 +2079,7 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                     }
                 } else {
                     if (prioritizeAbsolute) {
-                        const absEpisode = calculateAbsoluteEpisode(metadata, season, episode);
+                        const absEpisode = calculateAbsoluteEpisode(metadata, season, requestedEpisode);
                         console.log(`[AnimeWorld] Prioritizing absolute episode: ${absEpisode} for "${match.title}"`);
                         targetEp = episodes.find(e => e.num == absEpisode);
 
@@ -2050,16 +2087,36 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                             console.log(`[AnimeWorld] Absolute episode ${absEpisode} not found in list. Available range: ${episodes.length > 0 ? episodes[0].num + '-' + episodes[episodes.length - 1].num : 'None'}`);
                         }
                     } else {
-                        targetEp = episodes.find(e => e.num == episode);
+                        targetEp = episodes.find(e => e.num == requestedEpisode);
                     }
                 }
 
                 // Fallback to absolute episode if not found and season > 1 (and not already prioritized/tried)
                 if (!targetEp && season > 1 && !prioritizeAbsolute) {
-                    const absEpisode = calculateAbsoluteEpisode(metadata, season, episode);
-                    if (absEpisode != episode) {
-                        console.log(`[AnimeWorld] Relative episode ${episode} not found, trying absolute: ${absEpisode}`);
+                    const absEpisode = calculateAbsoluteEpisode(metadata, season, requestedEpisode);
+                    if (absEpisode != requestedEpisode) {
+                        console.log(`[AnimeWorld] Relative episode ${requestedEpisode} not found, trying absolute: ${absEpisode}`);
                         targetEp = episodes.find(e => e.num == absEpisode);
+                    }
+                }
+
+                // Split-cour fallback:
+                // If this part doesn't contain the requested episode, switch to next Part/Cour and remap locally.
+                if (!targetEp && allowSplitFallback && season > 1 && type !== "movie") {
+                    const numericEpisodes = episodes
+                        .map(e => parseInt(e.num, 10))
+                        .filter(n => Number.isInteger(n) && n > 0);
+                    const maxEpisodeInPart = numericEpisodes.length > 0 ? Math.max(...numericEpisodes) : 0;
+
+                    if (maxEpisodeInPart > 0 && requestedEpisode > maxEpisodeInPart) {
+                        const nextCandidate = pickNextSplitCourCandidate(match, candidatePool || []);
+                        const mappedEpisode = requestedEpisode - maxEpisodeInPart;
+
+                        if (nextCandidate && mappedEpisode > 0) {
+                            console.log(`[AnimeWorld] Split-cour switch: "${match.title}" -> "${nextCandidate.title}", mapped episode ${requestedEpisode} -> ${mappedEpisode}`);
+                            await processMatch(nextCandidate, isDub, candidatePool, mappedEpisode, false);
+                            return;
+                        }
                     }
                 }
 
@@ -2121,8 +2178,8 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                             let displayTitle = match.title;
                             if (targetEp && targetEp.num) {
                                 displayTitle += ` - Ep ${targetEp.num}`;
-                            } else if (episode) {
-                                displayTitle += ` - Ep ${episode}`;
+                            } else if (requestedEpisode) {
+                                displayTitle += ` - Ep ${requestedEpisode}`;
                             }
 
                             if (isDub && !displayTitle.includes("(ITA)")) displayTitle += " (ITA)";
@@ -2150,7 +2207,7 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                         }
                     }
                 } else {
-                    console.log(`[AnimeWorld] Episode ${episode} not found in ${match.title}`);
+                    console.log(`[AnimeWorld] Episode ${requestedEpisode} not found in ${match.title}`);
                 }
 
             } catch (e) {
@@ -2158,8 +2215,8 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             }
         };
 
-        if (bestSub) await processMatch(bestSub, false);
-        if (bestDub) await processMatch(bestDub, true);
+        if (bestSub) await processMatch(bestSub, false, subs, episode, true);
+        if (bestDub) await processMatch(bestDub, true, dubs, episode, true);
 
         return results.map(s => formatStream(s, "AnimeWorld")).filter(s => s !== null);
 

@@ -8592,17 +8592,94 @@ function getStreams(id, type, season, episode) {
         const isBaseEntry = normalizedCandidate === normalizedTitle || normalizedOriginal && normalizedCandidate === normalizedOriginal;
         return season === 1 || seasonNameMatch || hasExplicitSeasonMarkers || season > 1 && !isBaseEntry;
       };
+      const getCandidateEpisodeCount = (candidate) => {
+        var _a;
+        if (!candidate) return null;
+        const raw = (_a = candidate.real_episodes_count) != null ? _a : candidate.episodes_count;
+        const n = parseInt(raw, 10);
+        return Number.isInteger(n) && n > 0 ? n : null;
+      };
+      const getPartIndexFromCandidate = (candidate) => {
+        const raw = `${(candidate == null ? void 0 : candidate.title) || ""} ${(candidate == null ? void 0 : candidate.title_eng) || ""}`.toLowerCase();
+        let match = raw.match(/\bpart(?:e)?\s*(\d+)\b/i);
+        if (match) return parseInt(match[1], 10);
+        match = raw.match(/\b(\d+)(?:st|nd|rd|th)\s*part\b/i);
+        if (match) return parseInt(match[1], 10);
+        match = raw.match(/\bcour\s*(\d+)\b/i);
+        if (match) return parseInt(match[1], 10);
+        match = raw.match(/\b(\d+)(?:st|nd|rd|th)\s*cour\b/i);
+        if (match) return parseInt(match[1], 10);
+        return null;
+      };
+      const resolveSplitCourCandidate = (current, pool, requestedEpisode, label) => {
+        if (!current || !Array.isArray(pool) || season <= 1) {
+          return { candidate: current, mappedEpisode: requestedEpisode };
+        }
+        const reqEp = parseInt(requestedEpisode, 10);
+        if (!Number.isInteger(reqEp) || reqEp <= 0) {
+          return { candidate: current, mappedEpisode: requestedEpisode };
+        }
+        const seasonTokenRegex = new RegExp(`\\b${season}\\b|season\\s*${season}|stagione\\s*${season}|part\\s*${season}|parte\\s*${season}`, "i");
+        const partMap = /* @__PURE__ */ new Map();
+        for (const c of pool) {
+          if (!c) continue;
+          const combined = `${c.title || ""} ${c.title_eng || ""}`;
+          const hasSeasonToken = seasonTokenRegex.test(combined);
+          if (!hasSeasonToken && c.id !== current.id) continue;
+          const count = getCandidateEpisodeCount(c);
+          if (!count) continue;
+          let part = getPartIndexFromCandidate(c);
+          if (!part && c.id === current.id) part = 1;
+          if (!part) continue;
+          let score = 0;
+          if (c.id === current.id) score += 4;
+          if (checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title)) score += 2;
+          if (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle)) score += 2;
+          if (/(part|parte|cour)\s*\d+/i.test(combined)) score += 1;
+          const prev = partMap.get(part);
+          if (!prev || score > prev.score) {
+            partMap.set(part, { candidate: c, count, score, part });
+          }
+        }
+        if (partMap.size === 0) {
+          return { candidate: current, mappedEpisode: requestedEpisode };
+        }
+        const orderedParts = [...partMap.values()].sort((a, b) => a.part - b.part);
+        let remaining = reqEp;
+        for (const entry of orderedParts) {
+          if (remaining <= entry.count) {
+            if (entry.candidate.id !== current.id || remaining !== reqEp) {
+              console.log(`[AnimeUnity] Split-cour switch for ${label}: "${current.title || current.title_eng}" -> "${entry.candidate.title || entry.candidate.title_eng}", mapped episode ${reqEp} -> ${remaining}`);
+            }
+            return { candidate: entry.candidate, mappedEpisode: remaining };
+          }
+          remaining -= entry.count;
+        }
+        return { candidate: current, mappedEpisode: requestedEpisode };
+      };
+      let resolvedSubEpisode = episode;
+      let resolvedDubEpisode = episode;
+      if (bestSub) {
+        const resolved = resolveSplitCourCandidate(bestSub, subs, episode, "SUB");
+        bestSub = resolved.candidate;
+        resolvedSubEpisode = resolved.mappedEpisode;
+      }
+      if (bestDub) {
+        const resolved = resolveSplitCourCandidate(bestDub, dubs, episode, "DUB");
+        bestDub = resolved.candidate;
+        resolvedDubEpisode = resolved.mappedEpisode;
+      }
       if (bestSub) {
         console.log(`[AnimeUnity] Found SUB match: ${bestSub.title || bestSub.title_eng} (ID: ${bestSub.id})`);
         const isSeasonEntry = isSeasonEntryMatch(bestSub);
-        const epToUse = isSeasonEntry ? episode : absEpisode;
+        const epToUse = isSeasonEntry ? resolvedSubEpisode : absEpisode;
         console.log(`[AnimeUnity] Using episode ${epToUse} for SUB (Is Season Entry: ${isSeasonEntry})`);
         tasks.push(getEpisodeStreams(bestSub, epToUse, "SUB ITA", isMovie));
       }
       if (bestDub) {
         console.log(`[AnimeUnity] Found DUB match: ${bestDub.title || bestDub.title_eng} (ID: ${bestDub.id})`);
         const isSeasonEntry = isSeasonEntryMatch(bestDub);
-        const epToUse = isSeasonEntry ? episode : absEpisode;
+        const epToUse = isSeasonEntry ? resolvedDubEpisode : absEpisode;
         console.log(`[AnimeUnity] Using episode ${epToUse} for DUB (Is Season Entry: ${isSeasonEntry})`);
         tasks.push(getEpisodeStreams(bestDub, epToUse, "ITA", isMovie));
       }

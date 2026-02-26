@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -57,7 +57,7 @@
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.22",
+      "version": "1.0.23",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -70,7 +70,7 @@
     {
       "id": "easystreams-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.28",
+      "version": "1.0.29",
       "description": "Anime from AnimeWorld",
       "resources": ["stream"],
       "contentLanguage": ["it"],
