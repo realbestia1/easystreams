@@ -12,7 +12,7 @@ Il progetto è progettato per essere versatile e può essere utilizzato in due m
 -   **AnimeWorld** (Anime)
 -   **GuardaHD** (Film)
 -   **GuardaSerie** (Serie TV)
--   **GuardaOSerie** (Film & Serie TV)
+-   **GuardoSerie** (Film & Serie TV)
 -   **StreamingCommunity** (Film & Serie TV)
 
 ---
