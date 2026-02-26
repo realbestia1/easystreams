@@ -7,6 +7,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
         let tmdbId = null;
         let season = null;
         let tmdbSeasonTitle = null;
+        let titleHints = [];
 
         // 1. Try Central Mapping API (Fastest and most accurate as it's updated on the edge)
         if (MAPPING_API_URL) {
@@ -14,6 +15,9 @@ async function resolveTmdbFromKitsu(kitsuId) {
                 const apiResponse = await fetch(`${MAPPING_API_URL}/mapping/${id}`);
                 if (apiResponse.ok) {
                     const apiData = await apiResponse.json();
+                    titleHints = Array.isArray(apiData?.titleHints)
+                        ? apiData.titleHints.map(x => String(x || "").trim()).filter(Boolean)
+                        : [];
                     if (isMeaningfulSeasonName(apiData?.seasonName)) {
                         tmdbSeasonTitle = String(apiData.seasonName).trim();
                     }
@@ -23,7 +27,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
                             tmdbSeasonTitle = await getTmdbSeasonTitle(apiData.tmdbId, apiData.season);
                         }
                         console.log(`[TMDB Helper] API Hit (TMDB)! Kitsu ${id} -> TMDB ${apiData.tmdbId}, Season ${apiData.season} (Source: ${apiData.source})`);
-                        return { tmdbId: apiData.tmdbId, season: apiData.season, tmdbSeasonTitle };
+                        return { tmdbId: apiData.tmdbId, season: apiData.season, tmdbSeasonTitle, titleHints };
                     }
 
                     // NEW: If we have IMDb ID, use it to find TMDB ID immediately
@@ -37,12 +41,12 @@ async function resolveTmdbFromKitsu(kitsuId) {
                             if (!tmdbSeasonTitle && apiData.season) {
                                 tmdbSeasonTitle = await getTmdbSeasonTitle(findData.tv_results[0].id, apiData.season);
                             }
-                            return { tmdbId: findData.tv_results[0].id, season: apiData.season, tmdbSeasonTitle };
+                            return { tmdbId: findData.tv_results[0].id, season: apiData.season, tmdbSeasonTitle, titleHints };
                         }
-                        else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle };
+                        else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle, titleHints };
 
                         // Fallback: keep IMDb id so providers can resolve it later in metadata step.
-                        return { tmdbId: apiData.imdbId, season: apiData.season ?? null, tmdbSeasonTitle };
+                        return { tmdbId: apiData.imdbId, season: apiData.season ?? null, tmdbSeasonTitle, titleHints };
                     }
                 }
             } catch (apiErr) {
@@ -71,7 +75,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
                 const findData = await findResponse.json();
 
                 if (findData.tv_results?.length > 0) tmdbId = findData.tv_results[0].id;
-                else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+                else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null, titleHints };
             }
 
             // Try IMDb
@@ -84,7 +88,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
                     const findData = await findResponse.json();
 
                     if (findData.tv_results?.length > 0) tmdbId = findData.tv_results[0].id;
-                    else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+                    else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null, titleHints };
                 }
             }
         }
@@ -221,7 +225,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
         if (tmdbId && season && !tmdbSeasonTitle) {
             tmdbSeasonTitle = await getTmdbSeasonTitle(tmdbId, season);
         }
-        return { tmdbId, season, tmdbSeasonTitle };
+        return { tmdbId, season, tmdbSeasonTitle, titleHints };
 
     } catch (e) {
         console.error("[TMDB Helper] Kitsu resolve error:", e);

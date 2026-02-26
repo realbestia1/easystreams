@@ -13,6 +13,7 @@ async function getMetadata(id, type) {
         let tmdbId = id;
         let mappedSeason = null;
         let mappedSeasonName = null;
+        let mappedTitleHints = [];
 
         // Handle Kitsu ID
         if (String(id).startsWith("kitsu:")) {
@@ -21,6 +22,9 @@ async function getMetadata(id, type) {
                 tmdbId = resolved.tmdbId;
                 mappedSeason = resolved.season;
                 mappedSeasonName = resolved.tmdbSeasonTitle || null;
+                mappedTitleHints = Array.isArray(resolved.titleHints)
+                    ? resolved.titleHints.map(x => String(x || "").trim()).filter(Boolean)
+                    : [];
                 console.log(`[AnimeWorld] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId} (Mapped Season: ${mappedSeason})`);
             } else {
                 console.error(`[AnimeWorld] Failed to resolve Kitsu ID ${id}`);
@@ -93,7 +97,8 @@ async function getMetadata(id, type) {
             tmdb_id: tmdbId,
             alternatives,
             mappedSeason,
-            seasonName
+            seasonName,
+            mappedTitleHints
         };
     } catch (e) {
         console.error("[AnimeWorld] Metadata error:", e);
@@ -1156,7 +1161,8 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
         const looseTargets = [
             title,
             originalTitle,
-            ...((metadata.alternatives || []).slice(0, 30).map(a => a.title))
+            ...((metadata.alternatives || []).slice(0, 30).map(a => a.title)),
+            ...((metadata.mappedTitleHints || []).slice(0, 20))
         ].filter(Boolean);
         const isRelevantByLooseMatch = (candidateTitle, extraTargets = []) => {
             return isLooselyRelevant(candidateTitle, [...looseTargets, ...extraTargets].filter(Boolean));
@@ -1180,6 +1186,9 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             seasonNameCandidates.push(clean);
         };
         addSeasonName(seasonName);
+        if (Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+            for (const hint of metadata.mappedTitleHints) addSeasonName(hint);
+        }
 
         if (season > 1 && metadata.seasons) {
             const targetSeason = metadata.seasons.find(s => s.season_number === season);

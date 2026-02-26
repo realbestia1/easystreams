@@ -14,6 +14,7 @@ async function getMetadata(id, type) {
         let tmdbId = id;
         let mappedSeason = null;
         let mappedSeasonName = null;
+        let mappedTitleHints = [];
 
         // Handle Kitsu ID
         if (String(id).startsWith("kitsu:")) {
@@ -22,6 +23,9 @@ async function getMetadata(id, type) {
                 tmdbId = resolved.tmdbId;
                 mappedSeason = resolved.season;
                 mappedSeasonName = resolved.tmdbSeasonTitle || null;
+                mappedTitleHints = Array.isArray(resolved.titleHints)
+                    ? resolved.titleHints.map(x => String(x || "").trim()).filter(Boolean)
+                    : [];
                 console.log(`[AnimeUnity] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId} (Mapped Season: ${mappedSeason})`);
             } else {
                 console.error(`[AnimeUnity] Failed to resolve Kitsu ID ${id}`);
@@ -69,7 +73,8 @@ async function getMetadata(id, type) {
             ...await response.json(),
             alternatives,
             mappedSeason,
-            mappedSeasonName
+            mappedSeasonName,
+            mappedTitleHints
         };
     } catch (e) {
         console.error("[AnimeUnity] Metadata error:", e);
@@ -770,7 +775,8 @@ async function getStreams(id, type, season, episode) {
         const looseTargets = [
             title,
             originalTitle,
-            ...((metadata.alternatives || []).slice(0, 30).map(a => a.title))
+            ...((metadata.alternatives || []).slice(0, 30).map(a => a.title)),
+            ...((metadata.mappedTitleHints || []).slice(0, 20))
         ].filter(Boolean);
         const isRelevantByLooseMatch = (candidateTitle, extraTargets = []) => {
             return isLooselyRelevant(candidateTitle, [...looseTargets, ...extraTargets].filter(Boolean));
@@ -893,6 +899,9 @@ async function getStreams(id, type, season, episode) {
             const seasonNames = [];
             if (metadata.mappedSeasonName && !metadata.mappedSeasonName.match(/^Season \d+|^Stagione \d+/i)) {
                 seasonNames.push(metadata.mappedSeasonName);
+            }
+            if (Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+                seasonNames.push(...metadata.mappedTitleHints);
             }
 
             const seasonMetaEn = await getSeasonMetadata(metadata.id, season, "en-US");
