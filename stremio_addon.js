@@ -83,7 +83,8 @@ app.use((req, res, next) => {
 const FETCH_TIMEOUT = 6500; // 6.5 seconds for HTTP requests
 const STREAM_RESPONSE_TIMEOUT = 7000; // Hard cap for stream response time
 const PROVIDER_TIMEOUT = 6500; // Keep provider work below global response deadline
-const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '3600000', 10) || 3600000;
+const ADDON_CACHE_ENABLED = process.env.ADDON_CACHE_ENABLED !== '0';
+const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '15000', 10) || 15000;
 const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
 const STREAM_CACHE_MAX_BYTES = Number.parseInt(
     process.env.STREAM_CACHE_MAX_BYTES || String(100 * 1024 * 1024),
@@ -109,6 +110,7 @@ function cloneStreamResponse(response) {
 }
 
 function getCachedStreamResponse(cacheKey) {
+    if (!ADDON_CACHE_ENABLED) return null;
     const entry = streamCache.get(cacheKey);
     if (!entry) return null;
     if (entry.expiresAt <= Date.now()) {
@@ -120,6 +122,8 @@ function getCachedStreamResponse(cacheKey) {
 }
 
 function setCachedStreamResponse(cacheKey, response) {
+    if (!ADDON_CACHE_ENABLED) return;
+
     const payloadSize = estimateSizeBytes(response);
     if (payloadSize <= 0 || payloadSize > STREAM_CACHE_MAX_BYTES) {
         return;
@@ -183,6 +187,80 @@ global.fetch = async function (url, options = {}) {
 };
 
 
+const ADDON_MAPPING_CACHE_ENABLED = process.env.ADDON_MAPPING_CACHE_ENABLED !== '0';
+const ADDON_MAPPING_CACHE_TTL = Number.parseInt(process.env.ADDON_MAPPING_CACHE_TTL_MS || '3600000', 10) || 3600000;
+const ADDON_MAPPING_CACHE_MAX_SIZE = Number.parseInt(process.env.ADDON_MAPPING_CACHE_MAX_SIZE || '20000', 10) || 20000;
+
+const addonMappingCache = new Map();
+const addonMappingInFlight = new Map();
+
+function cloneMappingResult(result) {
+    if (!result || typeof result !== 'object') return result;
+    return { ...result };
+}
+
+function getCachedMapping(cacheKey) {
+    const entry = addonMappingCache.get(cacheKey);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+        addonMappingCache.delete(cacheKey);
+        return null;
+    }
+    return entry.value;
+}
+
+function setCachedMapping(cacheKey, value) {
+    if (addonMappingCache.size >= ADDON_MAPPING_CACHE_MAX_SIZE) {
+        const oldestKey = addonMappingCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            addonMappingCache.delete(oldestKey);
+        }
+    }
+
+    addonMappingCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + ADDON_MAPPING_CACHE_TTL
+    });
+}
+
+const tmdbHelper = require('./src/tmdb_helper.js');
+
+if (ADDON_MAPPING_CACHE_ENABLED && typeof tmdbHelper.getTmdbFromKitsu === 'function') {
+    const originalGetTmdbFromKitsu = tmdbHelper.getTmdbFromKitsu;
+
+    tmdbHelper.getTmdbFromKitsu = async function cachedGetTmdbFromKitsu(kitsuId) {
+        const cacheKey = String(kitsuId).replace('kitsu:', '');
+        const cached = getCachedMapping(cacheKey);
+
+        if (cached !== null) {
+            console.log(`[Stremio] Mapping cache hit: kitsu:${cacheKey}`);
+            return cloneMappingResult(cached);
+        }
+
+        if (addonMappingInFlight.has(cacheKey)) {
+            const sharedResult = await addonMappingInFlight.get(cacheKey);
+            return cloneMappingResult(sharedResult);
+        }
+
+        const mappingPromise = (async () => {
+            const resolved = await originalGetTmdbFromKitsu(kitsuId);
+            if (resolved && typeof resolved === 'object') {
+                setCachedMapping(cacheKey, cloneMappingResult(resolved));
+            }
+            return resolved;
+        })();
+
+        addonMappingInFlight.set(cacheKey, mappingPromise);
+
+        try {
+            const resolved = await mappingPromise;
+            return cloneMappingResult(resolved);
+        } finally {
+            addonMappingInFlight.delete(cacheKey);
+        }
+    };
+}
+
 // Import providers
 const providers = {
     animeunity: require('./src/animeunity/index.js'),
@@ -213,7 +291,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         return cloneStreamResponse(cachedResponse);
     }
 
-    if (inFlightStreamRequests.has(requestKey)) {
+    if (ADDON_CACHE_ENABLED && inFlightStreamRequests.has(requestKey)) {
         console.log(`[Stremio] Reusing in-flight request: ${requestKey}`);
         const sharedResponse = await inFlightStreamRequests.get(requestKey);
         return cloneStreamResponse(sharedResponse);
@@ -412,6 +490,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
     setCachedStreamResponse(requestKey, responsePayload);
     return responsePayload;
     })();
+
+    if (!ADDON_CACHE_ENABLED) {
+        return streamResolutionPromise;
+    }
 
     inFlightStreamRequests.set(requestKey, streamResolutionPromise);
 

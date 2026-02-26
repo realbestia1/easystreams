@@ -1,34 +1,5 @@
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const MAPPING_API_URL = "https://animemapping.stremio.dpdns.org";
-const MAPPING_CACHE_TTL_MS = Number.parseInt(process.env.MAPPING_CACHE_TTL_MS || "3600000", 10) || 3600000;
-const MAPPING_CACHE_MAX_SIZE = Number.parseInt(process.env.MAPPING_CACHE_MAX_SIZE || "2000", 10) || 2000;
-
-const kitsuMappingCache = new Map();
-const kitsuMappingInFlight = new Map();
-
-function getCachedKitsuMapping(cacheKey) {
-    const entry = kitsuMappingCache.get(cacheKey);
-    if (!entry) return null;
-    if (entry.expiresAt <= Date.now()) {
-        kitsuMappingCache.delete(cacheKey);
-        return null;
-    }
-    return entry.value;
-}
-
-function setCachedKitsuMapping(cacheKey, value) {
-    if (kitsuMappingCache.size >= MAPPING_CACHE_MAX_SIZE) {
-        const oldestKey = kitsuMappingCache.keys().next().value;
-        if (oldestKey !== undefined) {
-            kitsuMappingCache.delete(oldestKey);
-        }
-    }
-
-    kitsuMappingCache.set(cacheKey, {
-        value,
-        expiresAt: Date.now() + MAPPING_CACHE_TTL_MS
-    });
-}
 
 async function resolveTmdbFromKitsu(kitsuId) {
     try {
@@ -236,34 +207,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
 }
 
 async function getTmdbFromKitsu(kitsuId) {
-    const cacheKey = String(kitsuId).replace("kitsu:", "");
-    const cachedResult = getCachedKitsuMapping(cacheKey);
-
-    if (cachedResult !== null) {
-        return { ...cachedResult };
-    }
-
-    if (kitsuMappingInFlight.has(cacheKey)) {
-        const sharedResult = await kitsuMappingInFlight.get(cacheKey);
-        return sharedResult ? { ...sharedResult } : sharedResult;
-    }
-
-    const mappingPromise = (async () => {
-        const resolved = await resolveTmdbFromKitsu(cacheKey);
-        if (resolved !== null) {
-            setCachedKitsuMapping(cacheKey, resolved);
-        }
-        return resolved;
-    })();
-
-    kitsuMappingInFlight.set(cacheKey, mappingPromise);
-
-    try {
-        const result = await mappingPromise;
-        return result ? { ...result } : result;
-    } finally {
-        kitsuMappingInFlight.delete(cacheKey);
-    }
+    return resolveTmdbFromKitsu(kitsuId);
 }
 
 async function getSeasonEpisodeFromAbsolute(tmdbId, absoluteEpisode) {
