@@ -1169,6 +1169,18 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
         let seasonNameMatch = false;
         let seasonYear = null;
         let seasonName = metadata.seasonName || null;
+        const seasonNameCandidates = [];
+        const addSeasonName = (name) => {
+            if (!name) return;
+            const clean = String(name).trim();
+            if (!clean) return;
+            if (clean.match(/^Season \d+|^Stagione \d+/i)) return;
+            const norm = normalizeLooseText(clean);
+            if (!norm) return;
+            if (seasonNameCandidates.some(n => normalizeLooseText(n) === norm)) return;
+            seasonNameCandidates.push(clean);
+        };
+        addSeasonName(seasonName);
 
         if (season > 1 && metadata.seasons) {
             const targetSeason = metadata.seasons.find(s => s.season_number === season);
@@ -1178,25 +1190,23 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             }
         }
 
-        if (season > 1 && !seasonName && metadata.id) {
+        if (season > 1 && metadata.id) {
             const seasonMetaIt = await getSeasonMetadata(metadata.id, season, "it-IT");
             if (!seasonYear && seasonMetaIt && seasonMetaIt.air_date) {
                 const yearMatch = String(seasonMetaIt.air_date).match(/(\d{4})/);
                 if (yearMatch) seasonYear = parseInt(yearMatch[1], 10);
             }
-            if (seasonMetaIt && seasonMetaIt.name && !seasonMetaIt.name.match(/^Season \d+|^Stagione \d+/i)) {
-                seasonName = seasonMetaIt.name;
+            if (seasonMetaIt && seasonMetaIt.name) {
+                addSeasonName(seasonMetaIt.name);
             }
 
-            if (!seasonName) {
-                const seasonMetaEn = await getSeasonMetadata(metadata.id, season, "en-US");
-                if (!seasonYear && seasonMetaEn && seasonMetaEn.air_date) {
-                    const yearMatch = String(seasonMetaEn.air_date).match(/(\d{4})/);
-                    if (yearMatch) seasonYear = parseInt(yearMatch[1], 10);
-                }
-                if (seasonMetaEn && seasonMetaEn.name && !seasonMetaEn.name.match(/^Season \d+/i)) {
-                    seasonName = seasonMetaEn.name;
-                }
+            const seasonMetaEn = await getSeasonMetadata(metadata.id, season, "en-US");
+            if (!seasonYear && seasonMetaEn && seasonMetaEn.air_date) {
+                const yearMatch = String(seasonMetaEn.air_date).match(/(\d{4})/);
+                if (yearMatch) seasonYear = parseInt(yearMatch[1], 10);
+            }
+            if (seasonMetaEn && seasonMetaEn.name) {
+                addSeasonName(seasonMetaEn.name);
             }
         }
 
@@ -1235,49 +1245,60 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             }
 
             // Season name search (e.g. "Diamond is Unbreakable")
-            if (seasonName) {
-                const seasonQueries = [
-                    `${title} ${seasonName}`,
-                    seasonName
-                ];
-                // Only add original title if it's likely to be useful (e.g. English/Romaji)
-                if (originalTitle && originalTitle !== title && !originalTitle.match(/[\u3040-\u30ff\u4e00-\u9faf]/)) {
-                    seasonQueries.push(`${originalTitle} ${seasonName}`);
-                }
+            if (seasonNameCandidates.length > 0) {
+                let seasonNameUsed = null;
+                for (const seasonNameCandidate of seasonNameCandidates) {
+                    const seasonQueries = [
+                        `${title} ${seasonNameCandidate}`,
+                        seasonNameCandidate
+                    ];
+                    // Only add original title if it's likely to be useful (e.g. English/Romaji)
+                    if (originalTitle && originalTitle !== title && !originalTitle.match(/[\u3040-\u30ff\u4e00-\u9faf]/)) {
+                        seasonQueries.push(`${originalTitle} ${seasonNameCandidate}`);
+                    }
 
-                for (const query of seasonQueries) {
-                    console.log(`[AnimeWorld] Strategy 1 - Specific Season Name search: ${query}`);
-                    const res = await searchAnime(query);
-                    if (res && res.length > 0) {
-                        const relevantRes = res.filter(c => {
-                            const normalizeText = (str) => String(str || "")
-                                .toLowerCase()
-                                .replace(/&#x27;|&#039;/g, "'")
-                                .replace(/[^a-z0-9\s]/g, " ")
-                                .replace(/\s+/g, " ")
-                                .trim();
-                            const cNorm = normalizeText(c.title);
-                            const sNorm = normalizeText(seasonName);
-                            const matchesSeasonName = sNorm.length > 0 && (cNorm.includes(sNorm) || checkSimilarity(c.title, seasonName));
+                    for (const query of seasonQueries) {
+                        console.log(`[AnimeWorld] Strategy 1 - Specific Season Name search: ${query}`);
+                        const res = await searchAnime(query);
+                        if (res && res.length > 0) {
+                            const relevantRes = res.filter(c => {
+                                const normalizeText = (str) => String(str || "")
+                                    .toLowerCase()
+                                    .replace(/&#x27;|&#039;/g, "'")
+                                    .replace(/[^a-z0-9\s]/g, " ")
+                                    .replace(/\s+/g, " ")
+                                    .trim();
+                                const cNorm = normalizeText(c.title);
+                                const sNorm = normalizeText(seasonNameCandidate);
+                                const matchesSeasonName = sNorm.length > 0 && (cNorm.includes(sNorm) || checkSimilarity(c.title, seasonNameCandidate));
 
-                            // Check if candidate title actually contains the season name
-                            // This is crucial for avoiding Prequels/generic series matching the base title
-                            if (!matchesSeasonName) return false;
+                                // Check if candidate title actually contains the season name
+                                // This is crucial for avoiding Prequels/generic series matching the base title
+                                if (!matchesSeasonName) return false;
 
-                            // Also ensure it's generally related to the main series
-                            return checkSimilarity(c.title, title) ||
-                                checkSimilarity(c.title, originalTitle) ||
-                                checkSimilarity(c.title, query);
-                        });
+                                // Also ensure it's generally related to the main series
+                                return checkSimilarity(c.title, title) ||
+                                    checkSimilarity(c.title, originalTitle) ||
+                                    checkSimilarity(c.title, query);
+                            });
 
-                        if (relevantRes.length > 0) {
-                            console.log(`[AnimeWorld] Strategy 1 - Found relevance for: ${query}`);
-                            candidates = relevantRes;
-                            seasonNameMatch = true;
-                            break;
+                            if (relevantRes.length > 0) {
+                                console.log(`[AnimeWorld] Strategy 1 - Found relevance for: ${query}`);
+                                candidates = relevantRes;
+                                seasonNameMatch = true;
+                                seasonNameUsed = seasonNameCandidate;
+                                break;
+                            }
                         }
                     }
+
+                    if (seasonNameMatch) break;
                 }
+
+                if (!seasonNameUsed && seasonNameCandidates.length > 0) {
+                    seasonNameUsed = seasonNameCandidates[0];
+                }
+                seasonName = seasonNameUsed || seasonName;
             }
 
             if (!seasonNameMatch) {

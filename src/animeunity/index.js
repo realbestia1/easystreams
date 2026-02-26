@@ -157,6 +157,41 @@ const checkSimilarity = (candTitle, targetTitle) => {
     return score >= 0.5;
 };
 
+function normalizeLooseText(text) {
+    return String(text || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/&#x27;|&#039;/g, "'")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function tokenizeLooseText(text) {
+    const stopWords = new Set([
+        "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "by", "for", "with",
+        "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "o", "di", "da", "con",
+        "season", "stagione", "part", "parte", "movie", "film", "tv", "ita", "sub"
+    ]);
+
+    return normalizeLooseText(text)
+        .split(" ")
+        .map(t => t.replace(/([aeiou])\1+/g, "$1"))
+        .filter(t => t.length > 2 && !stopWords.has(t));
+}
+
+function hasLooseOverlap(candidateTitle, targetTitle) {
+    const cTokens = tokenizeLooseText(candidateTitle);
+    const tTokens = tokenizeLooseText(targetTitle);
+    if (cTokens.length === 0 || tTokens.length === 0) return false;
+    return cTokens.some(ct => ct.length >= 6 && tTokens.includes(ct));
+}
+
+function isLooselyRelevant(candidateTitle, targets = []) {
+    return targets.some(t => hasLooseOverlap(candidateTitle, t));
+}
+
 function tokenizeForPairing(text) {
     const normalized = String(text || "")
         .toLowerCase()
@@ -452,6 +487,9 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     // If season > 1, we expect the title to potentially differ
     if (season > 1) {
         const seasonStr = String(season);
+        const seasonNameHints = Array.isArray(options.seasonNames)
+            ? options.seasonNames.map(s => String(s || "").trim()).filter(Boolean)
+            : [];
         const normalizeCandidateTitle = (candidate) => String(candidate.title || candidate.title_eng || "")
             .toLowerCase()
             .replace(/\s*\(ita\)\s*$/i, "")
@@ -480,8 +518,20 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             if (/final\s*season/i.test(raw)) return true;
             return false;
         };
+        const getSeasonNameScore = (candidate) => {
+            if (seasonNameHints.length === 0) return 0;
+            return seasonNameHints.reduce((maxScore, hint) => {
+                const score =
+                    (checkSimilarity(candidate.title, hint) || checkSimilarity(candidate.title_eng, hint)) ? 1 : 0;
+                return Math.max(maxScore, score);
+            }, 0);
+        };
         const sortSeasonSpecific = (list) => {
             return [...list].sort((a, b) => {
+                const seasonHintScoreA = getSeasonNameScore(a);
+                const seasonHintScoreB = getSeasonNameScore(b);
+                if (seasonHintScoreA !== seasonHintScoreB) return seasonHintScoreB - seasonHintScoreA;
+
                 const aRaw = `${a.title || ""} ${a.title_eng || ""}`.toLowerCase();
                 const bRaw = `${b.title || ""} ${b.title_eng || ""}`.toLowerCase();
                 const aHasPart = /part\s*\d+/i.test(aRaw);
@@ -512,6 +562,14 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                 return regex.test(t) || regex.test(te);
             });
             if (romanMatch) return romanMatch;
+        }
+
+        if (seasonNameHints.length > 0) {
+            const seasonNameMatches = filteredCandidates.filter(c => getSeasonNameScore(c) > 0);
+            if (seasonNameMatches.length > 0) {
+                const preferredSeasonNameMatch = sortSeasonSpecific(seasonNameMatches)[0];
+                if (preferredSeasonNameMatch) return preferredSeasonNameMatch;
+            }
         }
 
         // If candidates were narrowed by season year, trust the best remaining season-era entry.
@@ -729,12 +787,21 @@ async function getStreams(id, type, season, episode) {
 
         const title = metadata.title || metadata.name;
         const originalTitle = metadata.original_title || metadata.original_name;
+        const looseTargets = [
+            title,
+            originalTitle,
+            ...((metadata.alternatives || []).slice(0, 30).map(a => a.title))
+        ].filter(Boolean);
+        const isRelevantByLooseMatch = (candidateTitle, extraTargets = []) => {
+            return isLooselyRelevant(candidateTitle, [...looseTargets, ...extraTargets].filter(Boolean));
+        };
 
         console.log(`[AnimeUnity] Searching for: ${title} (Season ${season})`);
 
         let candidates = [];
         let seasonNameMatch = false;
         let seasonYear = null;
+        let seasonNameHints = [];
 
         if (season > 1 && metadata.seasons) {
             const targetSeason = metadata.seasons.find(s => s.season_number === season);
@@ -743,6 +810,61 @@ async function getStreams(id, type, season, episode) {
                 if (yearMatch) seasonYear = parseInt(yearMatch[1], 10);
             }
         }
+
+        const normalizeCandidateTitle = (candidate) => String(candidate.title || candidate.title_eng || "")
+            .toLowerCase()
+            .replace(/\s*\(ita\)\s*$/i, "")
+            .replace(/&#x27;|&#039;/g, "'")
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const baseTitleNorm = String(title || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const baseOriginalNorm = String(originalTitle || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const isBaseEntryLocal = (candidate) => {
+            const cNorm = normalizeCandidateTitle(candidate);
+            return cNorm === baseTitleNorm || (baseOriginalNorm && cNorm === baseOriginalNorm);
+        };
+        const hasSeasonSpecificMarkerLocal = (candidate) => {
+            const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.toLowerCase();
+            if (/season|stagione|part|parte|\b\d+\b/.test(raw)) return true;
+            if (/\b(arc|saga|chapter|cour)\b|\b\w+(?:-|\s)?hen\b/.test(raw)) return true;
+            if (/final\s*season/i.test(raw)) return true;
+            return false;
+        };
+        const isRelevantSeasonCandidateLocal = (candidate, query) => {
+            const candidateCombined = `${candidate.title || ""} ${candidate.title_eng || ""}`.trim();
+            const matchesMain = (checkSimilarity(candidate.title, title) || checkSimilarity(candidate.title_eng, title)) ||
+                (checkSimilarity(candidate.title, originalTitle) || checkSimilarity(candidate.title_eng, originalTitle)) ||
+                isRelevantByLooseMatch(candidateCombined);
+            if (!matchesMain) return false;
+
+            if (metadata.alternatives && metadata.alternatives.some(alt =>
+                checkSimilarity(candidate.title, alt.title) ||
+                checkSimilarity(candidate.title_eng, alt.title) ||
+                isRelevantByLooseMatch(candidateCombined, [alt.title])
+            )) {
+                return true;
+            }
+
+            if (query && (checkSimilarity(candidate.title, query) || checkSimilarity(candidate.title_eng, query))) {
+                return true;
+            }
+
+            if (season > 1) {
+                if (hasSeasonSpecificMarkerLocal(candidate)) return true;
+                return !isBaseEntryLocal(candidate);
+            }
+
+            return true;
+        };
 
         // Strategy 0: If season === 0, search for "Special", "OAV", "Movie"
         if (season === 0) {
@@ -799,6 +921,7 @@ async function getStreams(id, type, season, episode) {
             }
 
             const uniqueSeasonNames = [...new Set(seasonNames.map(n => String(n).trim()).filter(Boolean))];
+            seasonNameHints = uniqueSeasonNames;
             if (uniqueSeasonNames.length > 0) {
                 console.log(`[AnimeUnity] Found season names (priority EN->IT): ${uniqueSeasonNames.join(" | ")}`);
             }
@@ -808,15 +931,21 @@ async function getStreams(id, type, season, episode) {
                     `${title} ${seasonName}`,
                     seasonName
                 ];
+                if (originalTitle && originalTitle !== title && !originalTitle.match(/[\u3040-\u30ff\u4e00-\u9faf]/)) {
+                    seasonQueries.push(`${originalTitle} ${seasonName}`);
+                }
 
                 for (const query of seasonQueries) {
                     console.log(`[AnimeUnity] Specific Season Name search: ${query}`);
                     const res = await searchAnime(query);
                     if (res && res.length > 0) {
-                        console.log(`[AnimeUnity] Found matches for season name: ${query}`);
-                        candidates = res;
-                        seasonNameMatch = true;
-                        break;
+                        const relevantRes = res.filter(c => isRelevantSeasonCandidateLocal(c, query));
+                        if (relevantRes.length > 0) {
+                            console.log(`[AnimeUnity] Found matches for season name: ${query}`);
+                            candidates = relevantRes;
+                            seasonNameMatch = true;
+                            break;
+                        }
                     }
                 }
                 if (seasonNameMatch) break;
@@ -827,8 +956,11 @@ async function getStreams(id, type, season, episode) {
                     console.log(`[AnimeUnity] Specific search: ${query}`);
                     const res = await searchAnime(query);
                     if (res && res.length > 0) {
-                        candidates = res;
-                        break;
+                        const relevantRes = res.filter(c => isRelevantSeasonCandidateLocal(c, query));
+                        if (relevantRes.length > 0) {
+                            candidates = relevantRes;
+                            break;
+                        }
                     }
                 }
             }
@@ -839,6 +971,33 @@ async function getStreams(id, type, season, episode) {
         if (candidates.length === 0) {
             console.log(`[AnimeUnity] Standard search: ${title}`);
             candidates = await searchAnime(title);
+
+            // If standard results exist but do not contain the requested season token,
+            // retry a dehyphenated query and prefer it when it aligns better.
+            if (season > 1 && candidates.length > 0 && title.includes('-')) {
+                const seasonTokenRegex = new RegExp(`\\b${season}\\b|season\\s*${season}|stagione\\s*${season}|part\\s*${season}|parte\\s*${season}`, "i");
+                const hasRequestedSeasonInStandard = candidates.some(c => {
+                    const raw = `${c.title || ""} ${c.title_eng || ""}`;
+                    return seasonTokenRegex.test(raw);
+                });
+
+                if (!hasRequestedSeasonInStandard) {
+                    const dehyphenated = title.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (dehyphenated !== title) {
+                        console.log(`[AnimeUnity] Standard search lacks season ${season}. Dehyphenated search: ${dehyphenated}`);
+                        const dehyphenCandidates = await searchAnime(dehyphenated);
+                        if (dehyphenCandidates && dehyphenCandidates.length > 0) {
+                            const hasRequestedSeasonInDehyphen = dehyphenCandidates.some(c => {
+                                const raw = `${c.title || ""} ${c.title_eng || ""}`;
+                                return seasonTokenRegex.test(raw);
+                            });
+                            if (hasRequestedSeasonInDehyphen) {
+                                candidates = dehyphenCandidates;
+                            }
+                        }
+                    }
+                }
+            }
 
             // Strategy 2.1: If no results and title contains hyphens, try without them
             // e.g. "One-Punch Man" → "One Punch Man"
@@ -1008,8 +1167,8 @@ async function getStreams(id, type, season, episode) {
         if (subs.length > 0) await enrichTopCandidates(subs);
         if (dubs.length > 0) await enrichTopCandidates(dubs);
 
-        let bestSub = findBestMatch(subs, title, originalTitle, season, metadata, { bypassSeasonCheck: seasonNameMatch, seasonYear });
-        let bestDub = findBestMatch(dubs, title, originalTitle, season, metadata, { bypassSeasonCheck: seasonNameMatch, seasonYear });
+        let bestSub = findBestMatch(subs, title, originalTitle, season, metadata, { bypassSeasonCheck: seasonNameMatch, seasonYear, seasonNames: seasonNameHints });
+        let bestDub = findBestMatch(dubs, title, originalTitle, season, metadata, { bypassSeasonCheck: seasonNameMatch, seasonYear, seasonNames: seasonNameHints });
 
         // Secondary search for Dubs if not found or suspicious (e.g. One Piece (ITA), MHA Final Season)
         const isSuspicious = (c) => {
@@ -1052,7 +1211,7 @@ async function getStreams(id, type, season, episode) {
             const dubRes = await searchAnime(dubQuery);
             if (dubRes && dubRes.length > 0) {
                 const newDubs = dubRes.filter(c => (c.title || "").includes("(ITA)") || (c.title_eng || "").includes("(ITA)"));
-                const betterDub = findBestMatch(newDubs, title, originalTitle, season, metadata, { seasonYear });
+                const betterDub = findBestMatch(newDubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints });
                 if (betterDub) bestDub = betterDub;
             }
         }
@@ -1196,7 +1355,7 @@ async function getStreams(id, type, season, episode) {
         if (bestSub && bestDub && !areCoherentCandidates(bestSub, bestDub, title, originalTitle)) {
             const compatibleDubs = dubs.filter(c => areCoherentCandidates(bestSub, c, title, originalTitle));
             if (compatibleDubs.length > 0) {
-                const alignedDub = findBestMatch(compatibleDubs, title, originalTitle, season, metadata, { seasonYear });
+                const alignedDub = findBestMatch(compatibleDubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints });
                 bestDub = alignedDub || compatibleDubs[0];
             } else {
                 console.log("[AnimeUnity] Discarding dub candidate due to arc/season mismatch with selected sub.");
@@ -1219,8 +1378,8 @@ async function getStreams(id, type, season, episode) {
                         if (dhSubs.length > 0) await enrichTopCandidates(dhSubs);
                         if (dhDubs.length > 0) await enrichTopCandidates(dhDubs);
 
-                        bestSub = findBestMatch(dhSubs, title, originalTitle, season, metadata, { seasonYear });
-                        bestDub = findBestMatch(dhDubs, title, originalTitle, season, metadata, { seasonYear });
+                        bestSub = findBestMatch(dhSubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints });
+                        bestDub = findBestMatch(dhDubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints });
                     }
                 }
             }
