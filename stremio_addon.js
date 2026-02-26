@@ -31,7 +31,8 @@ const http = require('http');
 // Connection pooling configuration
 const agentOptions = {
     keepAlive: true,
-    maxSockets: 50,
+    maxSockets: 250,
+    maxFreeSockets: 100,
     timeout: 30000,
     keepAliveMsecs: 30000
 };
@@ -79,8 +80,44 @@ app.use((req, res, next) => {
 });
 
 // Global timeout configuration
-const FETCH_TIMEOUT = 5000; // 5 seconds for HTTP requests
-const PROVIDER_TIMEOUT = 10000; // 10 seconds for provider execution
+const FETCH_TIMEOUT = 6500; // 6.5 seconds for HTTP requests
+const STREAM_RESPONSE_TIMEOUT = 7000; // Hard cap for stream response time
+const PROVIDER_TIMEOUT = 6500; // Keep provider work below global response deadline
+const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '15000', 10) || 15000;
+const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '1000', 10) || 1000;
+
+const streamCache = new Map();
+const inFlightStreamRequests = new Map();
+
+function cloneStreamResponse(response) {
+    return {
+        streams: Array.isArray(response?.streams) ? response.streams.slice() : []
+    };
+}
+
+function getCachedStreamResponse(cacheKey) {
+    const entry = streamCache.get(cacheKey);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+        streamCache.delete(cacheKey);
+        return null;
+    }
+    return entry.response;
+}
+
+function setCachedStreamResponse(cacheKey, response) {
+    if (streamCache.size >= STREAM_CACHE_MAX_SIZE) {
+        const oldestKey = streamCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            streamCache.delete(oldestKey);
+        }
+    }
+
+    streamCache.set(cacheKey, {
+        response,
+        expiresAt: Date.now() + STREAM_CACHE_TTL
+    });
+}
 
 // Wrap global fetch to enforce timeout
 const originalFetch = global.fetch;
@@ -137,6 +174,21 @@ const builder = new addonBuilder({
 });
 
 builder.defineStreamHandler(async ({ type, id }) => {
+    const requestKey = `${type}:${id}`;
+    const cachedResponse = getCachedStreamResponse(requestKey);
+
+    if (cachedResponse) {
+        console.log(`[Stremio] Cache hit: ${requestKey}`);
+        return cloneStreamResponse(cachedResponse);
+    }
+
+    if (inFlightStreamRequests.has(requestKey)) {
+        console.log(`[Stremio] Reusing in-flight request: ${requestKey}`);
+        const sharedResponse = await inFlightStreamRequests.get(requestKey);
+        return cloneStreamResponse(sharedResponse);
+    }
+
+    const streamResolutionPromise = (async () => {
     console.log(`[Stremio] Request: ${type} ${id}`);
 
     let imdbId = id;
@@ -180,7 +232,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // Providers: movie, tv
     const providerType = (type === 'movie') ? 'movie' : 'tv';
 
-    const promises = Object.entries(providers).map(async ([name, provider]) => {
+    const collectedStreams = [];
+    const providerTasks = Object.entries(providers).map(async ([name, provider]) => {
         try {
             if (typeof provider.getStreams !== 'function') return [];
 
@@ -211,7 +264,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             let streams = await Promise.race([providerPromise, timeoutPromise]);
 
             // Fase 2.3: Stream Processing
-            return streams
+            const processedStreams = streams
                 .filter(s => {
                     if (!s || !s.url) return false;
                     const server = (s.server || "").toLowerCase();
@@ -240,17 +293,33 @@ builder.defineStreamHandler(async ({ type, id }) => {
                         language: s.language
                     };
                 });
+
+            if (processedStreams.length > 0) {
+                collectedStreams.push(...processedStreams);
+            }
+
+            return processedStreams;
         } catch (e) {
             console.error(`[${name}] Error:`, e.message);
             return [];
         }
     });
 
-    const results = await Promise.allSettled(promises);
-    const streams = results
-        .filter(r => r.status === 'fulfilled')
-        .map(r => r.value)
-        .flat();
+    let globalTimeoutId;
+    const completionState = await Promise.race([
+        Promise.allSettled(providerTasks).then(() => 'completed'),
+        new Promise((resolve) => {
+            globalTimeoutId = setTimeout(() => resolve('deadline'), STREAM_RESPONSE_TIMEOUT);
+        })
+    ]);
+
+    if (globalTimeoutId) clearTimeout(globalTimeoutId);
+
+    if (completionState === 'deadline') {
+        console.warn(`[Stremio] Global response deadline reached (${STREAM_RESPONSE_TIMEOUT}ms). Returning partial streams.`);
+    }
+
+    const streams = collectedStreams.slice();
 
     // Sort streams? Maybe by quality or provider preference?
     // For now, just return them all.
@@ -308,7 +377,19 @@ builder.defineStreamHandler(async ({ type, id }) => {
     });
 
     console.log(`[Stremio] Returning ${validStreams.length} streams total.`);
-    return { streams: validStreams };
+    const responsePayload = { streams: validStreams };
+    setCachedStreamResponse(requestKey, responsePayload);
+    return responsePayload;
+    })();
+
+    inFlightStreamRequests.set(requestKey, streamResolutionPromise);
+
+    try {
+        const finalResponse = await streamResolutionPromise;
+        return cloneStreamResponse(finalResponse);
+    } finally {
+        inFlightStreamRequests.delete(requestKey);
+    }
 });
 
 
@@ -601,4 +682,3 @@ process.on('SIGTERM', () => {
         process.exit(0);
     });
 });
-
