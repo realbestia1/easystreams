@@ -84,7 +84,7 @@ const FETCH_TIMEOUT = 6500; // 6.5 seconds for HTTP requests
 const STREAM_RESPONSE_TIMEOUT = 7000; // Hard cap for stream response time
 const PROVIDER_TIMEOUT = 6500; // Keep provider work below global response deadline
 const ADDON_CACHE_ENABLED = process.env.ADDON_CACHE_ENABLED !== '0';
-const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '15000', 10) || 15000;
+const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '10800000', 10) || 10800000;
 const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
 const STREAM_CACHE_MAX_BYTES = Number.parseInt(
     process.env.STREAM_CACHE_MAX_BYTES || String(100 * 1024 * 1024),
@@ -188,7 +188,7 @@ global.fetch = async function (url, options = {}) {
 
 
 const ADDON_MAPPING_CACHE_ENABLED = process.env.ADDON_MAPPING_CACHE_ENABLED !== '0';
-const ADDON_MAPPING_CACHE_TTL = Number.parseInt(process.env.ADDON_MAPPING_CACHE_TTL_MS || '3600000', 10) || 3600000;
+const ADDON_MAPPING_CACHE_TTL = Number.parseInt(process.env.ADDON_MAPPING_CACHE_TTL_MS || '10800000', 10) || 10800000;
 const ADDON_MAPPING_CACHE_MAX_SIZE = Number.parseInt(process.env.ADDON_MAPPING_CACHE_MAX_SIZE || '20000', 10) || 20000;
 
 const addonMappingCache = new Map();
