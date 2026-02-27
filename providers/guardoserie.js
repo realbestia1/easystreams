@@ -7283,11 +7283,42 @@ var require_tmdb_helper = __commonJS({
           let season = null;
           let tmdbSeasonTitle = null;
           let titleHints = [];
+          let longSeries = false;
+          let episodeMode = null;
+          let mappedSeasons = [];
+          let seriesSeasonCount = null;
+          const applyTopologyHints = (payload) => {
+            if (!payload || typeof payload !== "object") return;
+            if (typeof payload.longSeries === "boolean") {
+              longSeries = payload.longSeries;
+            }
+            if (payload.episodeMode) {
+              const mode = String(payload.episodeMode).trim().toLowerCase();
+              if (mode) episodeMode = mode;
+            }
+            if (Array.isArray(payload.mappedSeasons)) {
+              const normalized = payload.mappedSeasons.map((n) => parseInt(n, 10)).filter((n) => Number.isInteger(n) && n > 0);
+              if (normalized.length > 0) {
+                mappedSeasons = [...new Set(normalized)].sort((a, b) => a - b);
+              }
+            }
+            const parsedSeriesCount = parseInt(payload.seriesSeasonCount, 10);
+            if (Number.isInteger(parsedSeriesCount) && parsedSeriesCount > 0) {
+              seriesSeasonCount = parsedSeriesCount;
+            }
+          };
+          const withTopologyHints = (basePayload = {}) => __spreadProps(__spreadValues({}, basePayload), {
+            longSeries,
+            episodeMode,
+            mappedSeasons,
+            seriesSeasonCount
+          });
           if (MAPPING_API_URL) {
             try {
               const apiResponse = yield fetch(`${MAPPING_API_URL}/mapping/${id}`);
               if (apiResponse.ok) {
                 const apiData = yield apiResponse.json();
+                applyTopologyHints(apiData);
                 titleHints = Array.isArray(apiData == null ? void 0 : apiData.titleHints) ? apiData.titleHints.map((x) => String(x || "").trim()).filter(Boolean) : [];
                 if (isMeaningfulSeasonName(apiData == null ? void 0 : apiData.seasonName)) {
                   tmdbSeasonTitle = String(apiData.seasonName).trim();
@@ -7297,7 +7328,7 @@ var require_tmdb_helper = __commonJS({
                     tmdbSeasonTitle = yield getTmdbSeasonTitle(apiData.tmdbId, apiData.season);
                   }
                   console.log(`[TMDB Helper] API Hit (TMDB)! Kitsu ${id} -> TMDB ${apiData.tmdbId}, Season ${apiData.season} (Source: ${apiData.source})`);
-                  return { tmdbId: apiData.tmdbId, season: apiData.season, tmdbSeasonTitle, titleHints };
+                  return withTopologyHints({ tmdbId: apiData.tmdbId, season: apiData.season, tmdbSeasonTitle, titleHints });
                 }
                 if (apiData.imdbId) {
                   console.log(`[TMDB Helper] API Hit (IMDb)! Kitsu ${id} -> IMDb ${apiData.imdbId}, Season ${apiData.season} (Source: ${apiData.source})`);
@@ -7308,9 +7339,9 @@ var require_tmdb_helper = __commonJS({
                     if (!tmdbSeasonTitle && apiData.season) {
                       tmdbSeasonTitle = yield getTmdbSeasonTitle(findData.tv_results[0].id, apiData.season);
                     }
-                    return { tmdbId: findData.tv_results[0].id, season: apiData.season, tmdbSeasonTitle, titleHints };
-                  } else if (((_b = findData.movie_results) == null ? void 0 : _b.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle, titleHints };
-                  return { tmdbId: apiData.imdbId, season: (_c = apiData.season) != null ? _c : null, tmdbSeasonTitle, titleHints };
+                    return withTopologyHints({ tmdbId: findData.tv_results[0].id, season: apiData.season, tmdbSeasonTitle, titleHints });
+                  } else if (((_b = findData.movie_results) == null ? void 0 : _b.length) > 0) return withTopologyHints({ tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle, titleHints });
+                  return withTopologyHints({ tmdbId: apiData.imdbId, season: (_c = apiData.season) != null ? _c : null, tmdbSeasonTitle, titleHints });
                 }
               }
             } catch (apiErr) {
@@ -7330,7 +7361,7 @@ var require_tmdb_helper = __commonJS({
               const findResponse = yield fetch(findUrl);
               const findData = yield findResponse.json();
               if (((_d = findData.tv_results) == null ? void 0 : _d.length) > 0) tmdbId = findData.tv_results[0].id;
-              else if (((_e = findData.movie_results) == null ? void 0 : _e.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null, titleHints };
+              else if (((_e = findData.movie_results) == null ? void 0 : _e.length) > 0) return withTopologyHints({ tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle, titleHints });
             }
             if (!tmdbId) {
               const imdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "imdb");
@@ -7340,7 +7371,7 @@ var require_tmdb_helper = __commonJS({
                 const findResponse = yield fetch(findUrl);
                 const findData = yield findResponse.json();
                 if (((_f = findData.tv_results) == null ? void 0 : _f.length) > 0) tmdbId = findData.tv_results[0].id;
-                else if (((_g = findData.movie_results) == null ? void 0 : _g.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null, titleHints };
+                else if (((_g = findData.movie_results) == null ? void 0 : _g.length) > 0) return withTopologyHints({ tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle, titleHints });
               }
             }
           }
@@ -7433,7 +7464,7 @@ var require_tmdb_helper = __commonJS({
           if (tmdbId && season && !tmdbSeasonTitle) {
             tmdbSeasonTitle = yield getTmdbSeasonTitle(tmdbId, season);
           }
-          return { tmdbId, season, tmdbSeasonTitle, titleHints };
+          return withTopologyHints({ tmdbId, season, tmdbSeasonTitle, titleHints });
         } catch (e) {
           console.error("[TMDB Helper] Kitsu resolve error:", e);
           return null;
@@ -7688,24 +7719,40 @@ function getShowInfo(tmdbId, type) {
     }
   });
 }
-function getStreams(id, type, season, episode) {
+function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     var _a, _b;
     try {
       let tmdbId = id;
+      const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+      const parsedContextSeason = parseInt(providerContext && providerContext.canonicalSeason, 10);
+      const hasContextSeason = Number.isInteger(parsedContextSeason) && parsedContextSeason >= 0;
       if (id.toString().startsWith("tt")) {
-        const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
-        const response = yield fetch(url);
-        if (response.ok) {
-          const data = yield response.json();
-          if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) tmdbId = data.movie_results[0].id;
-          else if ((type === "series" || type === "tv") && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) tmdbId = data.tv_results[0].id;
+        if (contextTmdbId) {
+          tmdbId = contextTmdbId;
+          console.log(`[Guardoserie] Using prefetched TMDB ID ${tmdbId} for ${id}`);
+        } else {
+          const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+          const response = yield fetch(url);
+          if (response.ok) {
+            const data = yield response.json();
+            if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) tmdbId = data.movie_results[0].id;
+            else if ((type === "series" || type === "tv") && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) tmdbId = data.tv_results[0].id;
+          }
         }
       } else if (id.toString().startsWith("kitsu:")) {
-        const resolved = yield getTmdbFromKitsu(id);
-        if (resolved && resolved.tmdbId) {
-          tmdbId = resolved.tmdbId;
-          if (resolved.season) season = resolved.season;
+        if (contextTmdbId) {
+          tmdbId = contextTmdbId;
+          if (hasContextSeason && season !== parsedContextSeason) {
+            season = parsedContextSeason;
+          }
+          console.log(`[Guardoserie] Using prefetched mapping for ${id} -> TMDB ${tmdbId}, Season ${season}`);
+        } else {
+          const resolved = yield getTmdbFromKitsu(id);
+          if (resolved && resolved.tmdbId) {
+            tmdbId = resolved.tmdbId;
+            if (resolved.season) season = resolved.season;
+          }
         }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");

@@ -161,35 +161,57 @@ function verifyMoviePlayer(url, targetYear) {
     }
   });
 }
-function getStreams(id, type, season, episode) {
+function getStreams(id, type, season, episode, providerContext = null) {
   if (['movie'].includes(String(type).toLowerCase())) return [];
   return __async(this, null, function* () {
     if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
       let imdbId = null;
+      const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || ""))
+        ? String(providerContext.tmdbId)
+        : null;
+      const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || ""))
+        ? String(providerContext.imdbId)
+        : null;
+      const parsedContextSeason = parseInt(providerContext && providerContext.canonicalSeason, 10);
+      const hasContextSeason = Number.isInteger(parsedContextSeason) && parsedContextSeason >= 0;
 
       if (id.toString().startsWith("tt")) {
         const imdbCore = (id.toString().match(/tt\d{7,8}/) || [])[0] || id.toString();
         imdbId = imdbCore;
-        tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
-        if (!tmdbId) {
-          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID. Continuing with IMDb ID.`);
+        if (contextTmdbId) {
+          tmdbId = contextTmdbId;
+          console.log(`[Guardaserie] Using prefetched TMDB ID ${tmdbId} for ${id}`);
         } else {
-          console.log(`[Guardaserie] Converted ${id} to TMDB ID: ${tmdbId}`);
+          tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
+          if (!tmdbId) {
+            console.log(`[Guardaserie] Could not convert ${id} to TMDB ID. Continuing with IMDb ID.`);
+          } else {
+            console.log(`[Guardaserie] Converted ${id} to TMDB ID: ${tmdbId}`);
+          }
         }
       } else if (id.toString().startsWith("kitsu:")) {
-        const resolved = yield getTmdbFromKitsu(id);
-        if (resolved && resolved.tmdbId) {
-          tmdbId = resolved.tmdbId;
-          if (resolved.season) {
-            console.log(`[Guardaserie] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
-            season = resolved.season;
+        if (contextTmdbId) {
+          tmdbId = contextTmdbId;
+          if (hasContextSeason && season !== parsedContextSeason) {
+            console.log(`[Guardaserie] Prefetched mapping indicates Season ${parsedContextSeason}. Overriding requested Season ${season}`);
+            season = parsedContextSeason;
           }
-          console.log(`[Guardaserie] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}, Season ${season}`);
+          console.log(`[Guardaserie] Using prefetched mapping for ${id} -> TMDB ${tmdbId}, Season ${season}`);
         } else {
-          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
-          return [];
+          const resolved = yield getTmdbFromKitsu(id);
+          if (resolved && resolved.tmdbId) {
+            tmdbId = resolved.tmdbId;
+            if (resolved.season) {
+              console.log(`[Guardaserie] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
+              season = resolved.season;
+            }
+            console.log(`[Guardaserie] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}, Season ${season}`);
+          } else {
+            console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
+            return [];
+          }
         }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
@@ -197,6 +219,10 @@ function getStreams(id, type, season, episode) {
 
       // Resolve IMDb ID for verification if we don't have it yet
       if (!imdbId && tmdbId) {
+        if (contextImdbId) {
+          imdbId = contextImdbId;
+          console.log(`[Guardaserie] Using prefetched IMDb ID ${imdbId} for verification`);
+        } else {
         try {
           const resolvedImdb = yield getImdbId(tmdbId, type);
           if (resolvedImdb) {
@@ -205,6 +231,7 @@ function getStreams(id, type, season, episode) {
           }
         } catch (e) {
           console.log(`[Guardaserie] Failed to resolve IMDb ID for verification: ${e.message}`);
+        }
         }
       }
 

@@ -146,24 +146,43 @@ async function getShowInfo(tmdbId, type) {
     }
 }
 
-async function getStreams(id, type, season, episode) {
+async function getStreams(id, type, season, episode, providerContext = null) {
     try {
         let tmdbId = id;
+        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || ''))
+            ? String(providerContext.tmdbId)
+            : null;
+        const parsedContextSeason = parseInt(providerContext && providerContext.canonicalSeason, 10);
+        const hasContextSeason = Number.isInteger(parsedContextSeason) && parsedContextSeason >= 0;
+
         if (id.toString().startsWith('tt')) {
-            // Need to convert IMDb to TMDB for title/year info
-            const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
-            const response = await fetch(url);
-            if (response.ok) {
-                const data = await response.json();
-                if (type === 'movie' && data.movie_results?.length > 0) tmdbId = data.movie_results[0].id;
-                else if ((type === 'series' || type === 'tv') && data.tv_results?.length > 0) tmdbId = data.tv_results[0].id;
+            if (contextTmdbId) {
+                tmdbId = contextTmdbId;
+                console.log(`[Guardoserie] Using prefetched TMDB ID ${tmdbId} for ${id}`);
+            } else {
+                // Need to convert IMDb to TMDB for title/year info
+                const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (type === 'movie' && data.movie_results?.length > 0) tmdbId = data.movie_results[0].id;
+                    else if ((type === 'series' || type === 'tv') && data.tv_results?.length > 0) tmdbId = data.tv_results[0].id;
+                }
             }
         } else if (id.toString().startsWith('kitsu:')) {
-            const resolved = await getTmdbFromKitsu(id);
+            if (contextTmdbId) {
+                tmdbId = contextTmdbId;
+                if (hasContextSeason && season !== parsedContextSeason) {
+                    season = parsedContextSeason;
+                }
+                console.log(`[Guardoserie] Using prefetched mapping for ${id} -> TMDB ${tmdbId}, Season ${season}`);
+            } else {
+                const resolved = await getTmdbFromKitsu(id);
                 if (resolved && resolved.tmdbId) {
                     tmdbId = resolved.tmdbId;
                     if (resolved.season) season = resolved.season;
                 }
+            }
         } else if (id.toString().startsWith('tmdb:')) {
             tmdbId = id.toString().replace('tmdb:', '');
         }

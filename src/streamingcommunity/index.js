@@ -89,11 +89,23 @@ async function getMetadata(id, type) {
   }
 }
 
-async function getStreams(id, type, season, episode) {
+async function getStreams(id, type, season, episode, providerContext = null) {
   const normalizedType = String(type).toLowerCase();
   let tmdbId = id.toString();
+  let resolvedSeason = season;
+  const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || ""))
+    ? String(providerContext.tmdbId)
+    : null;
+  const parsedContextSeason = parseInt(providerContext && providerContext.canonicalSeason, 10);
+  const hasContextSeason = Number.isInteger(parsedContextSeason) && parsedContextSeason >= 0;
 
-  if (tmdbId.startsWith("tmdb:")) {
+  if (contextTmdbId) {
+    tmdbId = contextTmdbId;
+    if (normalizedType === "tv" && hasContextSeason && resolvedSeason !== parsedContextSeason) {
+      console.log(`[StreamingCommunity] Prefetched mapping indicates Season ${parsedContextSeason}. Overriding requested Season ${resolvedSeason}`);
+      resolvedSeason = parsedContextSeason;
+    }
+  } else if (tmdbId.startsWith("tmdb:")) {
     tmdbId = tmdbId.replace("tmdb:", "");
   } else if (tmdbId.startsWith("tt")) {
     const convertedId = await getTmdbId(tmdbId, normalizedType);
@@ -113,14 +125,14 @@ async function getStreams(id, type, season, episode) {
   }
 
   const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
-  const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
+  const displayName = normalizedType === "movie" ? title : `${title} ${resolvedSeason}x${episode}`;
   const finalDisplayName = displayName;
 
   let url;
   if (normalizedType === "movie") {
     url = `${BASE_URL}/movie/${tmdbId}`;
   } else if (normalizedType === "tv") {
-    url = `${BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+    url = `${BASE_URL}/tv/${tmdbId}/${resolvedSeason}/${episode}`;
   } else {
     return [];
   }

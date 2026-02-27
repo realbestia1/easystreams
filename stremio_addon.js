@@ -80,9 +80,9 @@ app.use((req, res, next) => {
 });
 
 // Global timeout configuration
-const FETCH_TIMEOUT = 6500; // 6.5 seconds for HTTP requests
-const STREAM_RESPONSE_TIMEOUT = 7000; // Hard cap for stream response time
-const PROVIDER_TIMEOUT = 6500; // Keep provider work below global response deadline
+const FETCH_TIMEOUT = 10000; // 10 seconds for HTTP requests
+const STREAM_RESPONSE_TIMEOUT = 10000; // Hard cap for stream response time
+const PROVIDER_TIMEOUT = 10000; // Keep provider work below global response deadline
 const ADDON_CACHE_ENABLED = process.env.ADDON_CACHE_ENABLED !== '0';
 const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '10800000', 10) || 10800000;
 const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
@@ -261,6 +261,400 @@ if (ADDON_MAPPING_CACHE_ENABLED && typeof tmdbHelper.getTmdbFromKitsu === 'funct
     };
 }
 
+const MAPPING_API_URL = 'https://animemapping.stremio.dpdns.org';
+const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
+const CANONICAL_RESOLVE_TIMEOUT = Number.parseInt(process.env.CANONICAL_RESOLVE_TIMEOUT_MS || '1500', 10) || 1500;
+const CANONICAL_REQUEST_CACHE_MAX_SIZE = Number.parseInt(process.env.CANONICAL_REQUEST_CACHE_MAX_SIZE || '50000', 10) || 50000;
+
+const streamCacheAliases = new Map();
+const canonicalRequestCache = new Map();
+const requestContextCache = new Map();
+
+function getCachedStreamAlias(sourceKey) {
+    if (!ADDON_CACHE_ENABLED) return null;
+    const entry = streamCacheAliases.get(sourceKey);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+        streamCacheAliases.delete(sourceKey);
+        return null;
+    }
+    return entry.targetKey;
+}
+
+function setCachedStreamAlias(sourceKey, targetKey) {
+    if (!ADDON_CACHE_ENABLED) return;
+    if (!sourceKey || !targetKey || sourceKey === targetKey) return;
+
+    if (streamCacheAliases.size >= STREAM_CACHE_MAX_SIZE) {
+        const oldestKey = streamCacheAliases.keys().next().value;
+        if (oldestKey !== undefined) {
+            streamCacheAliases.delete(oldestKey);
+        }
+    }
+
+    streamCacheAliases.set(sourceKey, {
+        targetKey,
+        expiresAt: Date.now() + STREAM_CACHE_TTL
+    });
+}
+
+function getCachedCanonicalRequestKey(cacheKey) {
+    const entry = canonicalRequestCache.get(cacheKey);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+        canonicalRequestCache.delete(cacheKey);
+        return undefined;
+    }
+    return entry.value;
+}
+
+function setCachedCanonicalRequestKey(cacheKey, value) {
+    if (canonicalRequestCache.size >= CANONICAL_REQUEST_CACHE_MAX_SIZE) {
+        const oldestKey = canonicalRequestCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            canonicalRequestCache.delete(oldestKey);
+        }
+    }
+
+    canonicalRequestCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + ADDON_MAPPING_CACHE_TTL
+    });
+}
+
+function cloneRequestContext(context) {
+    if (!context || typeof context !== 'object') return null;
+    return {
+        ...context,
+        titleHints: Array.isArray(context.titleHints) ? context.titleHints.slice() : [],
+        mappedSeasons: Array.isArray(context.mappedSeasons) ? context.mappedSeasons.slice() : []
+    };
+}
+
+function getCachedRequestContext(cacheKey) {
+    const entry = requestContextCache.get(cacheKey);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+        requestContextCache.delete(cacheKey);
+        return undefined;
+    }
+    return cloneRequestContext(entry.value);
+}
+
+function setCachedRequestContext(cacheKey, value) {
+    if (requestContextCache.size >= CANONICAL_REQUEST_CACHE_MAX_SIZE) {
+        const oldestKey = requestContextCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            requestContextCache.delete(oldestKey);
+        }
+    }
+
+    requestContextCache.set(cacheKey, {
+        value: cloneRequestContext(value),
+        expiresAt: Date.now() + ADDON_MAPPING_CACHE_TTL
+    });
+}
+
+function parseStremioRequestId(type, id) {
+    let normalizedId = String(id || '');
+    try {
+        normalizedId = decodeURIComponent(normalizedId);
+    } catch {
+        // Keep the original id when decode fails.
+    }
+
+    let providerId = normalizedId;
+    let season = 1;
+    let episode = 1;
+
+    if ((type === 'series' || type === 'anime') && normalizedId.includes(':')) {
+        if (normalizedId.startsWith('kitsu:') || normalizedId.startsWith('tmdb:')) {
+            const parts = normalizedId.split(':');
+            if (parts.length >= 4) {
+                providerId = `${parts[0]}:${parts[1]}`;
+                season = Number.parseInt(parts[2], 10);
+                episode = Number.parseInt(parts[3], 10);
+            } else if (parts.length === 3) {
+                // Absolute numbering fallback, e.g. kitsu:12:247.
+                providerId = `${parts[0]}:${parts[1]}`;
+                season = 1;
+                episode = Number.parseInt(parts[2], 10);
+            }
+        } else {
+            const parts = normalizedId.split(':');
+            providerId = parts[0];
+            season = Number.parseInt(parts[1], 10);
+            episode = Number.parseInt(parts[2], 10);
+        }
+    } else if (type === 'movie') {
+        providerId = normalizedId;
+    }
+
+    if (!Number.isInteger(season) || season < 0) season = 1;
+    if (!Number.isInteger(episode) || episode < 1) episode = 1;
+
+    return { providerId, season, episode };
+}
+
+function computeCanonicalSeason(requestedSeason, mappedSeason, topology = null) {
+    if (requestedSeason === 0) return 0;
+
+    const parsedMappedSeason = Number.parseInt(mappedSeason, 10);
+    const longSeries = topology?.longSeries === true;
+    const episodeMode = String(topology?.episodeMode || '').trim().toLowerCase();
+    const isAbsoluteLongSeries = longSeries && episodeMode === 'absolute';
+
+    if (!isAbsoluteLongSeries && Number.isInteger(parsedMappedSeason) && parsedMappedSeason > 0) {
+        return parsedMappedSeason;
+    }
+    return requestedSeason;
+}
+
+function getCanonicalCacheMediaType(type) {
+    return String(type).toLowerCase() === 'movie' ? 'movie' : 'tv';
+}
+
+function mergeDistinctStrings(base = [], incoming = []) {
+    const merged = [...(Array.isArray(base) ? base : []), ...(Array.isArray(incoming) ? incoming : [])]
+        .map((s) => String(s || '').trim())
+        .filter(Boolean);
+    return [...new Set(merged)];
+}
+
+function isMeaningfulSeasonName(name) {
+    const clean = String(name || '').trim();
+    if (!clean) return false;
+    if (/^Season\s+\d+$/i.test(clean)) return false;
+    if (/^Stagione\s+\d+$/i.test(clean)) return false;
+    return true;
+}
+
+function applyMappingHintsToContext(context, payload) {
+    if (!context || !payload || typeof payload !== 'object') return;
+
+    const tmdbCandidate = String(payload.tmdbId || '').trim();
+    if (/^tmdb:\d+$/i.test(tmdbCandidate)) {
+        context.tmdbId = tmdbCandidate.split(':')[1];
+    } else if (/^\d+$/.test(tmdbCandidate)) {
+        context.tmdbId = tmdbCandidate;
+    } else if (/^tt\d+$/i.test(tmdbCandidate) && !context.imdbId) {
+        // Some fallbacks return IMDb where TMDB is expected.
+        context.imdbId = tmdbCandidate;
+    }
+
+    const imdbCandidate = String(payload.imdbId || '').trim();
+    if (/^tt\d+$/i.test(imdbCandidate)) {
+        context.imdbId = imdbCandidate;
+    }
+
+    const parsedSeason = Number.parseInt(payload.season, 10);
+    if (Number.isInteger(parsedSeason) && parsedSeason >= 0) {
+        context.mappedSeason = parsedSeason;
+    }
+
+    const seasonNameCandidate = String(payload.seasonName || '').trim();
+    if (isMeaningfulSeasonName(seasonNameCandidate)) {
+        context.seasonName = seasonNameCandidate;
+    }
+
+    context.titleHints = mergeDistinctStrings(context.titleHints, payload.titleHints);
+
+    if (typeof payload.longSeries === 'boolean') {
+        context.longSeries = payload.longSeries;
+    }
+
+    const mode = String(payload.episodeMode || '').trim().toLowerCase();
+    if (mode) {
+        context.episodeMode = mode;
+    }
+
+    if (Array.isArray(payload.mappedSeasons)) {
+        const normalized = payload.mappedSeasons
+            .map((n) => Number.parseInt(n, 10))
+            .filter((n) => Number.isInteger(n) && n > 0);
+        if (normalized.length > 0) {
+            context.mappedSeasons = [...new Set(normalized)].sort((a, b) => a - b);
+        }
+    }
+
+    const parsedSeriesCount = Number.parseInt(payload.seriesSeasonCount, 10);
+    if (Number.isInteger(parsedSeriesCount) && parsedSeriesCount > 0) {
+        context.seriesSeasonCount = parsedSeriesCount;
+    }
+}
+
+async function fetchMappingByRoute(route, value, season) {
+    if (!MAPPING_API_URL || !route || !value) return null;
+    const encodedValue = encodeURIComponent(String(value).trim());
+    let url = `${MAPPING_API_URL}/mapping/${route}/${encodedValue}`;
+    if (Number.isInteger(season) && season >= 0) {
+        url += `?season=${season}`;
+    }
+
+    try {
+        const response = await fetch(url, { timeout: CANONICAL_RESOLVE_TIMEOUT });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch {
+        return null;
+    }
+}
+
+async function fetchTmdbIdFromImdbForCanonicalKey(imdbId) {
+    if (!TMDB_API_KEY) return null;
+    const url = `https://api.themoviedb.org/3/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+
+    try {
+        const response = await fetch(url, { timeout: CANONICAL_RESOLVE_TIMEOUT });
+        if (!response.ok) return null;
+        const payload = await response.json();
+
+        if (Array.isArray(payload?.tv_results) && payload.tv_results.length > 0) {
+            return payload.tv_results[0].id;
+        }
+        if (Array.isArray(payload?.movie_results) && payload.movie_results.length > 0) {
+            return payload.movie_results[0].id;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function resolveProviderRequestContext(type, providerId, season) {
+    const identityKey = `${type}:${providerId}:${season}`;
+    const cached = getCachedRequestContext(identityKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const context = {
+        idType: 'raw',
+        providerId: String(providerId),
+        requestedSeason: Number.isInteger(season) ? season : Number.parseInt(season, 10) || 1,
+        tmdbId: null,
+        imdbId: null,
+        mappedSeason: null,
+        seasonName: null,
+        titleHints: [],
+        longSeries: false,
+        episodeMode: null,
+        mappedSeasons: [],
+        seriesSeasonCount: null,
+        canonicalSeason: Number.isInteger(season) ? season : Number.parseInt(season, 10) || 1
+    };
+
+    const idStr = String(providerId || '').trim();
+    const isSeriesLike = type === 'series' || type === 'anime';
+
+    try {
+        if (idStr.startsWith('kitsu:') && typeof tmdbHelper.getTmdbFromKitsu === 'function') {
+            context.idType = 'kitsu';
+            const mapping = await tmdbHelper.getTmdbFromKitsu(idStr);
+            if (mapping) {
+                applyMappingHintsToContext(context, {
+                    tmdbId: mapping.tmdbId,
+                    season: mapping.season,
+                    seasonName: mapping.tmdbSeasonTitle,
+                    titleHints: mapping.titleHints,
+                    longSeries: mapping.longSeries,
+                    episodeMode: mapping.episodeMode,
+                    mappedSeasons: mapping.mappedSeasons,
+                    seriesSeasonCount: mapping.seriesSeasonCount
+                });
+            }
+        } else if (idStr.startsWith('tmdb:')) {
+            context.idType = 'tmdb';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.tmdbId = parts[1];
+            }
+        } else if (/^tt\d+$/i.test(idStr)) {
+            context.idType = 'imdb';
+            context.imdbId = idStr;
+
+            const byImdb = await fetchMappingByRoute('by-imdb', idStr, context.requestedSeason);
+            if (byImdb) {
+                applyMappingHintsToContext(context, byImdb);
+            }
+
+            if (!context.tmdbId) {
+                const fallbackTmdbId = await fetchTmdbIdFromImdbForCanonicalKey(idStr);
+                if (fallbackTmdbId !== null && fallbackTmdbId !== undefined) {
+                    context.tmdbId = String(fallbackTmdbId);
+                }
+            }
+        } else if (/^\d+$/.test(idStr)) {
+            context.idType = 'tmdb-numeric';
+            context.tmdbId = idStr;
+        }
+
+        if (isSeriesLike && context.tmdbId && context.idType !== 'kitsu') {
+            const byTmdb = await fetchMappingByRoute('by-tmdb', context.tmdbId, context.requestedSeason);
+            if (byTmdb) {
+                applyMappingHintsToContext(context, byTmdb);
+            }
+        }
+    } catch (error) {
+        console.warn(`[Stremio] Request context resolve failed for ${providerId}: ${error.message}`);
+    }
+
+    context.canonicalSeason = computeCanonicalSeason(context.requestedSeason, context.mappedSeason, context);
+    setCachedRequestContext(identityKey, context);
+    return cloneRequestContext(context);
+}
+
+function buildProviderRequestContext(context) {
+    if (!context) return null;
+    return {
+        __requestContext: true,
+        idType: context.idType,
+        providerId: context.providerId,
+        requestedSeason: context.requestedSeason,
+        canonicalSeason: context.canonicalSeason,
+        tmdbId: context.tmdbId,
+        imdbId: context.imdbId,
+        season: context.mappedSeason,
+        mappedSeason: context.mappedSeason,
+        seasonName: context.seasonName,
+        mappedSeasonName: context.seasonName,
+        titleHints: Array.isArray(context.titleHints) ? context.titleHints.slice() : [],
+        mappedTitleHints: Array.isArray(context.titleHints) ? context.titleHints.slice() : [],
+        longSeries: context.longSeries === true,
+        episodeMode: context.episodeMode || null,
+        mappedSeasons: Array.isArray(context.mappedSeasons) ? context.mappedSeasons.slice() : [],
+        seriesSeasonCount: context.seriesSeasonCount
+    };
+}
+
+async function resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext = null) {
+    if (!ADDON_CACHE_ENABLED) return null;
+    if (type !== 'series' && type !== 'anime') return null;
+
+    const identityKey = `${type}:${providerId}:${season}:${episode}`;
+    const cached = getCachedCanonicalRequestKey(identityKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const context = requestContext || await resolveProviderRequestContext(type, providerId, season);
+    const tmdbId = (context && /^\d+$/.test(String(context.tmdbId || ''))) ? String(context.tmdbId) : null;
+    if (!tmdbId) {
+        setCachedCanonicalRequestKey(identityKey, null);
+        return null;
+    }
+
+    const parsedCanonicalSeason = Number.parseInt(context?.canonicalSeason, 10);
+    const canonicalSeason = Number.isInteger(parsedCanonicalSeason)
+        ? parsedCanonicalSeason
+        : computeCanonicalSeason(season, context?.mappedSeason, context);
+
+    const cacheType = getCanonicalCacheMediaType(type);
+    const canonicalKey = `${cacheType}:canon:tmdb:${tmdbId}:${canonicalSeason}:${episode}`;
+    setCachedCanonicalRequestKey(identityKey, canonicalKey);
+    return canonicalKey;
+}
+
 // Import providers
 const providers = {
     animeunity: require('./src/animeunity/index.js'),
@@ -284,57 +678,65 @@ const builder = new addonBuilder({
 
 builder.defineStreamHandler(async ({ type, id }) => {
     const requestKey = `${type}:${id}`;
-    const cachedResponse = getCachedStreamResponse(requestKey);
+    const directCachedResponse = getCachedStreamResponse(requestKey);
 
-    if (cachedResponse) {
+    if (directCachedResponse) {
         console.log(`[Stremio] Cache hit: ${requestKey}`);
-        return cloneStreamResponse(cachedResponse);
+        return cloneStreamResponse(directCachedResponse);
     }
 
-    if (ADDON_CACHE_ENABLED && inFlightStreamRequests.has(requestKey)) {
-        console.log(`[Stremio] Reusing in-flight request: ${requestKey}`);
-        const sharedResponse = await inFlightStreamRequests.get(requestKey);
-        return cloneStreamResponse(sharedResponse);
+    const aliasedKey = getCachedStreamAlias(requestKey);
+    if (aliasedKey) {
+        const aliasedCachedResponse = getCachedStreamResponse(aliasedKey);
+        if (aliasedCachedResponse) {
+            console.log(`[Stremio] Cache hit (alias): ${requestKey} -> ${aliasedKey}`);
+            return cloneStreamResponse(aliasedCachedResponse);
+        }
+        streamCacheAliases.delete(requestKey);
     }
+
+    const parsedRequest = parseStremioRequestId(type, id);
+    const providerId = parsedRequest.providerId;
+    const season = parsedRequest.season;
+    const episode = parsedRequest.episode;
+    const requestContext = await resolveProviderRequestContext(type, providerId, season);
+    const canonicalCacheKey = await resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext);
+
+    if (canonicalCacheKey && canonicalCacheKey !== requestKey) {
+        const canonicalCachedResponse = getCachedStreamResponse(canonicalCacheKey);
+        if (canonicalCachedResponse) {
+            setCachedStreamAlias(requestKey, canonicalCacheKey);
+            console.log(`[Stremio] Cache hit (canonical): ${requestKey} -> ${canonicalCacheKey}`);
+            return cloneStreamResponse(canonicalCachedResponse);
+        }
+    }
+
+    if (ADDON_CACHE_ENABLED) {
+        const inFlightKeys = [requestKey];
+        if (canonicalCacheKey && canonicalCacheKey !== requestKey) {
+            inFlightKeys.unshift(canonicalCacheKey);
+        }
+
+        for (const key of inFlightKeys) {
+            if (!inFlightStreamRequests.has(key)) continue;
+            const label = (key === requestKey) ? requestKey : `${requestKey} -> ${key}`;
+            console.log(`[Stremio] Reusing in-flight request: ${label}`);
+            const sharedResponse = await inFlightStreamRequests.get(key);
+            return cloneStreamResponse(sharedResponse);
+        }
+    }
+
+    const cacheStorageKey = (canonicalCacheKey && canonicalCacheKey !== requestKey) ? canonicalCacheKey : requestKey;
 
     const streamResolutionPromise = (async () => {
     console.log(`[Stremio] Request: ${type} ${id}`);
-
-    let imdbId = id;
-    let season = 1;
-    let episode = 1;
-
-    // Helper to parse ID
-    if ((type === 'series' || type === 'anime') && id.includes(':')) {
-        // Handle "kitsu:123:1:1" or "tmdb:123:1:1"
-        if (id.startsWith('kitsu:') || id.startsWith('tmdb:')) {
-            const parts = id.split(':');
-            // parts[0] = kitsu, parts[1] = 123, parts[2] = 1, parts[3] = 1
-            if (parts.length >= 4) {
-                imdbId = `${parts[0]}:${parts[1]}`;
-                season = parseInt(parts[2]);
-                episode = parseInt(parts[3]);
-            } else if (parts.length === 3) {
-                // Handle absolute numbering (e.g. "kitsu:12:247")
-                // We assume Season 1 and Absolute Episode
-                imdbId = `${parts[0]}:${parts[1]}`;
-                season = 1;
-                episode = parseInt(parts[2]);
-            }
-        } else {
-            // Standard "tt123:1:1"
-            const parts = id.split(':');
-            imdbId = parts[0];
-            season = parseInt(parts[1]);
-            episode = parseInt(parts[2]);
-        }
-    } else if (type === 'movie') {
-        // Movies don't have season/episode usually, but just ID.
-        // If it's Kitsu/TMDB, it might just be "kitsu:123" or "tmdb:123"
-        imdbId = id;
+    if (cacheStorageKey !== requestKey) {
+        console.log(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
     }
-
-    console.log(`[Stremio] Parsed: ID=${imdbId}, Season=${season}, Episode=${episode}`);
+    console.log(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
+    if (requestContext?.tmdbId) {
+        console.log(`[Stremio] Context: TMDB=${requestContext.tmdbId}, MappedSeason=${requestContext.mappedSeason ?? 'n/a'}, CanonicalSeason=${requestContext.canonicalSeason}`);
+    }
 
     // Map Stremio type to provider type
     // Stremio: movie, series, anime
@@ -358,7 +760,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
             const providerPromise = (async () => {
                 try {
-                    const streams = await provider.getStreams(imdbId, providerType, season, episode);
+                    const providerContext = buildProviderRequestContext(requestContext);
+                    let streams;
+                    if (name === 'animeworld') {
+                        streams = await provider.getStreams(providerId, providerType, season, episode, null, providerContext);
+                    } else {
+                        streams = await provider.getStreams(providerId, providerType, season, episode, providerContext);
+                    }
                     console.log(`[${name}] Found ${streams.length} streams`);
                     return streams;
                 } catch (e) {
@@ -488,7 +896,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
     console.log(`[Stremio] Returning ${validStreams.length} streams total.`);
     const responsePayload = { streams: validStreams };
     if (validStreams.length > 0) {
-        setCachedStreamResponse(requestKey, responsePayload);
+        setCachedStreamResponse(cacheStorageKey, responsePayload);
+        if (cacheStorageKey !== requestKey) {
+            setCachedStreamAlias(requestKey, cacheStorageKey);
+        }
     } else {
         console.log(`[Stremio] Skipping cache for failed/empty result: ${requestKey}`);
     }
@@ -499,13 +910,19 @@ builder.defineStreamHandler(async ({ type, id }) => {
         return streamResolutionPromise;
     }
 
-    inFlightStreamRequests.set(requestKey, streamResolutionPromise);
+    inFlightStreamRequests.set(cacheStorageKey, streamResolutionPromise);
+    if (cacheStorageKey !== requestKey) {
+        inFlightStreamRequests.set(requestKey, streamResolutionPromise);
+    }
 
     try {
         const finalResponse = await streamResolutionPromise;
         return cloneStreamResponse(finalResponse);
     } finally {
-        inFlightStreamRequests.delete(requestKey);
+        inFlightStreamRequests.delete(cacheStorageKey);
+        if (cacheStorageKey !== requestKey) {
+            inFlightStreamRequests.delete(requestKey);
+        }
     }
 });
 

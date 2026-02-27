@@ -287,11 +287,21 @@ function getMetadata(id, type) {
     }
   });
 }
-function getStreams(id, type, season, episode) {
+function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     const normalizedType = String(type).toLowerCase();
     let tmdbId = id.toString();
-    if (tmdbId.startsWith("tmdb:")) {
+    let resolvedSeason = season;
+    const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+    const parsedContextSeason = parseInt(providerContext && providerContext.canonicalSeason, 10);
+    const hasContextSeason = Number.isInteger(parsedContextSeason) && parsedContextSeason >= 0;
+    if (contextTmdbId) {
+      tmdbId = contextTmdbId;
+      if (normalizedType === "tv" && hasContextSeason && resolvedSeason !== parsedContextSeason) {
+        console.log(`[StreamingCommunity] Prefetched mapping indicates Season ${parsedContextSeason}. Overriding requested Season ${resolvedSeason}`);
+        resolvedSeason = parsedContextSeason;
+      }
+    } else if (tmdbId.startsWith("tmdb:")) {
       tmdbId = tmdbId.replace("tmdb:", "");
     } else if (tmdbId.startsWith("tt")) {
       const convertedId = yield getTmdbId(tmdbId, normalizedType);
@@ -309,13 +319,13 @@ function getStreams(id, type, season, episode) {
       console.error("[StreamingCommunity] Error fetching metadata:", e);
     }
     const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
-    const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
+    const displayName = normalizedType === "movie" ? title : `${title} ${resolvedSeason}x${episode}`;
     const finalDisplayName = displayName;
     let url;
     if (normalizedType === "movie") {
       url = `${BASE_URL}/movie/${tmdbId}`;
     } else if (normalizedType === "tv") {
-      url = `${BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+      url = `${BASE_URL}/tv/${tmdbId}/${resolvedSeason}/${episode}`;
     } else {
       return [];
     }
