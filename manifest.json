@@ -5,7 +5,7 @@
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "description": "Movies and Series from Guardoserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.0.30",
+      "version": "1.0.31",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -31,7 +31,7 @@
     {
       "id": "easystreams-guardaserie",
       "name": "Guardaserie",
-      "version": "1.0.31",
+      "version": "1.0.32",
       "description": "TV Series from Guardaserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -44,7 +44,7 @@
     {
       "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.16",
+      "version": "1.1.17",
       "description": "Movies and Series from StreamingCommunity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
