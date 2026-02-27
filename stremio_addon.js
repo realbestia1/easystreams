@@ -129,10 +129,6 @@ const ENABLE_TMDB_ANIME_DETECTION = process.env.ENABLE_TMDB_ANIME_DETECTION !== 
 const TMDB_ANIME_DETECTION_TIMEOUT = Number.parseInt(process.env.TMDB_ANIME_DETECTION_TIMEOUT_MS || '1200', 10) || 1200;
 const TMDB_ANIME_CACHE_TTL = Number.parseInt(process.env.TMDB_ANIME_CACHE_TTL_MS || '21600000', 10) || 21600000;
 const ADDON_CACHE_ENABLED = process.env.ADDON_CACHE_ENABLED !== '0';
-const FORCE_MAX_PLAYLIST_RESOLUTION = process.env.FORCE_MAX_PLAYLIST_RESOLUTION !== '0';
-const MAX_PLAYLIST_RESOLVE_TIMEOUT = Number.parseInt(process.env.MAX_PLAYLIST_RESOLVE_TIMEOUT_MS || '1500', 10) || 1500;
-const MAX_PLAYLIST_RESOLVE_CACHE_TTL = Number.parseInt(process.env.MAX_PLAYLIST_RESOLVE_CACHE_TTL_MS || '300000', 10) || 300000;
-const MAX_PLAYLIST_RESOLVE_CACHE_SIZE = Number.parseInt(process.env.MAX_PLAYLIST_RESOLVE_CACHE_SIZE || '20000', 10) || 20000;
 const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '10800000', 10) || 10800000;
 const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
 const STREAM_CACHE_MAX_BYTES = Number.parseInt(
@@ -141,8 +137,6 @@ const STREAM_CACHE_MAX_BYTES = Number.parseInt(
 ) || (100 * 1024 * 1024);
 
 const streamCache = new Map();
-const maxPlaylistVariantCache = new Map();
-const maxPlaylistVariantInFlight = new Map();
 const inFlightStreamRequests = new Map();
 let streamCacheBytes = 0;
 
@@ -203,174 +197,6 @@ function setCachedStreamResponse(cacheKey, response) {
         sizeBytes: payloadSize
     });
     streamCacheBytes += payloadSize;
-}
-
-function getCachedMaxPlaylistVariant(cacheKey) {
-    const entry = maxPlaylistVariantCache.get(cacheKey);
-    if (!entry) return undefined;
-    if (entry.expiresAt <= Date.now()) {
-        maxPlaylistVariantCache.delete(cacheKey);
-        return undefined;
-    }
-    return entry.value;
-}
-
-function setCachedMaxPlaylistVariant(cacheKey, value) {
-    if (maxPlaylistVariantCache.size >= MAX_PLAYLIST_RESOLVE_CACHE_SIZE) {
-        const oldestKey = maxPlaylistVariantCache.keys().next().value;
-        if (oldestKey !== undefined) {
-            maxPlaylistVariantCache.delete(oldestKey);
-        }
-    }
-
-    maxPlaylistVariantCache.set(cacheKey, {
-        value,
-        expiresAt: Date.now() + MAX_PLAYLIST_RESOLVE_CACHE_TTL
-    });
-}
-
-function isRealM3u8Url(rawUrl) {
-    const value = String(rawUrl || '').trim();
-    if (!value) return false;
-    if (!/\.m3u8(?:$|[?#])/i.test(value)) return false;
-
-    const hashIndex = value.indexOf('#');
-    if (hashIndex >= 0) {
-        const beforeHash = value.slice(0, hashIndex);
-        const fragment = value.slice(hashIndex + 1);
-        // Some extractors append "#index.m3u8" to non-HLS URLs only as player hint.
-        if (!/\.m3u8(?:$|[?#])/i.test(beforeHash) && /\.m3u8/i.test(fragment)) {
-            return false;
-        }
-    }
-
-    // Proxy-wrapper URLs with encoded target may break relative playlist variant resolution.
-    if (/[?&](?:url|target)=https?%3A%2F%2F/i.test(value)) {
-        return false;
-    }
-
-    return true;
-}
-
-function parseM3u8Attributes(raw) {
-    const out = Object.create(null);
-    const input = String(raw || '');
-    const regex = /([A-Z0-9-]+)=("[^"]*"|[^,]*)/gi;
-    let match;
-    while ((match = regex.exec(input)) !== null) {
-        const key = String(match[1] || '').toUpperCase();
-        let value = String(match[2] || '').trim();
-        if (value.startsWith('"') && value.endsWith('"')) {
-            value = value.slice(1, -1);
-        }
-        out[key] = value;
-    }
-    return out;
-}
-
-function pickHighestVariantUriFromMasterPlaylist(playlistText) {
-    const text = String(playlistText || '');
-    if (!text || !/#EXT-X-STREAM-INF:/i.test(text)) return null;
-
-    const lines = text.split(/\r?\n/);
-    let best = null;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = String(lines[i] || '').trim();
-        if (!line) continue;
-        if (!line.toUpperCase().startsWith('#EXT-X-STREAM-INF:')) continue;
-
-        const attrs = parseM3u8Attributes(line.slice(line.indexOf(':') + 1));
-
-        let variantUri = null;
-        for (let j = i + 1; j < lines.length; j++) {
-            const candidate = String(lines[j] || '').trim();
-            if (!candidate) continue;
-            if (candidate.startsWith('#')) continue;
-            variantUri = candidate;
-            break;
-        }
-        if (!variantUri) continue;
-
-        const resolution = String(attrs.RESOLUTION || '');
-        const resMatch = resolution.match(/(\d+)\s*x\s*(\d+)/i);
-        const width = resMatch ? Number.parseInt(resMatch[1], 10) : 0;
-        const height = resMatch ? Number.parseInt(resMatch[2], 10) : 0;
-
-        const avgBandwidth = Number.parseInt(attrs['AVERAGE-BANDWIDTH'], 10);
-        const bandwidth = Number.isInteger(avgBandwidth) && avgBandwidth > 0
-            ? avgBandwidth
-            : (Number.parseInt(attrs.BANDWIDTH, 10) || 0);
-
-        const score = (height * 1_000_000_000) + (width * 1_000_000) + bandwidth;
-        if (!best || score > best.score) {
-            best = { uri: variantUri, score };
-        }
-    }
-
-    return best?.uri || null;
-}
-
-async function resolveMaxPlaylistVariant(rawUrl, requestHeaders = null) {
-    if (!FORCE_MAX_PLAYLIST_RESOLUTION) return rawUrl;
-    if (!isRealM3u8Url(rawUrl)) return rawUrl;
-
-    const masterUrl = String(rawUrl || '').trim();
-    if (!masterUrl) return rawUrl;
-
-    const cacheKey = masterUrl;
-    const cached = getCachedMaxPlaylistVariant(cacheKey);
-    if (cached !== undefined) {
-        return cached || rawUrl;
-    }
-
-    if (maxPlaylistVariantInFlight.has(cacheKey)) {
-        const shared = await maxPlaylistVariantInFlight.get(cacheKey);
-        return shared || rawUrl;
-    }
-
-    const resolverPromise = (async () => {
-        try {
-            const headers = (requestHeaders && typeof requestHeaders === 'object')
-                ? { ...requestHeaders }
-                : {};
-            if (!headers['User-Agent'] && !headers['user-agent']) {
-                headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-            }
-
-            const response = await fetch(masterUrl, {
-                headers,
-                timeout: MAX_PLAYLIST_RESOLVE_TIMEOUT
-            });
-            if (!response.ok) return null;
-
-            const playlistText = await response.text();
-            const bestVariant = pickHighestVariantUriFromMasterPlaylist(playlistText);
-            if (!bestVariant) return null;
-
-            try {
-                const resolved = new URL(bestVariant, masterUrl).toString();
-                if (resolved && resolved !== masterUrl) {
-                    return resolved;
-                }
-            } catch {
-                return null;
-            }
-
-            return null;
-        } catch {
-            return null;
-        }
-    })();
-
-    maxPlaylistVariantInFlight.set(cacheKey, resolverPromise);
-    try {
-        const resolvedVariant = await resolverPromise;
-        setCachedMaxPlaylistVariant(cacheKey, resolvedVariant || null);
-        return resolvedVariant || rawUrl;
-    } finally {
-        maxPlaylistVariantInFlight.delete(cacheKey);
-    }
 }
 
 // Wrap global fetch to enforce timeout
@@ -786,21 +612,6 @@ function shouldMarkStreamAsNotWebReady(stream) {
     if (behaviorHints.notWebReady === false) return false;
 
     return !isHttpsMp4Url(stream?.url);
-}
-
-function getStreamPlaybackHeaders(stream) {
-    const behaviorHints = stream?.behaviorHints || {};
-    const proxyHeaders = behaviorHints.proxyHeaders?.request;
-    if (proxyHeaders && typeof proxyHeaders === 'object') {
-        return proxyHeaders;
-    }
-
-    const headers = stream?.headers || behaviorHints.headers;
-    if (headers && typeof headers === 'object') {
-        return headers;
-    }
-
-    return null;
 }
 
 function mergeDistinctStrings(base = [], incoming = []) {
@@ -1250,7 +1061,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             let streams = await Promise.race([providerPromise, timeoutPromise]);
 
             // Fase 2.3: Stream Processing
-            const filteredStreams = streams
+            const processedStreams = streams
                 .filter((s) => {
                     if (!s || !s.url) return false;
                     const server = (s.server || "").toLowerCase();
@@ -1258,19 +1069,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                     const sTitle = (s.title || "").toLowerCase();
                     // Global filter for specific unwanted servers
                     return !server.includes('mixdrop') && !sName.includes('mixdrop') && !sTitle.includes('mixdrop');
-                });
-
-            const normalizedStreams = await Promise.all(filteredStreams.map(async (s) => {
-                const playbackHeaders = getStreamPlaybackHeaders(s);
-                const resolvedUrl = await resolveMaxPlaylistVariant(s.url, playbackHeaders);
-                if (resolvedUrl !== s.url) {
-                    logVerbose(`[${name}] Max playlist variant selected`);
-                    return { ...s, url: resolvedUrl };
-                }
-                return s;
-            }));
-
-            const processedStreams = normalizedStreams
+                })
                 .map((s) => {
                     // For Stremio, we reconstruct the legacy multiline format using metadata
                     const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
