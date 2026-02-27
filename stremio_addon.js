@@ -28,6 +28,18 @@ if (!global.fetch) {
 const https = require('https');
 const http = require('http');
 
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const VERBOSE_LOGS = process.env.VERBOSE_LOGS === '1' || (!IS_PRODUCTION && process.env.VERBOSE_LOGS !== '0');
+
+function logInfo(...args) {
+    console.log(...args);
+}
+
+function logVerbose(...args) {
+    if (!VERBOSE_LOGS) return;
+    console.log(...args);
+}
+
 // Connection pooling configuration
 const agentOptions = {
     keepAlive: true,
@@ -48,7 +60,7 @@ const path = require('path');
 // Set global proxy from env for all providers to use
 if (process.env.CF_PROXY_URL) {
     global.CF_PROXY_URL = process.env.CF_PROXY_URL;
-    console.log(`[Proxy] Global CF_PROXY_URL set: ${global.CF_PROXY_URL}`);
+    logInfo(`[Proxy] Global CF_PROXY_URL set: ${global.CF_PROXY_URL}`);
 }
 
 // Performance Metrics
@@ -73,7 +85,7 @@ app.use((req, res, next) => {
         if (metrics.requests % 50 === 0) {
             const avgTime = metrics.totalResponseTime / metrics.requests;
             const errorRate = (metrics.errors / metrics.requests) * 100;
-            console.log(`[Metrics] Req: ${metrics.requests} | Avg: ${avgTime.toFixed(0)}ms | Errors: ${errorRate.toFixed(1)}%`);
+            logVerbose(`[Metrics] Req: ${metrics.requests} | Avg: ${avgTime.toFixed(0)}ms | Errors: ${errorRate.toFixed(1)}%`);
         }
     });
     next();
@@ -418,7 +430,7 @@ if (ADDON_MAPPING_CACHE_ENABLED && typeof tmdbHelper.getTmdbFromKitsu === 'funct
         const cached = getCachedMapping(cacheKey);
 
         if (cached !== null) {
-            console.log(`[Stremio] Mapping cache hit: kitsu:${cacheKey}`);
+            logVerbose(`[Stremio] Mapping cache hit: kitsu:${cacheKey}`);
             return cloneMappingResult(cached);
         }
 
@@ -1103,7 +1115,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const directCachedResponse = getCachedStreamResponse(requestKey);
 
     if (directCachedResponse) {
-        console.log(`[Stremio] Cache hit: ${requestKey}`);
+        logVerbose(`[Stremio] Cache hit: ${requestKey}`);
         return cloneStreamResponse(directCachedResponse);
     }
 
@@ -1111,7 +1123,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     if (aliasedKey) {
         const aliasedCachedResponse = getCachedStreamResponse(aliasedKey);
         if (aliasedCachedResponse) {
-            console.log(`[Stremio] Cache hit (alias): ${requestKey} -> ${aliasedKey}`);
+            logVerbose(`[Stremio] Cache hit (alias): ${requestKey} -> ${aliasedKey}`);
             return cloneStreamResponse(aliasedCachedResponse);
         }
         streamCacheAliases.delete(requestKey);
@@ -1128,7 +1140,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         const canonicalCachedResponse = getCachedStreamResponse(canonicalCacheKey);
         if (canonicalCachedResponse) {
             setCachedStreamAlias(requestKey, canonicalCacheKey);
-            console.log(`[Stremio] Cache hit (canonical): ${requestKey} -> ${canonicalCacheKey}`);
+            logVerbose(`[Stremio] Cache hit (canonical): ${requestKey} -> ${canonicalCacheKey}`);
             return cloneStreamResponse(canonicalCachedResponse);
         }
     }
@@ -1142,7 +1154,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         for (const key of inFlightKeys) {
             if (!inFlightStreamRequests.has(key)) continue;
             const label = (key === requestKey) ? requestKey : `${requestKey} -> ${key}`;
-            console.log(`[Stremio] Reusing in-flight request: ${label}`);
+            logVerbose(`[Stremio] Reusing in-flight request: ${label}`);
             const sharedResponse = await inFlightStreamRequests.get(key);
             return cloneStreamResponse(sharedResponse);
         }
@@ -1152,13 +1164,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const animeRoutingFlagPromise = resolveAnimeRoutingFlag(type, providerId, requestContext);
 
     const streamResolutionPromise = (async () => {
-    console.log(`[Stremio] Request: ${type} ${id}`);
+    logVerbose(`[Stremio] Request: ${type} ${id}`);
     if (cacheStorageKey !== requestKey) {
-        console.log(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
+        logVerbose(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
     }
-    console.log(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
+    logVerbose(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
     if (requestContext?.tmdbId) {
-        console.log(`[Stremio] Context: TMDB=${requestContext.tmdbId}, MappedSeason=${requestContext.mappedSeason ?? 'n/a'}, CanonicalSeason=${requestContext.canonicalSeason}`);
+        logVerbose(`[Stremio] Context: TMDB=${requestContext.tmdbId}, MappedSeason=${requestContext.mappedSeason ?? 'n/a'}, CanonicalSeason=${requestContext.canonicalSeason}`);
     }
 
     // Map Stremio type to provider type
@@ -1169,21 +1181,21 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const collectedStreams = [];
     const animeRoutingFlag = await animeRoutingFlagPromise;
     if (animeRoutingFlag && type !== 'anime') {
-        console.log(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
+        logVerbose(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
     }
     const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag);
     if (selectedProviders.length === 0) {
         console.warn('[Stremio] No provider selected for request.');
         return { streams: [] };
     }
-    console.log(`[Stremio] Providers selected (${selectedProviders.length}): ${selectedProviders.join(', ')}`);
+    logVerbose(`[Stremio] Providers selected (${selectedProviders.length}): ${selectedProviders.join(', ')}`);
 
     const providerTasks = selectedProviders.map(async (name) => {
         try {
             const provider = providers[name];
             if (typeof provider.getStreams !== 'function') return [];
 
-            console.log(`[${name}] Searching...`);
+            logVerbose(`[${name}] Searching...`);
 
             let timeoutId;
             const timeoutPromise = new Promise((resolve) => {
@@ -1202,7 +1214,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                     } else {
                         streams = await provider.getStreams(providerId, providerType, season, episode, providerContext);
                     }
-                    console.log(`[${name}] Found ${streams.length} streams`);
+                    logVerbose(`[${name}] Found ${streams.length} streams`);
                     return streams;
                 } catch (e) {
                     console.error(`[${name}] Execution Error:`, e.message);
@@ -1230,7 +1242,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                 const playbackHeaders = getStreamPlaybackHeaders(s);
                 const resolvedUrl = await resolveMaxPlaylistVariant(s.url, playbackHeaders);
                 if (resolvedUrl !== s.url) {
-                    console.log(`[${name}] Max playlist variant selected`);
+                    logVerbose(`[${name}] Max playlist variant selected`);
                     return { ...s, url: resolvedUrl };
                 }
                 return s;
@@ -1344,7 +1356,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         return scoreB - scoreA; // Descending
     });
 
-    console.log(`[Stremio] Returning ${validStreams.length} streams total.`);
+    logVerbose(`[Stremio] Returning ${validStreams.length} streams total.`);
     const responsePayload = { streams: validStreams };
     if (validStreams.length > 0) {
         setCachedStreamResponse(cacheStorageKey, responsePayload);
@@ -1352,7 +1364,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             setCachedStreamAlias(requestKey, cacheStorageKey);
         }
     } else {
-        console.log(`[Stremio] Skipping cache for failed/empty result: ${requestKey}`);
+        logVerbose(`[Stremio] Skipping cache for failed/empty result: ${requestKey}`);
     }
     return responsePayload;
     })();
@@ -1653,17 +1665,17 @@ app.use('/', addonRouter);
 
 const PORT = process.env.PORT || 7000;
 const server = app.listen(PORT, () => {
-    console.log(`Stremio Addon running at http://localhost:${PORT}`);
+    logInfo(`Stremio Addon running at http://localhost:${PORT}`);
 });
 
 // Graceful Shutdown
 process.on('SIGTERM', () => {
-    console.log('[Shutdown] SIGTERM received. Closing server...');
+    logInfo('[Shutdown] SIGTERM received. Closing server...');
     server.close(() => {
-        console.log('[Shutdown] Server closed.');
+        logInfo('[Shutdown] Server closed.');
         httpsAgent.destroy();
         httpAgent.destroy();
-        console.log('[Shutdown] Agents destroyed. Exiting.');
+        logInfo('[Shutdown] Agents destroyed. Exiting.');
         process.exit(0);
     });
 });
