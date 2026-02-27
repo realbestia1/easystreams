@@ -80,9 +80,20 @@ app.use((req, res, next) => {
 });
 
 // Global timeout configuration
-const FETCH_TIMEOUT = 10000; // 10 seconds for HTTP requests
-const STREAM_RESPONSE_TIMEOUT = 10000; // Hard cap for stream response time
-const PROVIDER_TIMEOUT = 10000; // Keep provider work below global response deadline
+const FETCH_TIMEOUT = Number.parseInt(process.env.FETCH_TIMEOUT_MS || '10000', 10) || 10000;
+const STREAM_RESPONSE_TIMEOUT = Number.parseInt(process.env.STREAM_RESPONSE_TIMEOUT_MS || '7000', 10) || 7000;
+const DEFAULT_PROVIDER_TIMEOUT = Math.max(1500, STREAM_RESPONSE_TIMEOUT - 500);
+const PROVIDER_TIMEOUT = Math.min(
+    Number.parseInt(process.env.PROVIDER_TIMEOUT_MS || String(DEFAULT_PROVIDER_TIMEOUT), 10) || DEFAULT_PROVIDER_TIMEOUT,
+    STREAM_RESPONSE_TIMEOUT
+);
+const ENABLE_SERIES_MAPPING_LOOKUP = process.env.ENABLE_SERIES_MAPPING_LOOKUP === '1';
+const ENABLE_ANIME_FALLBACK_ON_SERIES = process.env.ENABLE_ANIME_FALLBACK_ON_SERIES === '1';
+const ENABLE_ANIME_FALLBACK_ON_MOVIES = process.env.ENABLE_ANIME_FALLBACK_ON_MOVIES === '1';
+const FORCE_ALL_PROVIDERS = process.env.FORCE_ALL_PROVIDERS === '1';
+const ENABLE_TMDB_ANIME_DETECTION = process.env.ENABLE_TMDB_ANIME_DETECTION !== '0';
+const TMDB_ANIME_DETECTION_TIMEOUT = Number.parseInt(process.env.TMDB_ANIME_DETECTION_TIMEOUT_MS || '1200', 10) || 1200;
+const TMDB_ANIME_CACHE_TTL = Number.parseInt(process.env.TMDB_ANIME_CACHE_TTL_MS || '21600000', 10) || 21600000;
 const ADDON_CACHE_ENABLED = process.env.ADDON_CACHE_ENABLED !== '0';
 const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '10800000', 10) || 10800000;
 const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
@@ -269,6 +280,8 @@ const CANONICAL_REQUEST_CACHE_MAX_SIZE = Number.parseInt(process.env.CANONICAL_R
 const streamCacheAliases = new Map();
 const canonicalRequestCache = new Map();
 const requestContextCache = new Map();
+const tmdbAnimeDetectionCache = new Map();
+const tmdbAnimeDetectionInFlight = new Map();
 
 function getCachedStreamAlias(sourceKey) {
     if (!ADDON_CACHE_ENABLED) return null;
@@ -353,6 +366,128 @@ function setCachedRequestContext(cacheKey, value) {
         value: cloneRequestContext(value),
         expiresAt: Date.now() + ADDON_MAPPING_CACHE_TTL
     });
+}
+
+function hasJapaneseCharacters(value) {
+    return /[\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff]/.test(String(value || ''));
+}
+
+function isAnimeLikeTmdbPayload(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+
+    const genres = Array.isArray(payload.genres) ? payload.genres : [];
+    const hasAnimationGenre = genres.some((g) => {
+        const id = Number.parseInt(g?.id, 10);
+        const name = String(g?.name || '').toLowerCase();
+        return id === 16 || name.includes('animation') || name.includes('animazione') || name.includes('anime');
+    });
+
+    if (!hasAnimationGenre) return false;
+
+    const originalLanguage = String(payload.original_language || '').toLowerCase();
+    if (originalLanguage === 'ja' || originalLanguage === 'jp') return true;
+
+    const originCountries = Array.isArray(payload.origin_country) ? payload.origin_country : [];
+    if (originCountries.some((code) => String(code || '').toUpperCase() === 'JP')) return true;
+
+    const productionCountries = Array.isArray(payload.production_countries) ? payload.production_countries : [];
+    if (productionCountries.some((entry) => String(entry?.iso_3166_1 || '').toUpperCase() === 'JP')) return true;
+
+    const titleCandidates = [
+        payload.original_name,
+        payload.original_title,
+        payload.name,
+        payload.title
+    ];
+    if (titleCandidates.some((t) => hasJapaneseCharacters(t))) return true;
+
+    return false;
+}
+
+function getCachedAnimeDetection(cacheKey) {
+    const entry = tmdbAnimeDetectionCache.get(cacheKey);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+        tmdbAnimeDetectionCache.delete(cacheKey);
+        return undefined;
+    }
+    return entry.value === true;
+}
+
+function setCachedAnimeDetection(cacheKey, value) {
+    if (tmdbAnimeDetectionCache.size >= CANONICAL_REQUEST_CACHE_MAX_SIZE) {
+        const oldestKey = tmdbAnimeDetectionCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            tmdbAnimeDetectionCache.delete(oldestKey);
+        }
+    }
+
+    tmdbAnimeDetectionCache.set(cacheKey, {
+        value: value === true,
+        expiresAt: Date.now() + TMDB_ANIME_CACHE_TTL
+    });
+}
+
+async function fetchTmdbMetadataForAnimeDetection(mediaType, tmdbId) {
+    const endpoint = mediaType === 'movie' ? 'movie' : 'tv';
+    const url = `https://api.themoviedb.org/3/${endpoint}/${encodeURIComponent(tmdbId)}?api_key=${TMDB_API_KEY}&language=en-US`;
+    try {
+        const response = await fetch(url, { timeout: TMDB_ANIME_DETECTION_TIMEOUT });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch {
+        return null;
+    }
+}
+
+async function detectAnimeByTmdb(type, requestContext = null) {
+    if (!ENABLE_TMDB_ANIME_DETECTION || !TMDB_API_KEY) return false;
+
+    const tmdbId = /^\d+$/.test(String(requestContext?.tmdbId || ''))
+        ? String(requestContext.tmdbId)
+        : null;
+    if (!tmdbId) return false;
+
+    const normalizedType = String(type || '').toLowerCase();
+    // Keep media type strict to avoid false positives on shared numeric IDs
+    // (e.g. series TV id can exist as a different movie id).
+    const endpoints = normalizedType === 'movie'
+        ? ['movie']
+        : normalizedType === 'series'
+            ? ['tv']
+            : ['tv', 'movie'];
+
+    for (const endpoint of endpoints) {
+        const cacheKey = `${endpoint}:${tmdbId}`;
+        const cached = getCachedAnimeDetection(cacheKey);
+        if (cached !== undefined) {
+            if (cached) return true;
+            continue;
+        }
+
+        if (tmdbAnimeDetectionInFlight.has(cacheKey)) {
+            const shared = await tmdbAnimeDetectionInFlight.get(cacheKey);
+            if (shared) return true;
+            continue;
+        }
+
+        const detectionPromise = (async () => {
+            const payload = await fetchTmdbMetadataForAnimeDetection(endpoint, tmdbId);
+            const isAnime = isAnimeLikeTmdbPayload(payload);
+            setCachedAnimeDetection(cacheKey, isAnime);
+            return isAnime;
+        })();
+
+        tmdbAnimeDetectionInFlight.set(cacheKey, detectionPromise);
+        try {
+            const detected = await detectionPromise;
+            if (detected) return true;
+        } finally {
+            tmdbAnimeDetectionInFlight.delete(cacheKey);
+        }
+    }
+
+    return false;
 }
 
 function parseStremioRequestId(type, id) {
@@ -576,7 +711,10 @@ async function resolveProviderRequestContext(type, providerId, season) {
     };
 
     const idStr = String(providerId || '').trim();
-    const isSeriesLike = type === 'series' || type === 'anime';
+    const shouldFetchMappingApi =
+        type === 'anime' ||
+        idStr.startsWith('kitsu:') ||
+        ENABLE_SERIES_MAPPING_LOOKUP;
 
     try {
         if (idStr.startsWith('kitsu:') && typeof tmdbHelper.getTmdbFromKitsu === 'function') {
@@ -604,9 +742,11 @@ async function resolveProviderRequestContext(type, providerId, season) {
             context.idType = 'imdb';
             context.imdbId = idStr;
 
-            const byImdb = await fetchMappingByRoute('by-imdb', idStr, context.requestedSeason);
-            if (byImdb) {
-                applyMappingHintsToContext(context, byImdb);
+            if (shouldFetchMappingApi) {
+                const byImdb = await fetchMappingByRoute('by-imdb', idStr, context.requestedSeason);
+                if (byImdb) {
+                    applyMappingHintsToContext(context, byImdb);
+                }
             }
 
             if (!context.tmdbId) {
@@ -620,7 +760,7 @@ async function resolveProviderRequestContext(type, providerId, season) {
             context.tmdbId = idStr;
         }
 
-        if (isSeriesLike && context.tmdbId && context.idType !== 'kitsu') {
+        if (shouldFetchMappingApi && context.tmdbId && context.idType !== 'kitsu') {
             const byTmdb = await fetchMappingByRoute('by-tmdb', context.tmdbId, context.requestedSeason);
             if (byTmdb) {
                 applyMappingHintsToContext(context, byTmdb);
@@ -696,6 +836,68 @@ const providers = {
     streamingcommunity: require('./src/streamingcommunity/index.js')
 };
 
+function isLikelyAnimeRequest(type, providerId, requestContext) {
+    const normalizedType = String(type || '').toLowerCase();
+    if (normalizedType === 'anime') return true;
+
+    const normalizedProviderId = String(providerId || '').trim().toLowerCase();
+    if (normalizedProviderId.startsWith('kitsu:')) return true;
+
+    const contextIdType = String(requestContext?.idType || '').toLowerCase();
+    if (contextIdType === 'kitsu') return true;
+
+    if (requestContext?.longSeries === true && String(requestContext?.episodeMode || '').toLowerCase() === 'absolute') {
+        return true;
+    }
+
+    return false;
+}
+
+async function resolveAnimeRoutingFlag(type, providerId, requestContext) {
+    if (isLikelyAnimeRequest(type, providerId, requestContext)) {
+        return true;
+    }
+
+    const normalizedType = String(type || '').toLowerCase();
+    if (normalizedType !== 'series' && normalizedType !== 'movie') {
+        return false;
+    }
+
+    return await detectAnimeByTmdb(normalizedType, requestContext);
+}
+
+function getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag = null) {
+    if (FORCE_ALL_PROVIDERS) {
+        return Object.keys(providers);
+    }
+
+    const normalizedType = String(type || '').toLowerCase();
+    const likelyAnime = typeof animeRoutingFlag === 'boolean'
+        ? animeRoutingFlag
+        : isLikelyAnimeRequest(normalizedType, providerId, requestContext);
+    let plan;
+
+    if (normalizedType === 'movie') {
+        if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
+            // For anime-like movies avoid StreamingCommunity noise/404s.
+            plan = ['guardoserie', 'animeunity', 'animeworld'];
+        } else {
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie'];
+        }
+    } else if (normalizedType === 'anime') {
+        plan = ['animeunity', 'animeworld', 'guardaserie'];
+    } else {
+        if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
+            // For anime-like series avoid StreamingCommunity noise/404s.
+            plan = ['guardaserie', 'guardoserie', 'animeunity', 'animeworld'];
+        } else {
+            plan = ['streamingcommunity', 'guardaserie', 'guardoserie'];
+        }
+    }
+
+    return [...new Set(plan)].filter((name) => providers[name] && typeof providers[name].getStreams === 'function');
+}
+
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
     version: '1.1.0',
@@ -758,6 +960,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     }
 
     const cacheStorageKey = (canonicalCacheKey && canonicalCacheKey !== requestKey) ? canonicalCacheKey : requestKey;
+    const animeRoutingFlagPromise = resolveAnimeRoutingFlag(type, providerId, requestContext);
 
     const streamResolutionPromise = (async () => {
     console.log(`[Stremio] Request: ${type} ${id}`);
@@ -775,8 +978,20 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const providerType = (type === 'movie') ? 'movie' : 'tv';
 
     const collectedStreams = [];
-    const providerTasks = Object.entries(providers).map(async ([name, provider]) => {
+    const animeRoutingFlag = await animeRoutingFlagPromise;
+    if (animeRoutingFlag && type !== 'anime') {
+        console.log(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
+    }
+    const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag);
+    if (selectedProviders.length === 0) {
+        console.warn('[Stremio] No provider selected for request.');
+        return { streams: [] };
+    }
+    console.log(`[Stremio] Providers selected (${selectedProviders.length}): ${selectedProviders.join(', ')}`);
+
+    const providerTasks = selectedProviders.map(async (name) => {
         try {
+            const provider = providers[name];
             if (typeof provider.getStreams !== 'function') return [];
 
             console.log(`[${name}] Searching...`);
