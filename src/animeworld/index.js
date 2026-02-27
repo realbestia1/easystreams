@@ -10,6 +10,9 @@ const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 async function getMetadata(id, type, requestedSeason = null, prefetchedMapping = null) {
     try {
         const normalizedType = String(type).toLowerCase();
+        const parsedRequestedSeason = Number.parseInt(requestedSeason, 10);
+        const isSpecialSeasonRequest = Number.isInteger(parsedRequestedSeason) && parsedRequestedSeason === 0;
+        const allowMovieFallback = normalizedType === "movie" || isSpecialSeasonRequest;
         let tmdbId = id;
         let mappedSeason = null;
         let mappedSeasonName = null;
@@ -143,6 +146,12 @@ async function getMetadata(id, type, requestedSeason = null, prefetchedMapping =
         let endpoint = normalizedType === "movie" ? "movie" : "tv";
         let detailsResponse = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
         if (!detailsResponse.ok) {
+            // For regular episodic requests (season > 0), avoid falling back to movie:
+            // bad mappings would otherwise return unrelated franchise movies.
+            if (endpoint === "tv" && !allowMovieFallback) {
+                console.log(`[AnimeWorld] TMDB TV metadata not found for ${tmdbId}; skipping movie fallback for ${normalizedType} Season ${requestedSeason}`);
+                return null;
+            }
             endpoint = endpoint === "movie" ? "tv" : "movie";
             detailsResponse = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
             if (!detailsResponse.ok) return null;
@@ -396,6 +405,62 @@ function hasLooseOverlap(candidateTitle, targetTitle) {
 
 function isLooselyRelevant(candidateTitle, targets = []) {
     return targets.some(t => hasLooseOverlap(candidateTitle, t));
+}
+
+function splitTitleForMovieHint(rawTitle) {
+    const raw = String(rawTitle || "").trim();
+    if (!raw) return { base: "", subtitle: "" };
+
+    const separators = [" - ", " – ", " — ", ":"];
+    let splitIndex = -1;
+    let splitLength = 0;
+
+    for (const sep of separators) {
+        const idx = raw.lastIndexOf(sep);
+        if (idx > splitIndex) {
+            splitIndex = idx;
+            splitLength = sep.length;
+        }
+    }
+
+    if (splitIndex < 0) {
+        return { base: raw, subtitle: "" };
+    }
+
+    return {
+        base: raw.slice(0, splitIndex).trim(),
+        subtitle: raw.slice(splitIndex + splitLength).trim()
+    };
+}
+
+function extractMovieSubtitleHints(titles = []) {
+    const baseTokens = new Set();
+    const subtitleTokens = new Set();
+
+    for (const rawTitle of titles) {
+        const { base, subtitle } = splitTitleForMovieHint(rawTitle);
+        const baseSource = base || rawTitle;
+        tokenizeLooseText(baseSource).forEach(token => baseTokens.add(token));
+        tokenizeLooseText(subtitle).forEach(token => subtitleTokens.add(token));
+    }
+
+    return [...subtitleTokens].filter(token =>
+        token.length >= 4 &&
+        !baseTokens.has(token) &&
+        !/^\d+$/.test(token)
+    );
+}
+
+function candidateMatchesMovieSubtitleHints(candidate, hints = []) {
+    if (!candidate || !Array.isArray(hints) || hints.length === 0) return true;
+    const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.trim();
+    if (!raw) return false;
+
+    const tokenSet = new Set(tokenizeLooseText(raw));
+    if (hints.some(h => tokenSet.has(h))) return true;
+
+    const rawNorm = normalizeLooseText(raw);
+    return hints.some(h => rawNorm.includes(h));
 }
 
 function tokenizeForPairing(text) {
@@ -764,6 +829,21 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     });
 
     if (exactMatch && season === 1) return exactMatch;
+
+    if (!isTv && season === 1) {
+        const movieSubtitleHints = extractMovieSubtitleHints([
+            title,
+            originalTitle,
+            ...((metadata.mappedTitleHints || []).slice(0, 20))
+        ]);
+        if (movieSubtitleHints.length > 0) {
+            candidates = candidates.filter(c => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
+            if (candidates.length === 0) {
+                console.log(`[AnimeWorld] Movie subtitle guard rejected all candidates for: ${title}`);
+                return null;
+            }
+        }
+    }
 
     // Special logic for Movies (if not exact match)
     if (!isTv && season === 1) {
