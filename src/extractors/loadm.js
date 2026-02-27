@@ -1,5 +1,5 @@
 const CryptoJS = require('crypto-js');
-const { USER_AGENT, getProxiedUrl } = require('./common');
+const { USER_AGENT } = require('./common');
 
 /**
  * Extractor for Loadm (loadm.cam)
@@ -21,7 +21,9 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
 
         const queryParams = `id=${encodeURIComponent(id)}&w=2560&h=1440&r=${encodeURIComponent(referer)}`;
 
-        const response = await fetch(getProxiedUrl(`${apiUrl}?${queryParams}`), {
+        // Loadm extraction must run direct (no worker/proxy), otherwise provider-side
+        // anti-bot checks may reject the request path.
+        const response = await fetch(`${apiUrl}?${queryParams}`, {
             headers: {
                 'User-Agent': USER_AGENT,
                 'Referer': baseUrl,

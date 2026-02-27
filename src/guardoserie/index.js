@@ -417,15 +417,18 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             const extracted = await extractLoadm(playerLink, domain);
             console.log(`[Guardoserie] Loadm extraction results: ${extracted?.length || 0}`);
             for (const s of (extracted || [])) {
+                // Return direct Loadm URL to Stremio; playback headers are carried in proxyHeaders.
+                const directLoadmUrl = s.url;
+
                 let quality = "HD";
                 if (s.url.includes('.m3u8')) {
-                    const detected = await checkQualityFromPlaylist(getProxiedUrl(s.url), s.headers || {});
+                    const detected = await checkQualityFromPlaylist(directLoadmUrl, s.headers || {});
                     if (detected) quality = detected;
                 }
                 const normalizedQuality = getQualityFromName(quality);
 
                 streams.push(formatStream({
-                    url: getProxiedUrl(s.url),
+                    url: directLoadmUrl,
                     headers: s.headers,
                     name: `Guardoserie - Loadm`,
                     title: displayName,

@@ -7075,7 +7075,7 @@ var require_crypto_js = __commonJS({
 var require_loadm = __commonJS({
   "src/extractors/loadm.js"(exports2, module2) {
     var CryptoJS = require_crypto_js();
-    var { USER_AGENT, getProxiedUrl } = require_common();
+    var { USER_AGENT } = require_common();
     function extractLoadm(playerUrl, referer = "guardoserie.horse") {
       return __async(this, null, function* () {
         try {
@@ -7087,7 +7087,7 @@ var require_loadm = __commonJS({
           const key = CryptoJS.enc.Utf8.parse("kiemtienmua911ca");
           const iv = CryptoJS.enc.Utf8.parse("1234567890oiuytr");
           const queryParams = `id=${encodeURIComponent(id)}&w=2560&h=1440&r=${encodeURIComponent(referer)}`;
-          const response = yield fetch(getProxiedUrl(`${apiUrl}?${queryParams}`), {
+          const response = yield fetch(`${apiUrl}?${queryParams}`, {
             headers: {
               "User-Agent": USER_AGENT,
               "Referer": baseUrl,
@@ -12692,14 +12692,15 @@ var require_guardoserie = __commonJS({
             const extracted = yield extractLoadm(playerLink, domain);
             console.log(`[Guardoserie] Loadm extraction results: ${(extracted == null ? void 0 : extracted.length) || 0}`);
             for (const s of extracted || []) {
+              const directLoadmUrl = s.url;
               let quality = "HD";
               if (s.url.includes(".m3u8")) {
-                const detected = yield checkQualityFromPlaylist(getProxiedUrl(s.url), s.headers || {});
+                const detected = yield checkQualityFromPlaylist(directLoadmUrl, s.headers || {});
                 if (detected) quality = detected;
               }
               const normalizedQuality = getQualityFromName(quality);
               streams.push(formatStream({
-                url: getProxiedUrl(s.url),
+                url: directLoadmUrl,
                 headers: s.headers,
                 name: `Guardoserie - Loadm`,
                 title: displayName,
