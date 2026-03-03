@@ -46,7 +46,7 @@ var __async = (__this, __arguments, generator) => {
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
     var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    function getProxiedUrl2(url) {
+    function getProxiedUrl(url) {
       let proxyUrl = null;
       try {
         if (typeof global !== "undefined" && global.CF_PROXY_URL) {
@@ -88,7 +88,7 @@ var require_common = __commonJS({
     module2.exports = {
       USER_AGENT: USER_AGENT2,
       unPack,
-      getProxiedUrl: getProxiedUrl2
+      getProxiedUrl
     };
   }
 });
@@ -200,7 +200,7 @@ var require_dropload = __commonJS({
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl: getProxiedUrl2 } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
     function extractSuperVideo(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -208,7 +208,7 @@ var require_supervideo = __commonJS({
           const id = url.split("/").pop();
           const embedUrl = `https://supervideo.tv/e/${id}`;
           if (!refererBase) refererBase = "https://supervideo.tv/";
-          const proxiedUrl = getProxiedUrl2(embedUrl);
+          const proxiedUrl = getProxiedUrl(embedUrl);
           let response = yield fetch(proxiedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
@@ -7490,7 +7490,7 @@ var require_provider_urls2 = __commonJS({
 });
 
 // src/guardoserie/index.js
-var { USER_AGENT, getProxiedUrl } = require_common();
+var { USER_AGENT } = require_common();
 var { extractLoadm, extractUqload, extractDropLoad } = require_extractors();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
@@ -7911,7 +7911,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           let quality = "HD";
           const normalizedQuality = getQualityFromName(quality);
           streams.push(formatStream({
-            url: getProxiedUrl(extracted.url),
+            url: extracted.url,
             headers: extracted.headers,
             name: `Guardoserie - Uqload`,
             title: displayName,
@@ -7924,12 +7924,12 @@ function getStreams(id, type, season, episode, providerContext = null) {
         if (extracted && extracted.url) {
           let quality = "HD";
           if (extracted.url.includes(".m3u8")) {
-            const detected = yield checkQualityFromPlaylist(getProxiedUrl(extracted.url), extracted.headers || {});
+            const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
             if (detected) quality = detected;
           }
           const normalizedQuality = getQualityFromName(quality);
           streams.push(formatStream({
-            url: getProxiedUrl(extracted.url),
+            url: extracted.url,
             headers: extracted.headers,
             name: `Guardoserie - DropLoad`,
             title: displayName,

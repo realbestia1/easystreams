@@ -8436,7 +8436,7 @@ var require_guardaserie = __commonJS({
 // src/guardoserie/index.js
 var require_guardoserie = __commonJS({
   "src/guardoserie/index.js"(exports2, module2) {
-    var { USER_AGENT, getProxiedUrl } = require_common();
+    var { USER_AGENT } = require_common();
     var { extractLoadm, extractUqload, extractDropLoad } = require_extractors();
     var { formatStream } = require_formatter();
     var { checkQualityFromPlaylist } = require_quality_helper();
@@ -8857,7 +8857,7 @@ var require_guardoserie = __commonJS({
               let quality = "HD";
               const normalizedQuality = getQualityFromName(quality);
               streams.push(formatStream({
-                url: getProxiedUrl(extracted.url),
+                url: extracted.url,
                 headers: extracted.headers,
                 name: `Guardoserie - Uqload`,
                 title: displayName,
@@ -8870,12 +8870,12 @@ var require_guardoserie = __commonJS({
             if (extracted && extracted.url) {
               let quality = "HD";
               if (extracted.url.includes(".m3u8")) {
-                const detected = yield checkQualityFromPlaylist(getProxiedUrl(extracted.url), extracted.headers || {});
+                const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
                 if (detected) quality = detected;
               }
               const normalizedQuality = getQualityFromName(quality);
               streams.push(formatStream({
-                url: getProxiedUrl(extracted.url),
+                url: extracted.url,
                 headers: extracted.headers,
                 name: `Guardoserie - DropLoad`,
                 title: displayName,

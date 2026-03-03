@@ -1,4 +1,4 @@
-const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
+const { USER_AGENT } = require('../extractors/common');
 const { extractLoadm, extractUqload, extractDropLoad } = require('../extractors');
 const { formatStream } = require('../formatter');
 const { checkQualityFromPlaylist } = require('../quality_helper');
@@ -518,7 +518,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                 let quality = "HD";
                 const normalizedQuality = getQualityFromName(quality);
                 streams.push(formatStream({
-                    url: getProxiedUrl(extracted.url),
+                    url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - Uqload`,
                     title: displayName,
@@ -532,12 +532,12 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             if (extracted && extracted.url) {
                 let quality = "HD";
                 if (extracted.url.includes('.m3u8')) {
-                    const detected = await checkQualityFromPlaylist(getProxiedUrl(extracted.url), extracted.headers || {});
+                    const detected = await checkQualityFromPlaylist(extracted.url, extracted.headers || {});
                     if (detected) quality = detected;
                 }
                 const normalizedQuality = getQualityFromName(quality);
                 streams.push(formatStream({
-                    url: getProxiedUrl(extracted.url),
+                    url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - DropLoad`,
                     title: displayName,
