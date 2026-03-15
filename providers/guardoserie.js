@@ -58,7 +58,7 @@ var __async = (__this, __arguments, generator) => {
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
     var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    function getProxiedUrl(url) {
+    function getProxiedUrl2(url) {
       let proxyUrl = null;
       try {
         if (typeof global !== "undefined" && global.CF_PROXY_URL) {
@@ -98,7 +98,7 @@ var require_common = __commonJS({
     module2.exports = {
       USER_AGENT: USER_AGENT2,
       unPack,
-      getProxiedUrl
+      getProxiedUrl: getProxiedUrl2
     };
   }
 });
@@ -220,7 +220,7 @@ var require_dropload = __commonJS({
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl: getProxiedUrl2 } = require_common();
     function extractSuperVideo(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -228,7 +228,7 @@ var require_supervideo = __commonJS({
           const id = url.split("/").pop();
           const embedUrl = `https://supervideo.tv/e/${id}`;
           if (!refererBase) refererBase = "https://supervideo.tv/";
-          const proxiedUrl = getProxiedUrl(embedUrl);
+          const proxiedUrl = getProxiedUrl2(embedUrl);
           let response = yield fetch(proxiedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
@@ -7521,7 +7521,7 @@ var require_provider_urls = __commonJS({
 });
 
 // src/guardoserie/index.js
-var { USER_AGENT } = require_common();
+var { USER_AGENT, getProxiedUrl } = require_common();
 var { extractLoadm, extractUqload, extractDropLoad } = require_extractors();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
@@ -7674,6 +7674,127 @@ function getQualityFromName(qualityStr) {
   }
   return "Unknown";
 }
+function normalizeBaseUrl(url) {
+  return String(url || "").trim().replace(/\/+$/, "");
+}
+function resolveCandidateUrl(baseUrl, href) {
+  if (!href || !baseUrl) return null;
+  try {
+    return new URL(href, baseUrl).toString();
+  } catch (e) {
+    return null;
+  }
+}
+function isSameHost(baseUrl, candidateUrl) {
+  try {
+    return new URL(baseUrl).host === new URL(candidateUrl).host;
+  } catch (e) {
+    return false;
+  }
+}
+function extractSearchResultsFromHtml(html, baseUrl) {
+  if (!html) return [];
+  const results = [];
+  const pushResult = (url, title) => {
+    const resolved = resolveCandidateUrl(baseUrl, url);
+    if (!resolved || !isSameHost(baseUrl, resolved)) return;
+    if (/\/(?:wp-|tag\/|category\/|author\/|page\/|search\/|\\?s=)/i.test(resolved)) return;
+    results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
+  };
+  const patterns = [
+    /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+    /<a[^>]+class=["'][^"']*ss-title[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+    /<a[^>]+href=["']([^"']+)["'][^>]+class=["'][^"']*ss-title[^"']*["'][^>]*>(.*?)<\/a>/gi
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      pushResult(match[1], match[2]);
+    }
+    if (results.length > 0) break;
+  }
+  if (results.length === 0) {
+    const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+    let match;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const text = match[2] ? match[2].replace(/<[^>]+>/g, "").trim() : "";
+      if (!text || text.length < 2) continue;
+      pushResult(match[1], text);
+    }
+  }
+  return Array.from(new Map(results.map((item) => [item.url, item])).values());
+}
+function decodeEntitiesBasic(str) {
+  return String(str || "").replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#8211;/g, "-").replace(/&#8217;/g, "'");
+}
+function normalizeTitle(str) {
+  return decodeEntitiesBasic(str).toLowerCase().replace(/[^a-z0-9]/g, "").replace("iltronodispade", "gameofthrones");
+}
+function slugifyTitle(value) {
+  return String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "and").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function extractTitleFromHtml(html) {
+  if (!html) return "";
+  const ogMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
+  if (ogMatch && ogMatch[1]) return ogMatch[1];
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+  if (titleMatch && titleMatch[1]) return titleMatch[1];
+  return "";
+}
+function htmlMatchesTitle(html, title, originalTitle) {
+  const pageTitle = extractTitleFromHtml(html);
+  if (!pageTitle) return false;
+  const nPage = normalizeTitle(pageTitle);
+  const nTitle = normalizeTitle(title || "");
+  const nOrig = normalizeTitle(originalTitle || "");
+  if (nPage === nTitle || nOrig && nPage === nOrig) return true;
+  if (nTitle && nPage.includes(nTitle)) return true;
+  if (nOrig && nPage.includes(nOrig)) return true;
+  return false;
+}
+function tryFetchPageHtml(url) {
+  return __async(this, null, function* () {
+    if (!url) return null;
+    const proxiedUrl = getProxiedUrl(url);
+    const response = yield fetch(proxiedUrl, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    });
+    if (!response.ok) return null;
+    return yield response.text();
+  });
+}
+function guessUrlFromSlug(baseUrl, title, originalTitle) {
+  return __async(this, null, function* () {
+    const candidates = /* @__PURE__ */ new Set();
+    const slugs = [slugifyTitle(title), slugifyTitle(originalTitle)].filter(Boolean);
+    const patterns = [
+      (slug) => `${baseUrl}/${slug}/`,
+      (slug) => `${baseUrl}/film/${slug}/`,
+      (slug) => `${baseUrl}/movie/${slug}/`,
+      (slug) => `${baseUrl}/serie/${slug}/`,
+      (slug) => `${baseUrl}/serietv/${slug}/`
+    ];
+    for (const slug of slugs) {
+      for (const makeUrl of patterns) {
+        candidates.add(makeUrl(slug));
+      }
+    }
+    for (const url of candidates) {
+      try {
+        const html = yield tryFetchPageHtml(url);
+        if (html && htmlMatchesTitle(html, title, originalTitle)) {
+          return url;
+        }
+      } catch (e) {
+      }
+    }
+    return null;
+  });
+}
 function getShowInfo(tmdbId, type) {
   return __async(this, null, function* () {
     try {
@@ -7692,6 +7813,11 @@ function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     var _a, _b;
     try {
+      const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
+      if (!baseUrl) {
+        console.log("[Guardoserie] Base URL not available yet.");
+        return [];
+      }
       let tmdbId = id;
       let effectiveSeason = Number.parseInt(String(season || ""), 10);
       if (!Number.isInteger(effectiveSeason) || effectiveSeason < 1) effectiveSeason = 1;
@@ -7741,57 +7867,64 @@ function getStreams(id, type, season, episode, providerContext = null) {
       const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
       console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
       const searchProvider = (query) => __async(null, null, function* () {
-        const searchUrl = `${getGuardoserieBaseUrl()}/wp-admin/admin-ajax.php`;
+        const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
         const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
         const response = yield fetch(searchUrl, {
           method: "POST",
           headers: {
             "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "Origin": getGuardoserieBaseUrl(),
-            "Referer": `${getGuardoserieBaseUrl()}/`
+            "Origin": baseUrl,
+            "Referer": `${baseUrl}/`
           },
           body
         });
-        if (!response.ok) return [];
-        const searchHtml = yield response.text();
-        const results = [];
-        const itemRegex = /<a[^>]+href="([^"]+)"[^>]+class="ss-title"[^>]*>(.*?)<\/a>/g;
-        let match;
-        while ((match = itemRegex.exec(searchHtml)) !== null) {
-          const rTitle = match[2].replace(/<[^>]+>/g, "").trim();
-          results.push({
-            url: match[1],
-            title: rTitle
-          });
+        if (response.ok) {
+          const searchHtml = yield response.text();
+          const results = extractSearchResultsFromHtml(searchHtml, baseUrl);
+          if (results.length > 0) return results;
         }
-        if (results.length === 0) {
-          const itemRegexFallback = /<a[^>]+class="ss-title"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/g;
-          while ((match = itemRegexFallback.exec(searchHtml)) !== null) {
-            results.push({
-              url: match[1],
-              title: match[2].replace(/<[^>]+>/g, "").trim()
-            });
+        const searchPageUrl = `${baseUrl}/?s=${encodeURIComponent(query)}`;
+        const proxiedSearchUrl = getProxiedUrl(searchPageUrl);
+        const pageRes = yield fetch(proxiedSearchUrl, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
           }
-        }
-        return results;
+        });
+        if (!pageRes.ok) return [];
+        const pageHtml = yield pageRes.text();
+        return extractSearchResultsFromHtml(pageHtml, baseUrl);
       });
       let allResults = [];
-      const queries = [title, originalTitle].filter((q) => q && q.length > 2);
+      const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2)));
       for (const q of queries) {
         const res = yield searchProvider(q);
         allResults.push(...res);
       }
       allResults = Array.from(new Map(allResults.map((item) => [item.url, item])).values());
-      const decodeEntities = (str) => {
-        return str.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#8211;/g, "-").replace(/&#8217;/g, "'");
+      const nTitle = normalizeTitle(title);
+      const nOrig = normalizeTitle(originalTitle || "");
+      const scoreTitleMatch = (nResult) => {
+        if (!nResult) return 0;
+        if (nResult === nTitle || nOrig && nResult === nOrig) return 3;
+        const scorePartial = (a, b) => {
+          if (!a || !b) return 0;
+          if (!(a.includes(b) || b.includes(a))) return 0;
+          const minLen = Math.min(a.length, b.length);
+          const maxLen = Math.max(a.length, b.length);
+          const ratio = maxLen > 0 ? minLen / maxLen : 0;
+          if (ratio >= 0.8) return 2;
+          if (ratio >= 0.6) return 1;
+          return 0;
+        };
+        return Math.max(scorePartial(nResult, nTitle), scorePartial(nResult, nOrig));
       };
-      const norm = (s) => decodeEntities(s).toLowerCase().replace(/[^a-z0-9]/g, "").replace("iltronodispade", "gameofthrones");
-      const nTitle = norm(title);
-      const nOrig = norm(originalTitle || "");
       allResults.sort((a, b) => {
-        const nA = norm(a.title);
-        const nB = norm(b.title);
+        const nA = normalizeTitle(a.title);
+        const nB = normalizeTitle(b.title);
         const exactA = nA === nTitle || nA === nOrig;
         const exactB = nB === nTitle || nB === nOrig;
         if (exactA && !exactB) return -1;
@@ -7799,10 +7932,13 @@ function getStreams(id, type, season, episode, providerContext = null) {
         return 0;
       });
       let targetUrl = null;
+      let bestNoYearMatch = null;
+      let bestNoYearScore = 0;
       for (const result of allResults.slice(0, 10)) {
-        const nResult = norm(result.title);
-        const isExactMatch = nResult === nTitle || nResult === nOrig;
-        const isPartialMatch = nResult.includes(nTitle) || nOrig && nResult.includes(nOrig);
+        const nResult = normalizeTitle(result.title);
+        const matchScore = scoreTitleMatch(nResult);
+        const isExactMatch = matchScore === 3;
+        const isPartialMatch = matchScore >= 1;
         if (isExactMatch || isPartialMatch) {
           try {
             const pageRes = yield fetch(result.url, { headers: {
@@ -7839,15 +7975,32 @@ function getStreams(id, type, season, episode, providerContext = null) {
                 break;
               }
             } else {
-              if (isExactMatch) {
-                targetUrl = result.url;
-                break;
+              if (matchScore >= 2 && matchScore >= bestNoYearScore) {
+                bestNoYearScore = matchScore;
+                bestNoYearMatch = result.url;
+                if (isExactMatch) {
+                  targetUrl = result.url;
+                  break;
+                }
               }
             }
           } catch (e) {
-            targetUrl = result.url;
-            break;
+            if (matchScore >= 2) {
+              bestNoYearScore = Math.max(bestNoYearScore, matchScore);
+              bestNoYearMatch = result.url;
+            }
           }
+        }
+      }
+      if (!targetUrl && bestNoYearMatch) {
+        console.log(`[Guardoserie] Year not found, using best title match: ${bestNoYearMatch}`);
+        targetUrl = bestNoYearMatch;
+      }
+      if (!targetUrl) {
+        const guessed = yield guessUrlFromSlug(baseUrl, title, originalTitle);
+        if (guessed) {
+          console.log(`[Guardoserie] Slug fallback matched: ${guessed}`);
+          targetUrl = guessed;
         }
       }
       if (!targetUrl) {

@@ -1,4 +1,4 @@
-const { USER_AGENT } = require('../extractors/common');
+const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
 const { extractLoadm, extractUqload, extractDropLoad } = require('../extractors');
 const { formatStream } = require('../formatter');
 const { checkQualityFromPlaylist } = require('../quality_helper');
@@ -186,6 +186,162 @@ function getQualityFromName(qualityStr) {
     return 'Unknown';
 }
 
+function normalizeBaseUrl(url) {
+    return String(url || '').trim().replace(/\/+$/, '');
+}
+
+function resolveCandidateUrl(baseUrl, href) {
+    if (!href || !baseUrl) return null;
+    try {
+        return new URL(href, baseUrl).toString();
+    } catch (e) {
+        return null;
+    }
+}
+
+function isSameHost(baseUrl, candidateUrl) {
+    try {
+        return new URL(baseUrl).host === new URL(candidateUrl).host;
+    } catch (e) {
+        return false;
+    }
+}
+
+function extractSearchResultsFromHtml(html, baseUrl) {
+    if (!html) return [];
+    const results = [];
+    const pushResult = (url, title) => {
+        const resolved = resolveCandidateUrl(baseUrl, url);
+        if (!resolved || !isSameHost(baseUrl, resolved)) return;
+        if (/\/(?:wp-|tag\/|category\/|author\/|page\/|search\/|\\?s=)/i.test(resolved)) return;
+        results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, '').trim() : '' });
+    };
+
+    // Preferred patterns (common WordPress themes)
+    const patterns = [
+        /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+        /<a[^>]+class=["'][^"']*ss-title[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+        /<a[^>]+href=["']([^"']+)["'][^>]+class=["'][^"']*ss-title[^"']*["'][^>]*>(.*?)<\/a>/gi
+    ];
+
+    for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            pushResult(match[1], match[2]);
+        }
+        if (results.length > 0) break;
+    }
+
+    // Fallback: any anchor tags
+    if (results.length === 0) {
+        const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+        let match;
+        while ((match = linkRegex.exec(html)) !== null) {
+            const text = match[2] ? match[2].replace(/<[^>]+>/g, '').trim() : '';
+            if (!text || text.length < 2) continue;
+            pushResult(match[1], text);
+        }
+    }
+
+    // Deduplicate by URL
+    return Array.from(new Map(results.map(item => [item.url, item])).values());
+}
+
+function decodeEntitiesBasic(str) {
+    return String(str || '')
+        .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#8211;/g, '-')
+        .replace(/&#8217;/g, "'");
+}
+
+function normalizeTitle(str) {
+    return decodeEntitiesBasic(str)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace('iltronodispade', 'gameofthrones');
+}
+
+function slugifyTitle(value) {
+    return String(value || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/&/g, 'and')
+        .replace(/['’]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function extractTitleFromHtml(html) {
+    if (!html) return '';
+    const ogMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
+    if (ogMatch && ogMatch[1]) return ogMatch[1];
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    if (titleMatch && titleMatch[1]) return titleMatch[1];
+    return '';
+}
+
+function htmlMatchesTitle(html, title, originalTitle) {
+    const pageTitle = extractTitleFromHtml(html);
+    if (!pageTitle) return false;
+    const nPage = normalizeTitle(pageTitle);
+    const nTitle = normalizeTitle(title || '');
+    const nOrig = normalizeTitle(originalTitle || '');
+    if (nPage === nTitle || (nOrig && nPage === nOrig)) return true;
+    if (nTitle && nPage.includes(nTitle)) return true;
+    if (nOrig && nPage.includes(nOrig)) return true;
+    return false;
+}
+
+async function tryFetchPageHtml(url) {
+    if (!url) return null;
+    const proxiedUrl = getProxiedUrl(url);
+    const response = await fetch(proxiedUrl, {
+        headers: {
+            'User-Agent': USER_AGENT,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+    });
+    if (!response.ok) return null;
+    return await response.text();
+}
+
+async function guessUrlFromSlug(baseUrl, title, originalTitle) {
+    const candidates = new Set();
+    const slugs = [slugifyTitle(title), slugifyTitle(originalTitle)]
+        .filter(Boolean);
+    const patterns = [
+        (slug) => `${baseUrl}/${slug}/`,
+        (slug) => `${baseUrl}/film/${slug}/`,
+        (slug) => `${baseUrl}/movie/${slug}/`,
+        (slug) => `${baseUrl}/serie/${slug}/`,
+        (slug) => `${baseUrl}/serietv/${slug}/`
+    ];
+
+    for (const slug of slugs) {
+        for (const makeUrl of patterns) {
+            candidates.add(makeUrl(slug));
+        }
+    }
+
+    for (const url of candidates) {
+        try {
+            const html = await tryFetchPageHtml(url);
+            if (html && htmlMatchesTitle(html, title, originalTitle)) {
+                return url;
+            }
+        } catch (e) {
+            // Ignore and continue
+        }
+    }
+    return null;
+}
+
 async function getShowInfo(tmdbId, type) {
     try {
         const endpoint = type === 'movie' ? 'movie' : 'tv';
@@ -201,6 +357,11 @@ async function getShowInfo(tmdbId, type) {
 
 async function getStreams(id, type, season, episode, providerContext = null) {
     try {
+        const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
+        if (!baseUrl) {
+            console.log('[Guardoserie] Base URL not available yet.');
+            return [];
+        }
         let tmdbId = id;
         let effectiveSeason = Number.parseInt(String(season || ''), 10);
         if (!Number.isInteger(effectiveSeason) || effectiveSeason < 1) effectiveSeason = 1;
@@ -264,50 +425,44 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
         // Search helper
         const searchProvider = async (query) => {
-            const searchUrl = `${getGuardoserieBaseUrl()}/wp-admin/admin-ajax.php`;
+            const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
             const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
 
             const response = await fetch(searchUrl, {
                 method: 'POST',
                 headers: {
                     'User-Agent': USER_AGENT,
+                    'X-Requested-With': 'XMLHttpRequest',
                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'Origin': getGuardoserieBaseUrl(),
-                    'Referer': `${getGuardoserieBaseUrl()}/`
+                    'Origin': baseUrl,
+                    'Referer': `${baseUrl}/`
                 },
                 body: body
             });
 
-            if (!response.ok) return [];
-            const searchHtml = await response.text();
-            const results = [];
-            // Match title and URL more robustly
-            const itemRegex = /<a[^>]+href="([^"]+)"[^>]+class="ss-title"[^>]*>(.*?)<\/a>/g;
-            let match;
-            while ((match = itemRegex.exec(searchHtml)) !== null) {
-                const rTitle = match[2].replace(/<[^>]+>/g, '').trim();
-                results.push({
-                    url: match[1],
-                    title: rTitle
-                });
-            }
-            
-            // Fallback for different attribute order
-            if (results.length === 0) {
-                const itemRegexFallback = /<a[^>]+class="ss-title"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/g;
-                while ((match = itemRegexFallback.exec(searchHtml)) !== null) {
-                    results.push({
-                        url: match[1],
-                        title: match[2].replace(/<[^>]+>/g, '').trim()
-                    });
-                }
+            if (response.ok) {
+                const searchHtml = await response.text();
+                const results = extractSearchResultsFromHtml(searchHtml, baseUrl);
+                if (results.length > 0) return results;
             }
 
-            return results;
+            // Fallback: try the public search page (GET) and allow proxy.
+            const searchPageUrl = `${baseUrl}/?s=${encodeURIComponent(query)}`;
+            const proxiedSearchUrl = getProxiedUrl(searchPageUrl);
+            const pageRes = await fetch(proxiedSearchUrl, {
+                headers: {
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
+                }
+            });
+            if (!pageRes.ok) return [];
+            const pageHtml = await pageRes.text();
+            return extractSearchResultsFromHtml(pageHtml, baseUrl);
         };
 
         let allResults = [];
-        const queries = [title, originalTitle].filter(q => q && q.length > 2);
+        const queries = Array.from(new Set([title, originalTitle].filter(q => q && q.length > 2)));
         for (const q of queries) {
             const res = await searchProvider(q);
             allResults.push(...res);
@@ -316,24 +471,30 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         // Deduplicate results by URL
         allResults = Array.from(new Map(allResults.map(item => [item.url, item])).values());
 
-        const decodeEntities = (str) => {
-            return str.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
-                      .replace(/&quot;/g, '"')
-                      .replace(/&amp;/g, '&')
-                      .replace(/&lt;/g, '<')
-                      .replace(/&gt;/g, '>')
-                      .replace(/&#8211;/g, '-')
-                      .replace(/&#8217;/g, "'");
+        // Sort results: exact matches first
+        const nTitle = normalizeTitle(title);
+        const nOrig = normalizeTitle(originalTitle || '');
+        const scoreTitleMatch = (nResult) => {
+            if (!nResult) return 0;
+            if (nResult === nTitle || (nOrig && nResult === nOrig)) return 3;
+
+            const scorePartial = (a, b) => {
+                if (!a || !b) return 0;
+                if (!(a.includes(b) || b.includes(a))) return 0;
+                const minLen = Math.min(a.length, b.length);
+                const maxLen = Math.max(a.length, b.length);
+                const ratio = maxLen > 0 ? minLen / maxLen : 0;
+                if (ratio >= 0.8) return 2;
+                if (ratio >= 0.6) return 1;
+                return 0;
+            };
+
+            return Math.max(scorePartial(nResult, nTitle), scorePartial(nResult, nOrig));
         };
 
-        // Sort results: exact matches first
-        const norm = (s) => decodeEntities(s).toLowerCase().replace(/[^a-z0-9]/g, '').replace('iltronodispade', 'gameofthrones');
-        const nTitle = norm(title);
-        const nOrig = norm(originalTitle || '');
-
         allResults.sort((a, b) => {
-            const nA = norm(a.title);
-            const nB = norm(b.title);
+            const nA = normalizeTitle(a.title);
+            const nB = normalizeTitle(b.title);
             const exactA = nA === nTitle || nA === nOrig;
             const exactB = nB === nTitle || nB === nOrig;
             if (exactA && !exactB) return -1;
@@ -342,13 +503,15 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         });
 
         let targetUrl = null;
+        let bestNoYearMatch = null;
+        let bestNoYearScore = 0;
         // Limit to top 10 results to avoid timeout while being thorough
         for (const result of allResults.slice(0, 10)) {
             // Check title match first to avoid unnecessary fetches
-            const nResult = norm(result.title);
-
-            const isExactMatch = nResult === nTitle || nResult === nOrig;
-            const isPartialMatch = nResult.includes(nTitle) || (nOrig && nResult.includes(nOrig));
+            const nResult = normalizeTitle(result.title);
+            const matchScore = scoreTitleMatch(nResult);
+            const isExactMatch = matchScore === 3;
+            const isPartialMatch = matchScore >= 1;
 
             if (isExactMatch || isPartialMatch) {
                 // Verify year in the page
@@ -399,17 +562,36 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                             break;
                         }
                     } else {
-                        // If no year found at all, accept if it's an exact title match
-                        if (isExactMatch) {
-                            targetUrl = result.url;
-                            break;
+                        // If no year found at all, track best title-only match
+                        if (matchScore >= 2 && matchScore >= bestNoYearScore) {
+                            bestNoYearScore = matchScore;
+                            bestNoYearMatch = result.url;
+                            if (isExactMatch) {
+                                targetUrl = result.url;
+                                break;
+                            }
                         }
                     }
                 } catch (e) {
-                    // If fetch fails, but title matches, we can still try it as fallback
-                    targetUrl = result.url;
-                    break;
+                    // If fetch fails, but title matches strongly, we can still try it as fallback
+                    if (matchScore >= 2) {
+                        bestNoYearScore = Math.max(bestNoYearScore, matchScore);
+                        bestNoYearMatch = result.url;
+                    }
                 }
+            }
+        }
+
+        if (!targetUrl && bestNoYearMatch) {
+            console.log(`[Guardoserie] Year not found, using best title match: ${bestNoYearMatch}`);
+            targetUrl = bestNoYearMatch;
+        }
+
+        if (!targetUrl) {
+            const guessed = await guessUrlFromSlug(baseUrl, title, originalTitle);
+            if (guessed) {
+                console.log(`[Guardoserie] Slug fallback matched: ${guessed}`);
+                targetUrl = guessed;
             }
         }
 
