@@ -7635,7 +7635,7 @@ function getTmdbIdFromImdb(imdbId, type) {
     }
   });
 }
-function getIdsFromKitsu(kitsuId, season, episode) {
+function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
   return __async2(this, null, function* () {
     try {
       if (!kitsuId) return null;
@@ -7650,6 +7650,7 @@ function getIdsFromKitsu(kitsuId, season, episode) {
       if (Number.isInteger(parsedSeason) && parsedSeason >= 0) {
         params.set("s", String(parsedSeason));
       }
+      params.set("lang", "it");
       const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
       const response = yield fetch(url);
       if (!response.ok) return null;
@@ -7741,7 +7742,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       if (id.toString().startsWith("kitsu:") || contextKitsuId) {
         const kitsuId = contextKitsuId || ((id.toString().match(/^kitsu:(\d+)/i) || [])[1] || null);
         const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-        const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode) : null;
+        const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
         if (mapped) {
           if (mapped.tmdbId) {
             tmdbId = mapped.tmdbId;

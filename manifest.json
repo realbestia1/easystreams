@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.28",
+  "version": "1.1.30",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -12,6 +12,19 @@
       "formats": ["mp4", "m3u8"],
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/guardoserie.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true
+    },
+    {
+      "id": "easystreams-guardoserie-ec",
+      "name": "Guardoserie EC",
+      "version": "1.0.0",
+      "description": "Movies and Series from Guardoserie with EasyCatalogs mapping",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["tmdb:", "tt"],
+      "filename": "providers/guardoserie_ec.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
     },
@@ -42,6 +55,19 @@
       "enabled": true
     },
     {
+      "id": "easystreams-guardaserie-ec",
+      "name": "Guardaserie EC",
+      "version": "1.0.0",
+      "description": "TV Series from Guardaserie with EasyCatalogs mapping",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["tmdb:", "tt"],
+      "filename": "providers/guardaserie_ec.js",
+      "supportedTypes": ["tv"],
+      "enabled": true
+    },
+    {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
       "version": "1.1.1",
@@ -51,6 +77,19 @@
       "formats": ["mp4", "m3u8"],
       "idPrefixes": ["kitsu:", "tmdb:", "tt"],
       "filename": "providers/animeunity.js",
+      "supportedTypes": ["tv", "anime", "movie"],
+      "enabled": true
+    },
+    {
+      "id": "easystreams-animeunity-ec",
+      "name": "AnimeUnity EC",
+      "version": "1.0.0",
+      "description": "Anime from AnimeUnity with EasyCatalogs mapping",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
+      "filename": "providers/animeunity_ec.js",
       "supportedTypes": ["tv", "anime", "movie"],
       "enabled": true
     },
@@ -68,6 +107,19 @@
       "enabled": true
     },
     {
+      "id": "easystreams-animeworld-ec",
+      "name": "AnimeWorld EC",
+      "version": "1.0.0",
+      "description": "Anime from AnimeWorld with EasyCatalogs mapping",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
+      "filename": "providers/animeworld_ec.js",
+      "supportedTypes": ["tv", "anime", "movie"],
+      "enabled": true
+    },
+    {
       "id": "easystreams-animesaturn",
       "name": "AnimeSaturn",
       "version": "1.0.3",
@@ -77,6 +129,19 @@
       "formats": ["mp4", "m3u8"],
       "idPrefixes": ["kitsu:", "tmdb:", "tt"],
       "filename": "providers/animesaturn.js",
+      "supportedTypes": ["tv", "anime", "movie"],
+      "enabled": true
+    },
+    {
+      "id": "easystreams-animesaturn-ec",
+      "name": "AnimeSaturn EC",
+      "version": "1.0.0",
+      "description": "Anime from AnimeSaturn with EasyCatalogs mapping",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
+      "filename": "providers/animesaturn_ec.js",
       "supportedTypes": ["tv", "anime", "movie"],
       "enabled": true
     },

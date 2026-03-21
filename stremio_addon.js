@@ -364,6 +364,20 @@ function setCachedRequestContext(cacheKey, value) {
     });
 }
 
+function normalizeConfigBoolean(value) {
+    if (value === true) return true;
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(normalized);
+}
+
+function resolveMappingLanguageFromConfig(config = null) {
+    return normalizeConfigBoolean(config?.easyCatalogsLangIt) ? 'it' : null;
+}
+
+function getMappingLanguageToken(mappingLanguage) {
+    return String(mappingLanguage || '').trim().toLowerCase() === 'it' ? 'it' : 'default';
+}
+
 function hasJapaneseCharacters(value) {
     return /[\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff]/.test(String(value || ''));
 }
@@ -832,11 +846,12 @@ function applyMappingHintsToContext(context, payload) {
     }
 }
 
-async function fetchMappingByProvider(provider, value, season, episode) {
+async function fetchMappingByProvider(provider, value, season, episode, mappingLanguage = null) {
     const mappingApiUrl = getMappingApiUrl();
     const normalizedProvider = String(provider || '').trim().toLowerCase();
     if (!mappingApiUrl || !normalizedProvider || !value) return null;
     if (!['imdb', 'tmdb', 'kitsu'].includes(normalizedProvider)) return null;
+    const effectiveMappingLanguage = normalizedProvider === 'kitsu' ? 'it' : mappingLanguage;
 
     const encodedValue = encodeURIComponent(String(value).trim());
     let url = `${mappingApiUrl}/${normalizedProvider}/${encodedValue}`;
@@ -846,6 +861,9 @@ async function fetchMappingByProvider(provider, value, season, episode) {
     }
     if (Number.isInteger(episode) && episode > 0) {
         params.set('ep', String(episode));
+    }
+    if (getMappingLanguageToken(effectiveMappingLanguage) === 'it') {
+        params.set('lang', 'it');
     }
     const query = params.toString();
     if (query) {
@@ -882,8 +900,9 @@ async function fetchTmdbIdFromImdbForCanonicalKey(imdbId) {
     }
 }
 
-async function resolveProviderRequestContext(type, providerId, season, episode, seasonProvided = false) {
-    const identityKey = `${type}:${providerId}:${season}:${episode}:${seasonProvided ? 1 : 0}`;
+async function resolveProviderRequestContext(type, providerId, season, episode, mappingLanguage = null, seasonProvided = false) {
+    const mappingLanguageToken = getMappingLanguageToken(mappingLanguage);
+    const identityKey = `${type}:${providerId}:${season}:${episode}:${mappingLanguageToken}:${seasonProvided ? 1 : 0}`;
     const cached = getCachedRequestContext(identityKey);
     if (cached !== undefined) {
         return cached;
@@ -905,6 +924,8 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
         providerId: String(providerId),
         requestedSeason: normalizedRequestedSeason,
         requestedEpisode: normalizedRequestedEpisode,
+        easyCatalogsLangIt: mappingLanguageToken === 'it',
+        mappingLanguage: mappingLanguageToken === 'it' ? 'it' : null,
         seasonProvided: seasonProvided === true,
         kitsuId: null,
         tmdbId: null,
@@ -941,7 +962,7 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
                 context.kitsuId = parts[1];
                 let mappingSignalsFound = false;
                 if (shouldFetchMappingApi) {
-                    const byKitsu = await fetchMappingByProvider('kitsu', context.kitsuId, context.requestedSeason, context.requestedEpisode);
+                    const byKitsu = await fetchMappingByProvider('kitsu', context.kitsuId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
                     if (byKitsu) {
                         applyMappingHintsToContext(context, byKitsu);
                         mappingSignalsFound = hasUsefulMappingSignals(byKitsu);
@@ -961,7 +982,7 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
             let mappingSignalsFound = false;
 
             if (shouldFetchMappingApi) {
-                const byImdb = await fetchMappingByProvider('imdb', idStr, context.requestedSeason, context.requestedEpisode);
+                const byImdb = await fetchMappingByProvider('imdb', idStr, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
                 if (byImdb) {
                     applyMappingHintsToContext(context, byImdb);
                     mappingSignalsFound = hasUsefulMappingSignals(byImdb);
@@ -981,7 +1002,7 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
         }
 
         if (shouldFetchMappingApi && context.tmdbId) {
-            const byTmdb = await fetchMappingByProvider('tmdb', context.tmdbId, context.requestedSeason, context.requestedEpisode);
+            const byTmdb = await fetchMappingByProvider('tmdb', context.tmdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
             if (byTmdb) {
                 applyMappingHintsToContext(context, byTmdb);
             }
@@ -1004,6 +1025,8 @@ function buildProviderRequestContext(context) {
         providerId: context.providerId,
         requestedSeason: context.requestedSeason,
         requestedEpisode: context.requestedEpisode,
+        easyCatalogsLangIt: context.easyCatalogsLangIt === true,
+        mappingLanguage: context.mappingLanguage || null,
         seasonProvided: context.seasonProvided === true,
         kitsuId: context.kitsuId,
         tmdbId: context.tmdbId,
@@ -1022,16 +1045,17 @@ function buildProviderRequestContext(context) {
     };
 }
 
-async function resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext = null) {
+async function resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext = null, mappingLanguage = null) {
     if (!ADDON_CACHE_ENABLED) return null;
     if (type !== 'series' && type !== 'anime') return null;
 
-    const context = requestContext || await resolveProviderRequestContext(type, providerId, season, episode, false);
+    const context = requestContext || await resolveProviderRequestContext(type, providerId, season, episode, mappingLanguage, false);
     const parsedIdentityMappedSeason = Number.parseInt(context?.mappedSeason, 10);
     const identityMappedSeasonToken = Number.isInteger(parsedIdentityMappedSeason)
         ? parsedIdentityMappedSeason
         : 'na';
-    const identityKey = `${type}:${providerId}:${season}:${episode}:${identityMappedSeasonToken}`;
+    const mappingLanguageToken = getMappingLanguageToken(context?.mappingLanguage || mappingLanguage);
+    const identityKey = `${type}:${providerId}:${season}:${episode}:${identityMappedSeasonToken}:${mappingLanguageToken}`;
     const cached = getCachedCanonicalRequestKey(identityKey);
     if (cached !== undefined) {
         return cached;
@@ -1073,7 +1097,7 @@ async function resolveCanonicalStreamCacheKey(type, providerId, season, episode,
     }
 
     const cacheType = getCanonicalCacheMediaType(type);
-    const canonicalKey = `${cacheType}:canon:tmdb:${tmdbId}:${canonicalSeasonToken}:${canonicalEpisode}`;
+    const canonicalKey = `${cacheType}:canon:tmdb:${tmdbId}:${canonicalSeasonToken}:${canonicalEpisode}:lang:${mappingLanguageToken}`;
     setCachedCanonicalRequestKey(identityKey, canonicalKey);
     return canonicalKey;
 }
@@ -1180,16 +1204,27 @@ const builder = new addonBuilder({
     catalogs: [],
     resources: ['stream'],
     types: ['movie', 'series', 'anime'],
-    idPrefixes: ['tt', 'tmdb', 'kitsu']
+    idPrefixes: ['tt', 'tmdb', 'kitsu'],
+    behaviorHints: {
+        configurable: true
+    },
+    config: [
+        {
+            key: 'easyCatalogsLangIt',
+            type: 'checkbox',
+            title: 'EasyCatalogs mode (adds lang=it to mapping requests)'
+        }
+    ]
 });
 
-builder.defineStreamHandler(async ({ type, id }) => {
-    const requestKey = `${type}:${id}`;
+builder.defineStreamHandler(async ({ type, id, config = {} }) => {
+    const mappingLanguage = resolveMappingLanguageFromConfig(config);
+    const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}`;
     const parsedRequest = parseStremioRequestId(type, id);
     const providerId = parsedRequest.providerId;
     const season = parsedRequest.season;
     const episode = parsedRequest.episode;
-    const requestContext = await resolveProviderRequestContext(type, providerId, season, episode, parsedRequest.seasonProvided);
+    const requestContext = await resolveProviderRequestContext(type, providerId, season, episode, mappingLanguage, parsedRequest.seasonProvided);
     const bypassSeasonZeroCache = shouldBypassStreamCacheForSeasonZero(type, requestContext);
     const cacheEnabledForRequest = ADDON_CACHE_ENABLED && !bypassSeasonZeroCache;
 
@@ -1217,7 +1252,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const effectiveSeason = Number.isInteger(parsedCanonicalSeason) && parsedCanonicalSeason >= 0
         ? parsedCanonicalSeason
         : season;
-    const canonicalCacheKey = await resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext);
+    const canonicalCacheKey = await resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext, mappingLanguage);
 
     if (cacheEnabledForRequest && canonicalCacheKey && canonicalCacheKey !== requestKey) {
         const canonicalCachedResponse = getCachedStreamResponse(canonicalCacheKey);
@@ -1254,6 +1289,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
         logVerbose(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
     }
     logVerbose(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
+    if (requestContext?.mappingLanguage) {
+        logVerbose(`[Stremio] Mapping language: ${requestContext.mappingLanguage}`);
+    }
     if (effectiveSeason !== season) {
         logVerbose(`[Stremio] Effective Season: ${effectiveSeason} (mapping canonicalization)`);
     }
@@ -1616,6 +1654,37 @@ app.get('/', (req, res) => {
                 font-weight: 600;
                 letter-spacing: 0.5px;
             }
+            .config-panel {
+                width: 100%;
+                margin-bottom: 24px;
+                padding: 16px 18px;
+                border-radius: 10px;
+                border: 1px solid #333;
+                background: #232323;
+                text-align: left;
+                box-sizing: border-box;
+            }
+            .config-toggle {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                cursor: pointer;
+                color: #f2f2f2;
+            }
+            .config-toggle input {
+                margin-top: 2px;
+            }
+            .config-toggle strong {
+                display: block;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+            .config-toggle span {
+                display: block;
+                color: var(--text-secondary);
+                font-size: 13px;
+                line-height: 1.4;
+            }
             .install-btn {
                 background-color: var(--purple);
                 color: white;
@@ -1698,6 +1767,16 @@ app.get('/', (req, res) => {
                     ${providersHtml}
                 </div>
 
+                <div class="config-panel">
+                    <label class="config-toggle" for="easyCatalogsLangIt">
+                        <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
+                        <div>
+                            <strong>EasyCatalogs Mode</strong>
+                            <span>When enabled, mapping requests add <code>lang=it</code>.</span>
+                        </div>
+                    </label>
+                </div>
+
                 <a id="installLink" href="#" class="install-btn">INSTALL ADDON</a>
                 <button id="copyLink" class="copy-btn">📋 Copy Link</button>
             </div>
@@ -1711,14 +1790,29 @@ app.get('/', (req, res) => {
             // Dynamic Install Link
             const currentHost = window.location.host;
             const protocol = window.location.protocol;
-            const manifestUrl = \`\${protocol}//\${currentHost}/manifest.json\`;
-            const stremioUrl = \`stremio://\${currentHost}/manifest.json\`;
-            
             const installBtn = document.getElementById('installLink');
             const copyBtn = document.getElementById('copyLink');
-            
-            // If on mobile/desktop, try deep link first
-            installBtn.href = stremioUrl;
+            const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
+            let manifestUrl = '';
+            let stremioUrl = '';
+
+            function getConfigPath() {
+                if (!easyCatalogsToggle || !easyCatalogsToggle.checked) return '';
+                const config = encodeURIComponent(JSON.stringify({ easyCatalogsLangIt: 'on' }));
+                return \`/\${config}\`;
+            }
+
+            function updateInstallLinks() {
+                const configPath = getConfigPath();
+                manifestUrl = \`\${protocol}//\${currentHost}\${configPath}/manifest.json\`;
+                stremioUrl = \`stremio://\${currentHost}\${configPath}/manifest.json\`;
+                installBtn.href = stremioUrl;
+            }
+
+            if (easyCatalogsToggle) {
+                easyCatalogsToggle.addEventListener('change', updateInstallLinks);
+            }
+            updateInstallLinks();
 
             // Copy Link Logic
             copyBtn.addEventListener('click', () => {

@@ -51,7 +51,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
         // 1. Try Central Mapping API (Fastest and most accurate as it's updated on the edge)
         if (MAPPING_API_URL) {
             try {
-                const apiResponse = await fetch(`${MAPPING_API_URL}/kitsu/${id}`);
+                const apiResponse = await fetch(`${MAPPING_API_URL}/kitsu/${id}?lang=it`);
                 if (apiResponse.ok) {
                     const apiData = await apiResponse.json();
                     applyTopologyHints(apiData);

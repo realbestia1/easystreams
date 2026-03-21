@@ -26,6 +26,16 @@ const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 function getMappingApiUrl() {
   return getProviderUrl("mapping_api").replace(/\/+$/, "");
 }
+function normalizeConfigBoolean(value) {
+  if (value === true) return true;
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+}
+function getMappingLanguage(providerContext = null) {
+  const explicit = String(providerContext?.mappingLanguage || "").trim().toLowerCase();
+  if (explicit === "it") return "it";
+  return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? "it" : null;
+}
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require('../extractors');
@@ -123,7 +133,7 @@ function getTmdbIdFromImdb(imdbId, type) {
   });
 }
 
-function getIdsFromKitsu(kitsuId, season, episode) {
+function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     try {
       if (!kitsuId) return null;
@@ -138,6 +148,7 @@ function getIdsFromKitsu(kitsuId, season, episode) {
       if (Number.isInteger(parsedSeason) && parsedSeason >= 0) {
         params.set("s", String(parsedSeason));
       }
+      params.set("lang", "it");
 
       const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
       const response = yield fetch(url);
@@ -244,7 +255,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           contextKitsuId ||
           (((id.toString().match(/^kitsu:(\d+)/i) || [])[1]) || null);
         const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-        const mapped = kitsuId ? (yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode)) : null;
+        const mapped = kitsuId ? (yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext)) : null;
         if (mapped) {
           if (mapped.tmdbId) {
             tmdbId = mapped.tmdbId;

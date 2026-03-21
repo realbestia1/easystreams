@@ -11,8 +11,18 @@ const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
 function getMappingApiUrl() {
     return getProviderUrl('mapping_api').replace(/\/+$/, "");
 }
+function normalizeConfigBoolean(value) {
+    if (value === true) return true;
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(normalized);
+}
+function getMappingLanguage(providerContext = null) {
+    const explicit = String(providerContext?.mappingLanguage || '').trim().toLowerCase();
+    if (explicit === 'it') return 'it';
+    return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? 'it' : null;
+}
 
-async function getIdsFromKitsu(kitsuId, season, episode) {
+async function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
     try {
         if (!kitsuId) return null;
         const params = new URLSearchParams();
@@ -26,6 +36,7 @@ async function getIdsFromKitsu(kitsuId, season, episode) {
         if (Number.isInteger(parsedSeason) && parsedSeason >= 0) {
             params.set('s', String(parsedSeason));
         }
+        params.set('lang', 'it');
 
         const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
         const response = await fetch(url);
@@ -381,7 +392,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                 contextKitsuId ||
                 (((id.toString().match(/^kitsu:(\d+)/i) || [])[1]) || null);
             const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-            const mapped = kitsuId ? await getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode) : null;
+            const mapped = kitsuId ? await getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
             if (mapped && mapped.tmdbId) {
                 tmdbId = mapped.tmdbId;
                 console.log(`[Guardoserie] Kitsu ${kitsuId} mapped to TMDB ID ${tmdbId}`);

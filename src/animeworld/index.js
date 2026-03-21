@@ -63,6 +63,18 @@ function uniqueStrings(values) {
   return out;
 }
 
+function normalizeConfigBoolean(value) {
+  if (value === true) return true;
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+}
+
+function getMappingLanguage(providerContext = null) {
+  const explicit = String(providerContext?.mappingLanguage || "").trim().toLowerCase();
+  if (explicit === "it") return "it";
+  return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? "it" : null;
+}
+
 function decodeHtmlEntities(raw) {
   const decodedNumeric = String(raw || "")
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
@@ -866,7 +878,7 @@ function resolveLookupRequest(id, season, episode, providerContext = null) {
   return null;
 }
 
-async function fetchMappingPayload(lookup) {
+async function fetchMappingPayload(lookup, providerContext = null) {
   if (!lookup?.provider || !lookup?.externalId) return null;
 
   const provider = String(lookup.provider || "").trim().toLowerCase();
@@ -877,7 +889,9 @@ async function fetchMappingPayload(lookup) {
   if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
   if (!externalId) return null;
 
-  const cacheKey = `${provider}:${externalId}:s=${requestedSeason ?? "na"}:ep=${requestedEpisode}`;
+  const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+  const mappingLanguageToken = mappingLanguage || "default";
+  const cacheKey = `${provider}:${externalId}:s=${requestedSeason ?? "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
   const cached = getCached(caches.mapping, cacheKey);
   if (cached !== undefined) return cached;
 
@@ -885,6 +899,9 @@ async function fetchMappingPayload(lookup) {
   params.set("ep", String(requestedEpisode));
   if (Number.isInteger(requestedSeason) && requestedSeason >= 0) {
     params.set("s", String(requestedSeason));
+  }
+  if (mappingLanguage === "it") {
+    params.set("lang", "it");
   }
 
   const url = `${getMappingApiBase()}/${provider}/${encodeURIComponent(externalId)}?${params.toString()}`;
@@ -968,7 +985,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     const lookup = resolveLookupRequest(id, season, episode, providerContext);
     if (!lookup) return [];
 
-    let mappingPayload = await fetchMappingPayload(lookup);
+    let mappingPayload = await fetchMappingPayload(lookup, providerContext);
     let animePaths = extractAnimeWorldPaths(mappingPayload);
 
     if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
@@ -984,7 +1001,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
           season: lookup.season,
           episode: lookup.episode
         };
-        const tmdbPayload = await fetchMappingPayload(tmdbLookup);
+        const tmdbPayload = await fetchMappingPayload(tmdbLookup, providerContext);
         const tmdbPaths = extractAnimeWorldPaths(tmdbPayload);
         if (tmdbPaths.length > 0) {
           mappingPayload = tmdbPayload;
