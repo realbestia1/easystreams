@@ -1,11 +1,11 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.32",
+  "version": "1.1.33",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "description": "Movies and Series from Guardoserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardoserie-ec",
       "name": "Guardoserie EC",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Movies and Series from Guardoserie with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -31,7 +31,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -44,7 +44,7 @@
     {
       "id": "easystreams-guardaserie",
       "name": "Guardaserie",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "description": "TV Series from Guardaserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -57,7 +57,7 @@
     {
       "id": "easystreams-guardaserie-ec",
       "name": "Guardaserie EC",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "TV Series from Guardaserie with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -70,7 +70,7 @@
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -83,7 +83,7 @@
     {
       "id": "easystreams-animeunity-ec",
       "name": "AnimeUnity EC",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Anime from AnimeUnity with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-animeworld",
       "name": "AnimeWorld",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "description": "Anime from AnimeWorld",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -109,7 +109,7 @@
     {
       "id": "easystreams-animeworld-ec",
       "name": "AnimeWorld EC",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Anime from AnimeWorld with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -122,7 +122,7 @@
     {
       "id": "easystreams-animesaturn",
       "name": "AnimeSaturn",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "Anime from AnimeSaturn",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -135,7 +135,7 @@
     {
       "id": "easystreams-animesaturn-ec",
       "name": "AnimeSaturn EC",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Anime from AnimeSaturn with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -148,7 +148,7 @@
     {
       "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.20",
+      "version": "1.1.21",
       "description": "Movies and Series from StreamingCommunity",
       "resources": ["stream"],
       "contentLanguage": ["it"],

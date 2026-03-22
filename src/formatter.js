@@ -37,6 +37,24 @@ function shouldSetNotWebReady(url, headers, behaviorHints = {}) {
     return !isMp4Url(url);
 }
 
+function normalizePlaybackHeaders(headers) {
+    if (!headers || typeof headers !== 'object') return headers;
+
+    const normalized = {};
+    for (const [key, value] of Object.entries(headers)) {
+        if (value == null) continue;
+        normalized[key] = value;
+
+        const lowerKey = String(key).toLowerCase();
+        normalized[lowerKey] = value;
+
+        if (lowerKey === 'user-agent') normalized.userAgent = value;
+        if (lowerKey === 'referer') normalized.referrer = value;
+    }
+
+    return normalized;
+}
+
 function formatStream(stream, providerName) {
     // 1. Filter MixDrop (removed from shared formatter, handled in Stremio addon separately)
     // const server = (stream.server || "").toLowerCase();
@@ -108,6 +126,8 @@ function formatStream(stream, providerName) {
     } else if (behaviorHints.headers) {
         finalHeaders = behaviorHints.headers;
     }
+
+    finalHeaders = normalizePlaybackHeaders(finalHeaders);
 
     if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};

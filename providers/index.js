@@ -7432,6 +7432,19 @@ var require_extractors = __commonJS({
 // src/formatter.js
 var require_formatter = __commonJS({
   "src/formatter.js"(exports2, module2) {
+    function normalizePlaybackHeaders(headers) {
+      if (!headers || typeof headers !== "object") return headers;
+      const normalized = {};
+      for (const [key, value] of Object.entries(headers)) {
+        if (value == null) continue;
+        normalized[key] = value;
+        const lowerKey = String(key).toLowerCase();
+        normalized[lowerKey] = value;
+        if (lowerKey === "user-agent") normalized.userAgent = value;
+        if (lowerKey === "referer") normalized.referrer = value;
+      }
+      return normalized;
+    }
     function formatStream(stream, providerName) {
       let quality = stream.quality || "";
       if (quality === "2160p") quality = "\u{1F525}4K UHD";
@@ -7467,6 +7480,7 @@ var require_formatter = __commonJS({
       } else if (behaviorHints.headers) {
         finalHeaders = behaviorHints.headers;
       }
+      finalHeaders = normalizePlaybackHeaders(finalHeaders);
       if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
