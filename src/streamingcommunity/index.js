@@ -250,7 +250,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         url: streamUrl,
         quality: normalizedQuality,
         type: "direct",
-        headers: commonHeaders
+        behaviorHints: {
+          notWebReady: false
+        }
       };
 
       return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);

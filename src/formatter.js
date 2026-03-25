@@ -144,6 +144,16 @@ function formatStream(stream, providerName) {
 
     finalHeaders = normalizePlaybackHeaders(finalHeaders);
 
+    const isStreamingCommunityProvider = String(providerName || '').toLowerCase() === 'streamingcommunity'
+        || String(stream?.name || '').toLowerCase().includes('streamingcommunity');
+
+    if (isStreamingCommunityProvider) {
+        finalHeaders = undefined;
+        delete behaviorHints.proxyHeaders;
+        delete behaviorHints.headers;
+        delete behaviorHints.notWebReady;
+    }
+
     if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
@@ -151,7 +161,7 @@ function formatStream(stream, providerName) {
     }
 
     const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
-    if (shouldForceNotWebReady) {
+    if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
         behaviorHints.notWebReady = true;
     } else {
         delete behaviorHints.notWebReady;

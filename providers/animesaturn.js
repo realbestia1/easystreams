@@ -125,13 +125,20 @@ var require_formatter = __commonJS({
         finalHeaders = behaviorHints.headers;
       }
       finalHeaders = normalizePlaybackHeaders(finalHeaders);
+      const isStreamingCommunityProvider = String(providerName || "").toLowerCase() === "streamingcommunity" || String((stream == null ? void 0 : stream.name) || "").toLowerCase().includes("streamingcommunity");
+      if (isStreamingCommunityProvider) {
+        finalHeaders = void 0;
+        delete behaviorHints.proxyHeaders;
+        delete behaviorHints.headers;
+        delete behaviorHints.notWebReady;
+      }
       if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
         behaviorHints.headers = finalHeaders;
       }
       const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
-      if (shouldForceNotWebReady) {
+      if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
         behaviorHints.notWebReady = true;
       } else {
         delete behaviorHints.notWebReady;
