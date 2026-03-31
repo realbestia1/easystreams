@@ -2,6 +2,7 @@
 
 const cheerio = require("cheerio");
 const { extractVixCloud } = require("../extractors");
+const { getProxiedUrl } = require("../extractors/common.js");
 const { formatStream } = require("../formatter.js");
 const { checkQualityFromPlaylist } = require("../quality_helper.js");
 const { createTimeoutSignal } = require("../fetch_helper.js");
@@ -29,6 +30,9 @@ const caches = {
   mapping: new Map(),
   inflight: new Map()
 };
+
+const animeUnityCookies = new Map();
+let animeUnitySessionWarmupPromise = null;
 
 function getCached(map, key) {
   const entry = map.get(key);
@@ -122,6 +126,123 @@ function buildUnityUrl(pathOrUrl) {
   if (/^https?:\/\//i.test(text)) return text;
   if (text.startsWith("/")) return `${getUnityBaseUrl()}${text}`;
   return `${getUnityBaseUrl()}/${text}`;
+}
+
+function isAnimeUnityUrl(url) {
+  const text = String(url || "").trim();
+  return text.startsWith(getUnityBaseUrl());
+}
+
+function getAnimeUnityCookieHeader() {
+  if (animeUnityCookies.size === 0) return "";
+  return Array.from(animeUnityCookies.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+function getSetCookieHeaders(response) {
+  if (!response?.headers) return [];
+
+  if (typeof response.headers.getSetCookie === "function") {
+    const values = response.headers.getSetCookie();
+    if (Array.isArray(values) && values.length > 0) return values;
+  }
+
+  if (typeof response.headers.raw === "function") {
+    const raw = response.headers.raw();
+    const values = raw?.["set-cookie"];
+    if (Array.isArray(values) && values.length > 0) return values;
+  }
+
+  const single = response.headers.get?.("set-cookie");
+  return single ? [single] : [];
+}
+
+function storeAnimeUnityCookies(response) {
+  const setCookies = getSetCookieHeaders(response);
+  for (const value of setCookies) {
+    const cookie = String(value || "").split(";")[0];
+    const separatorIndex = cookie.indexOf("=");
+    if (separatorIndex <= 0) continue;
+
+    const name = cookie.slice(0, separatorIndex).trim();
+    const cookieValue = cookie.slice(separatorIndex + 1).trim();
+    if (!name) continue;
+    animeUnityCookies.set(name, cookieValue);
+  }
+}
+
+function hasHeader(headers, key) {
+  const target = String(key || "").trim().toLowerCase();
+  if (!target) return false;
+  return Object.keys(headers || {}).some((name) => String(name || "").toLowerCase() === target);
+}
+
+function getHeaderValue(headers, key) {
+  const target = String(key || "").trim().toLowerCase();
+  if (!target) return undefined;
+  const match = Object.keys(headers || {}).find(
+    (name) => String(name || "").toLowerCase() === target
+  );
+  return match ? headers[match] : undefined;
+}
+
+function buildAnimeUnityHeaders(url, headers = {}, as = "text") {
+  const finalHeaders = {
+    "user-agent": USER_AGENT,
+    "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    accept:
+      as === "json"
+        ? "application/json, text/plain, */*"
+        : "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "cache-control": "no-cache",
+    pragma: "no-cache",
+    ...headers
+  };
+
+  if (!isAnimeUnityUrl(url)) return finalHeaders;
+
+  if (!hasHeader(finalHeaders, "referer")) {
+    finalHeaders.referer = `${getUnityBaseUrl()}/`;
+  }
+
+  const requestedWith = String(getHeaderValue(finalHeaders, "x-requested-with") || "")
+    .trim()
+    .toLowerCase();
+  if (requestedWith === "xmlhttprequest") {
+    if (!hasHeader(finalHeaders, "origin")) {
+      finalHeaders.origin = getUnityBaseUrl();
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-dest")) {
+      finalHeaders["sec-fetch-dest"] = "empty";
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-mode")) {
+      finalHeaders["sec-fetch-mode"] = "cors";
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-site")) {
+      finalHeaders["sec-fetch-site"] = "same-origin";
+    }
+  } else {
+    if (!hasHeader(finalHeaders, "upgrade-insecure-requests")) {
+      finalHeaders["upgrade-insecure-requests"] = "1";
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-dest")) {
+      finalHeaders["sec-fetch-dest"] = "document";
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-mode")) {
+      finalHeaders["sec-fetch-mode"] = "navigate";
+    }
+    if (!hasHeader(finalHeaders, "sec-fetch-site")) {
+      finalHeaders["sec-fetch-site"] = "same-origin";
+    }
+  }
+
+  const cookieHeader = getAnimeUnityCookieHeader();
+  if (cookieHeader && !hasHeader(finalHeaders, "cookie")) {
+    finalHeaders.cookie = cookieHeader;
+  }
+
+  return finalHeaders;
 }
 
 function inferSourceTag(title, animePath) {
@@ -290,6 +411,96 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT) {
   }
 }
 
+async function warmAnimeUnitySession(timeoutMs = FETCH_TIMEOUT) {
+  if (animeUnitySessionWarmupPromise) return animeUnitySessionWarmupPromise;
+
+  animeUnitySessionWarmupPromise = (async () => {
+    const response = await fetchWithTimeout(
+      getUnityBaseUrl(),
+      {
+        method: "GET",
+        headers: buildAnimeUnityHeaders(getUnityBaseUrl(), {}, "text"),
+        redirect: "follow"
+      },
+      timeoutMs
+    );
+
+    storeAnimeUnityCookies(response);
+    await response.text();
+    return response.ok;
+  })();
+
+  try {
+    return await animeUnitySessionWarmupPromise;
+  } finally {
+    animeUnitySessionWarmupPromise = null;
+  }
+}
+
+async function requestAnimeUnityResponse(url, options = {}) {
+  const {
+    as = "text",
+    method = "GET",
+    headers = {},
+    body = undefined,
+    timeoutMs = FETCH_TIMEOUT
+  } = options;
+
+  const requestConfig = {
+    method,
+    body,
+    redirect: "follow"
+  };
+
+  const doRequest = async (targetUrl, requestHeaders, { storeCookies = false } = {}) => {
+    const response = await fetchWithTimeout(
+      targetUrl,
+      {
+        ...requestConfig,
+        headers: requestHeaders
+      },
+      timeoutMs
+    );
+
+    if (storeCookies && isAnimeUnityUrl(url)) {
+      storeAnimeUnityCookies(response);
+    }
+
+    return response;
+  };
+
+  const directHeaders = buildAnimeUnityHeaders(url, headers, as);
+  let response = await doRequest(url, directHeaders, { storeCookies: true });
+  if (response.ok) return response;
+
+  if (!isAnimeUnityUrl(url) || response.status !== 403) {
+    throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+  }
+
+  console.warn(`[AnimeUnity] 403 received, retrying with fresh session: ${url}`);
+
+  try {
+    await warmAnimeUnitySession(timeoutMs);
+  } catch (error) {
+    console.warn(`[AnimeUnity] session warmup failed: ${error.message}`);
+  }
+
+  const retryHeaders = buildAnimeUnityHeaders(url, headers, as);
+  response = await doRequest(url, retryHeaders, { storeCookies: true });
+  if (response.ok) return response;
+
+  const proxiedUrl = getProxiedUrl(url);
+  if (response.status === 403 && proxiedUrl && proxiedUrl !== url) {
+    console.warn(`[AnimeUnity] 403 persisted, retrying through proxy: ${url}`);
+    const proxiedHeaders = buildAnimeUnityHeaders(url, headers, as);
+    const proxiedResponse = await doRequest(proxiedUrl, proxiedHeaders);
+    if (proxiedResponse.ok) return proxiedResponse;
+    throw new Error(`HTTP ${proxiedResponse.status} ${proxiedResponse.statusText} for ${url}`);
+  }
+
+  throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+}
+
 async function fetchResource(url, options = {}) {
   const {
     ttlMs = 0,
@@ -312,24 +523,13 @@ async function fetchResource(url, options = {}) {
   if (running) return running;
 
   const task = (async () => {
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method,
-        headers: {
-          "user-agent": USER_AGENT,
-          "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-          ...headers
-        },
-        body,
-        redirect: "follow"
-      },
+    const response = await requestAnimeUnityResponse(url, {
+      as,
+      method,
+      headers,
+      body,
       timeoutMs
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
-    }
+    });
 
     const payload = as === "json" ? await response.json() : await response.text();
     if (ttlMs > 0) setCached(caches.http, key, payload, ttlMs);

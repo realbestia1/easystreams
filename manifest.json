@@ -70,7 +70,7 @@
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.1.6",
+      "version": "1.1.7",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -83,7 +83,7 @@
     {
       "id": "easystreams-animeunity-ec",
       "name": "AnimeUnity EC",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "description": "Anime from AnimeUnity with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
