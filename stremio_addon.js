@@ -1371,6 +1371,18 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                 .map((s) => {
                     // For Stremio, we reconstruct the legacy multiline format using metadata
                     const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
+                    const finalNotWebReady =
+                        s?.behaviorHints?.notWebReady === true ||
+                        (
+                            s?.behaviorHints?.proxyHeaders?.request &&
+                            typeof s.behaviorHints.proxyHeaders.request === 'object' &&
+                            Object.keys(s.behaviorHints.proxyHeaders.request).length > 0
+                        ) ||
+                        (
+                            s?.headers &&
+                            typeof s.headers === 'object' &&
+                            Object.keys(s.headers).length > 0
+                        );
 
                     let titleUI = `📁 ${s.originalTitle}\n${s.providerName}`;
                     if (s.description) titleUI += ` | ${s.description}`;
@@ -1387,7 +1399,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         headers: s.headers,
                         behaviorHints: {
                             ...(s.behaviorHints || {}),
-                            notWebReady: s?.behaviorHints?.notWebReady === true,
+                            notWebReady: finalNotWebReady,
                             bingeGroup: name // Consistent grouping by provider name
                         },
                         language: s.language
