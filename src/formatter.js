@@ -147,13 +147,6 @@ function formatStream(stream, providerName) {
     const isStreamingCommunityProvider = String(providerName || '').toLowerCase() === 'streamingcommunity'
         || String(stream?.name || '').toLowerCase().includes('streamingcommunity');
 
-    if (isStreamingCommunityProvider) {
-        finalHeaders = undefined;
-        delete behaviorHints.proxyHeaders;
-        delete behaviorHints.headers;
-        delete behaviorHints.notWebReady;
-    }
-
     if (finalHeaders) {
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
