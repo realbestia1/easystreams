@@ -236,6 +236,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         name: `StreamingCommunity`,
         title: finalDisplayName,
         url: streamUrl,
+        headers: commonHeaders,
         quality: normalizedQuality,
         type: "direct",
         behaviorHints: {
