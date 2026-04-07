@@ -1883,7 +1883,6 @@ app.get('/', (req, res) => {
                         <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
                         <div>
                             <strong>EasyCatalogs Mode</strong>
-                            <span>When enabled, mapping requests add <code>lang=it</code>.</span>
                         </div>
                     </label>
                 </div>
@@ -1899,8 +1898,7 @@ app.get('/', (req, res) => {
                     <label class="config-toggle" for="easyProxyPassword">
                         <div style="width: 100%;">
                             <strong>EasyProxy Password</strong>
-                            <span>Optional. Added as <code>&api_password=...</code> when present.</span>
-                            <input class="config-input" type="text" id="easyProxyPassword" name="easyProxyPassword" placeholder="your-api-password">
+                            <input class="config-input" type="text" id="easyProxyPassword" name="easyProxyPassword" placeholder="your api password (optional)">
                         </div>
                     </label>
                 </div>
