@@ -1442,7 +1442,11 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         );
                         proxiedByEasyProxy = finalStreamUrl !== s.url;
                     } else if (isMixdropStreamUrl(s.url)) {
-                        finalStreamUrl = buildEasyProxyStreamUrl(easyProxyUrl, easyProxyPassword, s.url);
+                        finalStreamUrl = buildEasyProxyStreamUrl(
+                            easyProxyUrl,
+                            easyProxyPassword,
+                            s.easyProxySourceUrl || s.url
+                        );
                         proxiedByEasyProxy = finalStreamUrl !== s.url;
                     }
 

@@ -7580,6 +7580,7 @@ var require_guardahd = __commonJS({
                     name: `GuardaHD - MixDrop`,
                     title: displayName,
                     url: extracted.url,
+                    easyProxySourceUrl: streamUrl,
                     headers: extracted.headers,
                     quality: normalizedQuality,
                     type: "direct"
@@ -7891,7 +7892,7 @@ var require_guardaserie = __commonJS({
                 if (ext && ext.url) return { url: ext.url, headers: ext.headers, name: "Guardaserie - SuperVideo", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
               } else if (link.includes("mixdrop")) {
                 const ext = yield extractMixDrop(link);
-                if (ext && ext.url) return { url: ext.url, headers: ext.headers, name: "Guardaserie - MixDrop", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
+                if (ext && ext.url) return { url: ext.url, easyProxySourceUrl: link, headers: ext.headers, name: "Guardaserie - MixDrop", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
               }
             } catch (e) {
               console.error(`[Guardaserie] Extraction error for ${link}:`, e);
@@ -8508,6 +8509,7 @@ var require_guardoserie = __commonJS({
                 if (extracted && extracted.url) {
                   return [formatStream({
                     url: extracted.url,
+                    easyProxySourceUrl: playerLink,
                     headers: extracted.headers,
                     name: `Guardoserie - MixDrop`,
                     title: displayName,

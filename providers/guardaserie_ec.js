@@ -7643,7 +7643,7 @@ var require_guardaserie = __commonJS({
                 if (ext && ext.url) return { url: ext.url, headers: ext.headers, name: "Guardaserie - SuperVideo", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
               } else if (link.includes("mixdrop")) {
                 const ext = yield extractMixDrop(link);
-                if (ext && ext.url) return { url: ext.url, headers: ext.headers, name: "Guardaserie - MixDrop", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
+                if (ext && ext.url) return { url: ext.url, easyProxySourceUrl: link, headers: ext.headers, name: "Guardaserie - MixDrop", title: displayName, quality: getQualityFromName("HD"), type: "direct" };
               }
             } catch (e) {
               console.error(`[Guardaserie] Extraction error for ${link}:`, e);

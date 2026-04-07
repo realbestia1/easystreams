@@ -7995,6 +7995,7 @@ var require_guardoserie = __commonJS({
                 if (extracted && extracted.url) {
                   return [formatStream({
                     url: extracted.url,
+                    easyProxySourceUrl: playerLink,
                     headers: extracted.headers,
                     name: `Guardoserie - MixDrop`,
                     title: displayName,

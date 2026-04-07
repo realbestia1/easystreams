@@ -7578,6 +7578,7 @@ function getStreams(id, type, season, episode) {
                 name: `GuardaHD - MixDrop`,
                 title: displayName,
                 url: extracted.url,
+                easyProxySourceUrl: streamUrl,
                 headers: extracted.headers,
                 quality: normalizedQuality,
                 type: "direct"

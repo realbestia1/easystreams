@@ -724,6 +724,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                     if (extracted && extracted.url) {
                         return [formatStream({
                             url: extracted.url,
+                            easyProxySourceUrl: playerLink,
                             headers: extracted.headers,
                             name: `Guardoserie - MixDrop`,
                             title: displayName,
