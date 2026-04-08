@@ -1223,6 +1223,7 @@ async function extractStreamsFromAnimePath(animePath, requestedEpisode) {
           streams.push(
             ...vixStreams.map((stream) => ({
               ...stream,
+              easyProxySourceUrl: embedUrl,
               name: `AnimeUnity - VixCloud${labelSuffix}`,
               title: displayTitle,
               language: stream.language || streamLanguage
@@ -1280,6 +1281,7 @@ async function extractStreamsFromAnimePath(animePath, requestedEpisode) {
       name: `AnimeUnity${labelSuffix}`,
       title: displayTitle,
       url: mediaUrl,
+      easyProxySourceUrl: embedUrl,
       language: streamLanguage,
       quality,
       type: "direct",

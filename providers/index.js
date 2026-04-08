@@ -9799,6 +9799,7 @@ var require_animeunity = __commonJS({
               if (Array.isArray(vixStreams) && vixStreams.length > 0) {
                 streams.push(
                   ...vixStreams.map((stream) => __spreadProps(__spreadValues({}, stream), {
+                    easyProxySourceUrl: embedUrl2,
                     name: `AnimeUnity - VixCloud${labelSuffix}`,
                     title: displayTitle,
                     language: stream.language || streamLanguage
@@ -9851,6 +9852,7 @@ var require_animeunity = __commonJS({
             name: `AnimeUnity${labelSuffix}`,
             title: displayTitle,
             url: mediaUrl,
+            easyProxySourceUrl: embedUrl,
             language: streamLanguage,
             quality,
             type: "direct",

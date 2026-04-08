@@ -1416,8 +1416,10 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     const sName = (s.name || "").toLowerCase();
                     const sTitle = (s.title || "").toLowerCase();
                     const isStreamingCommunityProvider = name === 'streamingcommunity';
+                    const isAnimeUnityProvider = name === 'animeunity';
                     const hasEasyProxy = Boolean(easyProxyUrl);
                     if (isStreamingCommunityProvider && !hasEasyProxy) return false;
+                    if (isAnimeUnityProvider && !hasEasyProxy) return false;
                     const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
                     // Global filter for specific unwanted servers
                     return (
@@ -1435,6 +1437,13 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     let finalStreamUrl = s.url;
                     let proxiedByEasyProxy = false;
                     if (name === 'streamingcommunity') {
+                        finalStreamUrl = buildEasyProxyManifestUrl(
+                            easyProxyUrl,
+                            easyProxyPassword,
+                            s.easyProxySourceUrl || s.url
+                        );
+                        proxiedByEasyProxy = finalStreamUrl !== s.url;
+                    } else if (name === 'animeunity') {
                         finalStreamUrl = buildEasyProxyManifestUrl(
                             easyProxyUrl,
                             easyProxyPassword,
