@@ -1227,8 +1227,7 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie'];
         } else {
-            // Keep anime providers in the series plan too: they self-filter via mapping API.
-            plan = ['streamingcommunity', 'guardaserie', 'guardoserie', 'animeunity', 'animeworld', 'animesaturn'];
+            plan = ['streamingcommunity', 'guardaserie', 'guardoserie'];
         }
     }
 
