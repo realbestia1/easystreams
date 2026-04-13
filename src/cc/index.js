@@ -171,6 +171,24 @@ function extractPlayerReferer(html, pageUrl) {
     return resolveUrl(pageUrl, iframeMatch[1]);
 }
 
+function parseCompositeSeriesId(rawId, season, episode) {
+    const parsed = {
+        normalizedId: String(rawId || "").trim(),
+        season: Number.isInteger(season) ? season : (Number.parseInt(season, 10) || 1),
+        episode: Number.isInteger(episode) ? episode : (Number.parseInt(episode, 10) || 1)
+    };
+
+    const match = parsed.normalizedId.match(/^(tt\d+|\d+|tmdb:\d+):(\d+):(\d+)$/i);
+    if (!match) {
+        return parsed;
+    }
+
+    parsed.normalizedId = match[1];
+    parsed.season = Number.parseInt(match[2], 10) || parsed.season;
+    parsed.episode = Number.parseInt(match[3], 10) || parsed.episode;
+    return parsed;
+}
+
 function pickStream(fileData, type, season = 1, episode = 1) {
     if (typeof fileData === 'string') {
         return fileData;
@@ -236,6 +254,11 @@ function pickStream(fileData, type, season = 1, episode = 1) {
 }
 
 async function getStreams(id, type, season, episode, providerContext = null) {
+    const parsedRequest = parseCompositeSeriesId(id, season, episode);
+    id = parsedRequest.normalizedId;
+    season = parsedRequest.season;
+    episode = parsedRequest.episode;
+
     let imdbId = String(id || "").trim();
     const providerType = (type === 'tv' || type === 'series' || type === 'anime') ? 'tv' : 'movie';
 
