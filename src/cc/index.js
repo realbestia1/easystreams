@@ -22,6 +22,7 @@ function base64Decode(str) {
 const BASE_URL = base64Decode("aHR0cHM6Ly9jaW5lbWFjaXR5LmNj");
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const FETCH_TIMEOUT = 10000;
+const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 
 // Static auth cookie for DLE engine
 function getSessionCookies() {
@@ -211,11 +212,41 @@ function pickStream(fileData, type, season = 1, episode = 1) {
 
 async function getStreams(id, type, season, episode, providerContext = null) {
     let imdbId = String(id || "").trim();
-    if (!imdbId.startsWith("tt") && providerContext && providerContext.imdbId) {
-        imdbId = providerContext.imdbId;
+    const providerType = (type === 'tv' || type === 'series' || type === 'anime') ? 'tv' : 'movie';
+
+    // If it's a numeric ID (TMDB), try to resolve IMDb ID
+    if (!imdbId.startsWith("tt")) {
+        // Check if providerContext already has it
+        if (providerContext && providerContext.imdbId && providerContext.imdbId.startsWith("tt")) {
+            imdbId = providerContext.imdbId;
+        } else {
+            // Fetch from TMDB API
+            try {
+                const tmdbId = imdbId.replace(/\D/g, "");
+                if (tmdbId) {
+                    let externalUrl = "";
+                    if (providerType === 'movie') {
+                        externalUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`;
+                    } else {
+                        externalUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+                    }
+                    
+                    const response = await fetch(externalUrl);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.imdb_id) imdbId = data.imdb_id;
+                    }
+                }
+            } catch (e) {
+                console.error("[CC] TMDB to IMDb resolution error:", e);
+            }
+        }
     }
     
-    if (!imdbId.startsWith("tt")) return [];
+    if (!imdbId.startsWith("tt")) {
+        console.log(`[CC] Could not resolve IMDb ID for TMDB: ${id}. CC requires IMDb ID for searching.`);
+        return [];
+    }
 
     try {
         const isStremioAddon = providerContext && providerContext.__requestContext === true;
