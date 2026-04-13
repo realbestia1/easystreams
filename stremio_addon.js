@@ -81,25 +81,25 @@ const app = express();
 const path = require('path');
 const DISABLE_MIXDROP_ENV =
     typeof process !== 'undefined' &&
-    process &&
-    process.env &&
-    typeof process.env.DISABLE_MIXDROP === 'string'
+        process &&
+        process.env &&
+        typeof process.env.DISABLE_MIXDROP === 'string'
         ? process.env.DISABLE_MIXDROP.trim().toLowerCase()
         : '';
 const DISABLE_MIXDROP_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_MIXDROP_ENV);
 const DISABLE_UQLOAD_ENV =
     typeof process !== 'undefined' &&
-    process &&
-    process.env &&
-    typeof process.env.DISABLE_UQLOAD === 'string'
+        process &&
+        process.env &&
+        typeof process.env.DISABLE_UQLOAD === 'string'
         ? process.env.DISABLE_UQLOAD.trim().toLowerCase()
         : '';
 const DISABLE_UQLOAD_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_UQLOAD_ENV);
 const CF_PROXY_URL_ENV =
     typeof process !== 'undefined' &&
-    process &&
-    process.env &&
-    typeof process.env.CF_PROXY_URL === 'string'
+        process &&
+        process.env &&
+        typeof process.env.CF_PROXY_URL === 'string'
         ? process.env.CF_PROXY_URL
         : '';
 const normalizedProxyEnv = String(CF_PROXY_URL_ENV || '').trim().replace(/\/+$/, '');
@@ -1155,7 +1155,6 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
-    cc: require('./src/cc/index.js')
 };
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
@@ -1218,11 +1217,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cc'];
+                : ['streamingcommunity', 'guardahd', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cc'];
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie'];
@@ -1230,7 +1229,7 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie']
-                : ['streamingcommunity', 'guardaserie', 'guardoserie', 'cc'];
+                : ['streamingcommunity', 'guardaserie', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie'];
         } else {
@@ -1345,311 +1344,311 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const animeRoutingFlagPromise = resolveAnimeRoutingFlag(type, providerId, requestContext);
 
     const streamResolutionPromise = (async () => {
-    logVerbose(`[Stremio] Request: ${type} ${id}`);
-    if (cacheStorageKey !== requestKey) {
-        logVerbose(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
-    }
-    logVerbose(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
-    if (requestContext?.mappingLanguage) {
-        logVerbose(`[Stremio] Mapping language: ${requestContext.mappingLanguage}`);
-    }
-    if (effectiveSeason !== season) {
-        logVerbose(`[Stremio] Effective Season: ${effectiveSeason} (mapping canonicalization)`);
-    }
-    if (requestContext?.tmdbId) {
-        logVerbose(`[Stremio] Context: TMDB=${requestContext.tmdbId}, MappedSeason=${requestContext.mappedSeason ?? 'n/a'}, CanonicalSeason=${requestContext.canonicalSeason}`);
-    }
-    // Map Stremio type to provider type
-    // Stremio: movie, series, anime
-    // Providers: movie, tv
-    const providerType = (type === 'movie') ? 'movie' : 'tv';
-
-    const collectedStreams = [];
-    const providerBenchmarkResults = [];
-    const providersStartedAt = Date.now();
-    const animeRoutingFlag = await animeRoutingFlagPromise;
-    const requestStreamTimeout =
-        animeRoutingFlag === true
-            ? Math.max(STREAM_RESPONSE_TIMEOUT, ANIME_STREAM_RESPONSE_TIMEOUT)
-            : STREAM_RESPONSE_TIMEOUT;
-    if (animeRoutingFlag && type !== 'anime') {
-        logVerbose(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
-    }
-    const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag);
-    if (selectedProviders.length === 0) {
-        console.warn('[Stremio] No provider selected for request.');
-        return { streams: [] };
-    }
-    logVerbose(`[Stremio] Providers selected (${selectedProviders.length}): ${selectedProviders.join(', ')}`);
-
-    const providerTasks = selectedProviders.map(async (name) => {
-        const providerStartedAt = Date.now();
-        let didTimeout = false;
-        let executionError = null;
-        let rawStreamsCount = 0;
-        let processedStreamsCount = 0;
-        let finalStatus = 'success';
-        try {
-            const provider = providers[name];
-            if (typeof provider.getStreams !== 'function') {
-                finalStatus = 'skipped';
-                return [];
-            }
-
-            logVerbose(`[${name}] Searching...`);
-
-            const providerTimeoutMs = Math.min(PROVIDER_TIMEOUT, requestStreamTimeout);
-
-            let timeoutId;
-            const timeoutPromise = new Promise((resolve) => {
-                timeoutId = setTimeout(() => {
-                    didTimeout = true;
-                    console.warn(`[${name}] Timed out after ${providerTimeoutMs}ms`);
-                    resolve([]); // Resolve with empty array on timeout
-                }, providerTimeoutMs);
-            });
-
-            const providerPromise = (async () => {
-                try {
-                    const providerContext = buildProviderRequestContext(requestContext);
-                    providerContext.proxyUrl = easyProxyUrl;
-                    const streams = await provider.getStreams(providerId, providerType, effectiveSeason, episode, providerContext);
-                    logVerbose(`[${name}] Found ${streams.length} streams`);
-                    return streams;
-                } catch (e) {
-                    executionError = e;
-                    console.error(`[${name}] Execution Error:`, e.message);
-                    return [];
-                } finally {
-                    if (timeoutId) clearTimeout(timeoutId);
-                }
-            })();
-
-            // Race between provider execution and timeout
-            let streams = await Promise.race([providerPromise, timeoutPromise]);
-            rawStreamsCount = Array.isArray(streams) ? streams.length : 0;
-
-            // Fase 2.3: Stream Processing
-            const processedStreams = streams
-                .filter((s) => {
-                    if (!s || !s.url) return false;
-                    const server = (s.server || "").toLowerCase();
-                    const sName = (s.name || "").toLowerCase();
-                    const sTitle = (s.title || "").toLowerCase();
-                    const isStreamingCommunityProvider = name === 'streamingcommunity';
-                    const isAnimeUnityProvider = name === 'animeunity';
-                    const hasEasyProxy = Boolean(easyProxyUrl);
-                    if (isStreamingCommunityProvider && !hasEasyProxy) return false;
-                    if (isAnimeUnityProvider && !hasEasyProxy) return false;
-                    const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
-                    // Global filter for specific unwanted servers
-                    return (
-                        (canProxyMixdrop || (
-                            !server.includes('mixdrop') &&
-                            !sName.includes('mixdrop') &&
-                            !sTitle.includes('mixdrop')
-                        )) &&
-                        !server.includes('uqload') &&
-                        !sName.includes('uqload') &&
-                        !sTitle.includes('uqload')
-                    );
-                })
-                .map((s) => {
-                    let finalStreamUrl = s.url;
-                    let proxiedByEasyProxy = false;
-                    if (name === 'streamingcommunity') {
-                        finalStreamUrl = buildEasyProxyManifestUrl(
-                            easyProxyUrl,
-                            easyProxyPassword,
-                            s.easyProxySourceUrl || s.url
-                        );
-                        proxiedByEasyProxy = finalStreamUrl !== s.url;
-                    } else if (name === 'animeunity') {
-                        finalStreamUrl = buildEasyProxyManifestUrl(
-                            easyProxyUrl,
-                            easyProxyPassword,
-                            s.easyProxySourceUrl || s.url
-                        );
-                        proxiedByEasyProxy = finalStreamUrl !== s.url;
-                    } else if (isMixdropStreamUrl(s.url)) {
-                        finalStreamUrl = buildEasyProxyStreamUrl(
-                            easyProxyUrl,
-                            easyProxyPassword,
-                            s.easyProxySourceUrl || s.url
-                        );
-                        proxiedByEasyProxy = finalStreamUrl !== s.url;
-                    }
-
-                    // For Stremio, we reconstruct the legacy multiline format using metadata
-                    const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
-
-                    let titleUI = `📁 ${s.originalTitle}\n${s.providerName}`;
-                    if (s.description) titleUI += ` | ${s.description}`;
-                    if (s.language) {
-                        titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
-                    } else {
-                        titleUI += `\n🔍EasyStreams`;
-                    }
-
-                    const finalBehaviorHints = {
-                        ...(s.behaviorHints || {}),
-                        notWebReady: proxiedByEasyProxy ? false : s?.behaviorHints?.notWebReady === true,
-                        bingeGroup: name // Consistent grouping by provider name
-                    };
-
-                    if (proxiedByEasyProxy) {
-                        delete finalBehaviorHints.proxyHeaders;
-                        delete finalBehaviorHints.headers;
-                    }
-
-                    return {
-                        name: nameUI,
-                        title: titleUI,
-                        url: finalStreamUrl,
-                        behaviorHints: finalBehaviorHints,
-                        language: s.language
-                    };
-                });
-            processedStreamsCount = processedStreams.length;
-
-            if (processedStreams.length > 0) {
-                collectedStreams.push(...processedStreams);
-            }
-
-            return processedStreams;
-        } catch (e) {
-            executionError = e;
-            console.error(`[${name}] Error:`, e.message);
-            return [];
-        } finally {
-            if (didTimeout) {
-                finalStatus = 'timeout';
-            } else if (executionError) {
-                finalStatus = 'error';
-            }
-
-            providerBenchmarkResults.push({
-                provider: name,
-                status: finalStatus,
-                elapsedMs: Date.now() - providerStartedAt,
-                rawStreams: rawStreamsCount,
-                processedStreams: processedStreamsCount
-            });
-        }
-    });
-
-    let globalTimeoutId;
-    const completionState = await Promise.race([
-        Promise.allSettled(providerTasks).then(() => 'completed'),
-        new Promise((resolve) => {
-            globalTimeoutId = setTimeout(() => resolve('deadline'), requestStreamTimeout);
-        })
-    ]);
-
-    if (globalTimeoutId) clearTimeout(globalTimeoutId);
-
-    if (completionState === 'deadline') {
-        console.warn(`[Stremio] Global response deadline reached (${requestStreamTimeout}ms). Returning partial streams.`);
-    }
-
-    const streams = collectedStreams.slice();
-
-    // Sort streams? Maybe by quality or provider preference?
-    // For now, just return them all.
-
-    // Filter out streams without URL
-    const validStreams = streams.filter(s => s.url);
-
-    if (PROVIDER_BENCHMARK_LOGS && providerBenchmarkResults.length > 0) {
-        const requestLabel = `${type}:${id}`;
-        const totalMs = Date.now() - providersStartedAt;
-        const sortedBench = providerBenchmarkResults
-            .slice()
-            .sort((a, b) => b.elapsedMs - a.elapsedMs);
-        const slowest = sortedBench[0];
-        logInfo(`[ProviderBench] ${JSON.stringify({
-            kind: 'request',
-            request: requestLabel,
-            totalMs,
-            providers: sortedBench.length,
-            slowestProvider: slowest.provider,
-            slowestMs: slowest.elapsedMs
-        })}`);
-        for (const entry of sortedBench) {
-            logInfo(`[ProviderBench] ${JSON.stringify({
-                kind: 'provider',
-                request: requestLabel,
-                provider: entry.provider,
-                status: entry.status,
-                elapsedMs: entry.elapsedMs,
-                rawStreams: entry.rawStreams,
-                processedStreams: entry.processedStreams
-            })}`);
-        }
-    }
-
-    // Sort: StreamingCommunity first, then Language (ITA > SUB ITA), then Quality Descending
-    validStreams.sort((a, b) => {
-        // 1. StreamingCommunity Priority
-        const providerA = a.behaviorHints?.bingeGroup || '';
-        const providerB = b.behaviorHints?.bingeGroup || '';
-
-        const isA_SC = providerA === 'streamingcommunity';
-        const isB_SC = providerB === 'streamingcommunity';
-
-        if (isA_SC && !isB_SC) return -1;
-        if (!isA_SC && isB_SC) return 1;
-
-        // 2. Language Priority (ITA > SUB ITA > Others)
-        const getLangScore = (stream) => {
-            const lang = stream.language || '';
-            if (lang === '🇮🇹') return 2;
-            if (lang === '🇯🇵') return 1;
-            return 0;
-        };
-
-        const langScoreA = getLangScore(a);
-        const langScoreB = getLangScore(b);
-
-        if (langScoreA !== langScoreB) {
-            return langScoreB - langScoreA; // Descending (2 > 1 > 0)
-        }
-
-        // 3. Quality Priority
-        const qualityOrder = {
-            '🔥4K UHD': 10,
-            '✨ QHD': 9,
-            '🚀 FHD': 8,
-            '💿 HD': 7,
-            '💩 Low Quality': 1
-        };
-
-        const getScore = (str) => {
-            for (const [k, v] of Object.entries(qualityOrder)) {
-                if (str.includes(k)) return v;
-            }
-            return 0;
-        };
-
-        const scoreA = getScore(a.name);
-        const scoreB = getScore(b.name);
-
-        return scoreB - scoreA; // Descending
-    });
-
-    logVerbose(`[Stremio] Returning ${validStreams.length} streams total.`);
-    const responsePayload = { streams: validStreams };
-    if (cacheEnabledForRequest && validStreams.length > 0) {
-        setCachedStreamResponse(cacheStorageKey, responsePayload);
+        logVerbose(`[Stremio] Request: ${type} ${id}`);
         if (cacheStorageKey !== requestKey) {
-            setCachedStreamAlias(requestKey, cacheStorageKey);
+            logVerbose(`[Stremio] Canonical cache key: ${cacheStorageKey} (from ${requestKey})`);
         }
-    } else if (!cacheEnabledForRequest) {
-        logVerbose(`[Stremio] Skipping cache for season 0 request: ${requestKey}`);
-    } else {
-        logVerbose(`[Stremio] Skipping cache for failed/empty result: ${requestKey}`);
-    }
-    return responsePayload;
+        logVerbose(`[Stremio] Parsed: ID=${providerId}, Season=${season}, Episode=${episode}`);
+        if (requestContext?.mappingLanguage) {
+            logVerbose(`[Stremio] Mapping language: ${requestContext.mappingLanguage}`);
+        }
+        if (effectiveSeason !== season) {
+            logVerbose(`[Stremio] Effective Season: ${effectiveSeason} (mapping canonicalization)`);
+        }
+        if (requestContext?.tmdbId) {
+            logVerbose(`[Stremio] Context: TMDB=${requestContext.tmdbId}, MappedSeason=${requestContext.mappedSeason ?? 'n/a'}, CanonicalSeason=${requestContext.canonicalSeason}`);
+        }
+        // Map Stremio type to provider type
+        // Stremio: movie, series, anime
+        // Providers: movie, tv
+        const providerType = (type === 'movie') ? 'movie' : 'tv';
+
+        const collectedStreams = [];
+        const providerBenchmarkResults = [];
+        const providersStartedAt = Date.now();
+        const animeRoutingFlag = await animeRoutingFlagPromise;
+        const requestStreamTimeout =
+            animeRoutingFlag === true
+                ? Math.max(STREAM_RESPONSE_TIMEOUT, ANIME_STREAM_RESPONSE_TIMEOUT)
+                : STREAM_RESPONSE_TIMEOUT;
+        if (animeRoutingFlag && type !== 'anime') {
+            logVerbose(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
+        }
+        const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag);
+        if (selectedProviders.length === 0) {
+            console.warn('[Stremio] No provider selected for request.');
+            return { streams: [] };
+        }
+        logVerbose(`[Stremio] Providers selected (${selectedProviders.length}): ${selectedProviders.join(', ')}`);
+
+        const providerTasks = selectedProviders.map(async (name) => {
+            const providerStartedAt = Date.now();
+            let didTimeout = false;
+            let executionError = null;
+            let rawStreamsCount = 0;
+            let processedStreamsCount = 0;
+            let finalStatus = 'success';
+            try {
+                const provider = providers[name];
+                if (typeof provider.getStreams !== 'function') {
+                    finalStatus = 'skipped';
+                    return [];
+                }
+
+                logVerbose(`[${name}] Searching...`);
+
+                const providerTimeoutMs = Math.min(PROVIDER_TIMEOUT, requestStreamTimeout);
+
+                let timeoutId;
+                const timeoutPromise = new Promise((resolve) => {
+                    timeoutId = setTimeout(() => {
+                        didTimeout = true;
+                        console.warn(`[${name}] Timed out after ${providerTimeoutMs}ms`);
+                        resolve([]); // Resolve with empty array on timeout
+                    }, providerTimeoutMs);
+                });
+
+                const providerPromise = (async () => {
+                    try {
+                        const providerContext = buildProviderRequestContext(requestContext);
+                        providerContext.proxyUrl = easyProxyUrl;
+                        const streams = await provider.getStreams(providerId, providerType, effectiveSeason, episode, providerContext);
+                        logVerbose(`[${name}] Found ${streams.length} streams`);
+                        return streams;
+                    } catch (e) {
+                        executionError = e;
+                        console.error(`[${name}] Execution Error:`, e.message);
+                        return [];
+                    } finally {
+                        if (timeoutId) clearTimeout(timeoutId);
+                    }
+                })();
+
+                // Race between provider execution and timeout
+                let streams = await Promise.race([providerPromise, timeoutPromise]);
+                rawStreamsCount = Array.isArray(streams) ? streams.length : 0;
+
+                // Fase 2.3: Stream Processing
+                const processedStreams = streams
+                    .filter((s) => {
+                        if (!s || !s.url) return false;
+                        const server = (s.server || "").toLowerCase();
+                        const sName = (s.name || "").toLowerCase();
+                        const sTitle = (s.title || "").toLowerCase();
+                        const isStreamingCommunityProvider = name === 'streamingcommunity';
+                        const isAnimeUnityProvider = name === 'animeunity';
+                        const hasEasyProxy = Boolean(easyProxyUrl);
+                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
+                        if (isAnimeUnityProvider && !hasEasyProxy) return false;
+                        const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
+                        // Global filter for specific unwanted servers
+                        return (
+                            (canProxyMixdrop || (
+                                !server.includes('mixdrop') &&
+                                !sName.includes('mixdrop') &&
+                                !sTitle.includes('mixdrop')
+                            )) &&
+                            !server.includes('uqload') &&
+                            !sName.includes('uqload') &&
+                            !sTitle.includes('uqload')
+                        );
+                    })
+                    .map((s) => {
+                        let finalStreamUrl = s.url;
+                        let proxiedByEasyProxy = false;
+                        if (name === 'streamingcommunity') {
+                            finalStreamUrl = buildEasyProxyManifestUrl(
+                                easyProxyUrl,
+                                easyProxyPassword,
+                                s.easyProxySourceUrl || s.url
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'animeunity') {
+                            finalStreamUrl = buildEasyProxyManifestUrl(
+                                easyProxyUrl,
+                                easyProxyPassword,
+                                s.easyProxySourceUrl || s.url
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (isMixdropStreamUrl(s.url)) {
+                            finalStreamUrl = buildEasyProxyStreamUrl(
+                                easyProxyUrl,
+                                easyProxyPassword,
+                                s.easyProxySourceUrl || s.url
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        }
+
+                        // For Stremio, we reconstruct the legacy multiline format using metadata
+                        const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
+
+                        let titleUI = `📁 ${s.originalTitle}\n${s.providerName}`;
+                        if (s.description) titleUI += ` | ${s.description}`;
+                        if (s.language) {
+                            titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
+                        } else {
+                            titleUI += `\n🔍EasyStreams`;
+                        }
+
+                        const finalBehaviorHints = {
+                            ...(s.behaviorHints || {}),
+                            notWebReady: proxiedByEasyProxy ? false : s?.behaviorHints?.notWebReady === true,
+                            bingeGroup: name // Consistent grouping by provider name
+                        };
+
+                        if (proxiedByEasyProxy) {
+                            delete finalBehaviorHints.proxyHeaders;
+                            delete finalBehaviorHints.headers;
+                        }
+
+                        return {
+                            name: nameUI,
+                            title: titleUI,
+                            url: finalStreamUrl,
+                            behaviorHints: finalBehaviorHints,
+                            language: s.language
+                        };
+                    });
+                processedStreamsCount = processedStreams.length;
+
+                if (processedStreams.length > 0) {
+                    collectedStreams.push(...processedStreams);
+                }
+
+                return processedStreams;
+            } catch (e) {
+                executionError = e;
+                console.error(`[${name}] Error:`, e.message);
+                return [];
+            } finally {
+                if (didTimeout) {
+                    finalStatus = 'timeout';
+                } else if (executionError) {
+                    finalStatus = 'error';
+                }
+
+                providerBenchmarkResults.push({
+                    provider: name,
+                    status: finalStatus,
+                    elapsedMs: Date.now() - providerStartedAt,
+                    rawStreams: rawStreamsCount,
+                    processedStreams: processedStreamsCount
+                });
+            }
+        });
+
+        let globalTimeoutId;
+        const completionState = await Promise.race([
+            Promise.allSettled(providerTasks).then(() => 'completed'),
+            new Promise((resolve) => {
+                globalTimeoutId = setTimeout(() => resolve('deadline'), requestStreamTimeout);
+            })
+        ]);
+
+        if (globalTimeoutId) clearTimeout(globalTimeoutId);
+
+        if (completionState === 'deadline') {
+            console.warn(`[Stremio] Global response deadline reached (${requestStreamTimeout}ms). Returning partial streams.`);
+        }
+
+        const streams = collectedStreams.slice();
+
+        // Sort streams? Maybe by quality or provider preference?
+        // For now, just return them all.
+
+        // Filter out streams without URL
+        const validStreams = streams.filter(s => s.url);
+
+        if (PROVIDER_BENCHMARK_LOGS && providerBenchmarkResults.length > 0) {
+            const requestLabel = `${type}:${id}`;
+            const totalMs = Date.now() - providersStartedAt;
+            const sortedBench = providerBenchmarkResults
+                .slice()
+                .sort((a, b) => b.elapsedMs - a.elapsedMs);
+            const slowest = sortedBench[0];
+            logInfo(`[ProviderBench] ${JSON.stringify({
+                kind: 'request',
+                request: requestLabel,
+                totalMs,
+                providers: sortedBench.length,
+                slowestProvider: slowest.provider,
+                slowestMs: slowest.elapsedMs
+            })}`);
+            for (const entry of sortedBench) {
+                logInfo(`[ProviderBench] ${JSON.stringify({
+                    kind: 'provider',
+                    request: requestLabel,
+                    provider: entry.provider,
+                    status: entry.status,
+                    elapsedMs: entry.elapsedMs,
+                    rawStreams: entry.rawStreams,
+                    processedStreams: entry.processedStreams
+                })}`);
+            }
+        }
+
+        // Sort: StreamingCommunity first, then Language (ITA > SUB ITA), then Quality Descending
+        validStreams.sort((a, b) => {
+            // 1. StreamingCommunity Priority
+            const providerA = a.behaviorHints?.bingeGroup || '';
+            const providerB = b.behaviorHints?.bingeGroup || '';
+
+            const isA_SC = providerA === 'streamingcommunity';
+            const isB_SC = providerB === 'streamingcommunity';
+
+            if (isA_SC && !isB_SC) return -1;
+            if (!isA_SC && isB_SC) return 1;
+
+            // 2. Language Priority (ITA > SUB ITA > Others)
+            const getLangScore = (stream) => {
+                const lang = stream.language || '';
+                if (lang === '🇮🇹') return 2;
+                if (lang === '🇯🇵') return 1;
+                return 0;
+            };
+
+            const langScoreA = getLangScore(a);
+            const langScoreB = getLangScore(b);
+
+            if (langScoreA !== langScoreB) {
+                return langScoreB - langScoreA; // Descending (2 > 1 > 0)
+            }
+
+            // 3. Quality Priority
+            const qualityOrder = {
+                '🔥4K UHD': 10,
+                '✨ QHD': 9,
+                '🚀 FHD': 8,
+                '💿 HD': 7,
+                '💩 Low Quality': 1
+            };
+
+            const getScore = (str) => {
+                for (const [k, v] of Object.entries(qualityOrder)) {
+                    if (str.includes(k)) return v;
+                }
+                return 0;
+            };
+
+            const scoreA = getScore(a.name);
+            const scoreB = getScore(b.name);
+
+            return scoreB - scoreA; // Descending
+        });
+
+        logVerbose(`[Stremio] Returning ${validStreams.length} streams total.`);
+        const responsePayload = { streams: validStreams };
+        if (cacheEnabledForRequest && validStreams.length > 0) {
+            setCachedStreamResponse(cacheStorageKey, responsePayload);
+            if (cacheStorageKey !== requestKey) {
+                setCachedStreamAlias(requestKey, cacheStorageKey);
+            }
+        } else if (!cacheEnabledForRequest) {
+            logVerbose(`[Stremio] Skipping cache for season 0 request: ${requestKey}`);
+        } else {
+            logVerbose(`[Stremio] Skipping cache for failed/empty result: ${requestKey}`);
+        }
+        return responsePayload;
     })();
 
     if (!cacheEnabledForRequest) {
