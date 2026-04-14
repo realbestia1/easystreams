@@ -406,6 +406,16 @@ function buildEasyProxyManifestUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
     return `${proxyBaseUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
+function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl) {
+    const proxyBaseUrl = normalizeEasyProxyUrl(easyProxyUrl);
+    const proxyPassword = String(easyProxyPassword || '').trim();
+    const normalizedHost = String(host || '').trim();
+    const normalizedStreamUrl = String(streamUrl || '').trim();
+    if (!proxyBaseUrl || !normalizedHost || !normalizedStreamUrl) return normalizedStreamUrl;
+    const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(proxyPassword)}` : '';
+    return `${proxyBaseUrl}/extractor/video?host=${encodeURIComponent(normalizedHost)}&url=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
+}
+
 function isMixdropStreamUrl(streamUrl) {
     const normalizedStreamUrl = String(streamUrl || '').trim().toLowerCase();
     return normalizedStreamUrl.includes('mixdrop')
@@ -425,6 +435,7 @@ function isStreamHgStream(stream) {
     return text.includes('streamhg')
         || text.includes('dhcplay')
         || text.includes('vibuxer')
+        || text.includes('masukestin')
         || text.includes('premilkyway')
         || text.includes('meadowlarkaninearts');
 }
@@ -1489,9 +1500,10 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isStreamHgStream(s)) {
-                            finalStreamUrl = buildEasyProxyManifestUrl(
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
+                                'streamhg',
                                 s.easyProxySourceUrl || s.url
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
