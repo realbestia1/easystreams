@@ -41,6 +41,7 @@ const { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extra
 require('../fetch_helper.js');
 const { checkQualityFromPlaylist } = require('../quality_helper.js');
 const { formatStream } = require('../formatter.js');
+const { smartFetch } = require('../utils/cf_handler');
 const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
 
 function getQualityFromName(qualityStr) {
@@ -230,15 +231,18 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let matchedTitle = imdbId;
       if (imdbId) {
         const searchUrl = `${getGuardaserieBaseUrl()}/index.php?do=search&subaction=search&story=${imdbId}`;
-        const searchRes = yield fetch(searchUrl, { headers: { "User-Agent": USER_AGENT, "Referer": getGuardaserieBaseUrl() } });
-        if (searchRes.ok) {
-          const searchHtml = yield searchRes.text();
+        const searchHtml = yield smartFetch(searchUrl, getGuardaserieBaseUrl(), { 
+          headers: { "Referer": getGuardaserieBaseUrl() } 
+        });
+        if (searchHtml) {
           const match = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i.exec(searchHtml);
           if (match && !match[2].toUpperCase().includes("[SUB ITA]")) {
             showUrl = match[1].startsWith('/') ? `${getGuardaserieBaseUrl()}${match[1]}` : match[1];
             matchedTitle = match[2] || imdbId;
-            const pageRes = yield fetch(showUrl, { headers: { "User-Agent": USER_AGENT, "Referer": getGuardaserieBaseUrl() } });
-            if (pageRes.ok) showHtml = yield pageRes.text();
+            const pageHtml = yield smartFetch(showUrl, getGuardaserieBaseUrl(), { 
+              headers: { "Referer": getGuardaserieBaseUrl() } 
+            });
+            if (pageHtml) showHtml = pageHtml;
           }
         }
         mark("search_by_imdb_done", { ok: Boolean(showUrl) });

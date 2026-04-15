@@ -1,4 +1,5 @@
 const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
+const { smartFetch } = require('../utils/cf_handler');
 const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require('../extractors');
 const { formatStream } = require('../formatter');
 const { checkQualityFromPlaylist } = require('../quality_helper');
@@ -306,15 +307,13 @@ function htmlMatchesTitle(html, title, originalTitle) {
 async function tryFetchPageHtml(url) {
     if (!url) return null;
     const proxiedUrl = getProxiedUrl(url);
-    const response = await fetch(proxiedUrl, {
+    const html = await smartFetch(proxiedUrl, getGuardoserieBaseUrl(), {
         headers: {
-            'User-Agent': USER_AGENT,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
         }
     });
-    if (!response.ok) return null;
-    return await response.text();
+    return html;
 }
 
 async function guessUrlFromSlug(baseUrl, title, originalTitle) {
@@ -444,37 +443,34 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
             const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
 
-            const response = await fetch(searchUrl, {
-                method: 'POST',
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'Origin': baseUrl,
-                    'Referer': `${baseUrl}/`
-                },
-                body: body
-            });
+            try {
+                const searchHtml = await smartFetch(searchUrl, baseUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Origin': baseUrl,
+                        'Referer': `${baseUrl}/`
+                    },
+                    body: body
+                });
 
-            if (response.ok) {
-                const searchHtml = await response.text();
                 const results = extractSearchResultsFromHtml(searchHtml, baseUrl);
                 mark('search_ajax_done', { q: query, ms: Date.now() - searchStartedAt, results: results.length });
                 if (results.length > 0) return results;
+            } catch (e) {
+                console.error('[Guardoserie] AJAX search error:', e.message);
             }
 
             // Fallback: try the public search page (GET) and allow proxy.
             const searchPageUrl = `${baseUrl}/?s=${encodeURIComponent(query)}`;
             const proxiedSearchUrl = getProxiedUrl(searchPageUrl);
-            const pageRes = await fetch(proxiedSearchUrl, {
+            const pageHtml = await smartFetch(proxiedSearchUrl, baseUrl, {
                 headers: {
-                    'User-Agent': USER_AGENT,
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
                 }
             });
-            if (!pageRes.ok) return [];
-            const pageHtml = await pageRes.text();
             const fallbackResults = extractSearchResultsFromHtml(pageHtml, baseUrl);
             mark('search_fallback_done', { q: query, ms: Date.now() - searchStartedAt, results: fallbackResults.length });
             return fallbackResults;
@@ -537,16 +533,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                 // Verify year in the page
                 try {
                     const verifyStartedAt = Date.now();
-                    const pageRes = await fetch(result.url, {
+                    const pageHtml = await smartFetch(result.url, getGuardoserieBaseUrl(), {
                         headers: {
-                            'User-Agent': USER_AGENT,
                             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
                             'Referer': `${getGuardoserieBaseUrl()}/`
                         }
                     });
-                    if (!pageRes.ok) continue;
-                    const pageHtml = await pageRes.text();
                     mark('result_verify_done', { url: result.url, ms: Date.now() - verifyStartedAt });
 
                     // Target the year specifically using regex
@@ -629,15 +622,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         if (type === 'tv' || type === 'series') {
             season = effectiveSeason;
             episode = effectiveEpisode;
-            const pageRes = await fetch(targetUrl, {
+            const pageHtml = await smartFetch(targetUrl, getGuardoserieBaseUrl(), {
                 headers: {
-                    'User-Agent': USER_AGENT,
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
                     'Referer': `${getGuardoserieBaseUrl()}/`
                 }
             });
-            const pageHtml = await pageRes.text();
             const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage(pageHtml, season, episode);
             mark('series_episode_resolve_done', { ok: Boolean(resolvedEpisodeUrl) });
             if (resolvedEpisodeUrl) {
@@ -649,15 +640,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         }
 
         console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-        const finalRes = await fetch(episodeUrl, {
+        const finalHtml = await smartFetch(episodeUrl, getGuardoserieBaseUrl(), {
             headers: {
-                'User-Agent': USER_AGENT,
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Referer': `${getGuardoserieBaseUrl()}/`
             }
         });
-        const finalHtml = await finalRes.text();
         mark('final_page_done');
 
         let playerLinks = extractPlayerLinksFromHtml(finalHtml);
@@ -668,15 +657,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage(finalHtml, season, episode);
             if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
                 console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-                const retryRes = await fetch(fallbackEpisodeUrl, {
+                const retryHtml = await smartFetch(fallbackEpisodeUrl, getGuardoserieBaseUrl(), {
                     headers: {
-                        'User-Agent': USER_AGENT,
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                         'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
                         'Referer': `${getGuardoserieBaseUrl()}/`
                     }
                 });
-                const retryHtml = await retryRes.text();
                 const fallbackLinks = extractPlayerLinksFromHtml(retryHtml);
                 if (fallbackLinks.length > 0) {
                     playerLinks = fallbackLinks;

@@ -2125,9 +2125,51 @@ app.get('/', (req, res) => {
 
 app.use('/', addonRouter);
 
+// API per Nuvio / Client-side
+app.get('/resolve/guardoserie', async (req, res) => {
+    const { id, type, s, ep } = req.query;
+    if (!id || !type) {
+        return res.status(400).json({ error: 'Missing parameters (id, type)' });
+    }
+
+    console.log(`[API] Richiesta remota Guardoserie: ${type} ${id} ${s}x${ep}`);
+    
+    try {
+        const provider = providers.guardoserie;
+        const season = parseInt(s) || 1;
+        const episode = parseInt(ep) || 1;
+        
+        // Risolviamo il contesto (necessario per TMDB/Kitsu mapping)
+        const requestContext = await resolveProviderRequestContext(type, id, season, episode, 'it');
+        const providerContext = buildProviderRequestContext(requestContext);
+        
+        const streams = await provider.getStreams(id, type, season, episode, providerContext);
+        res.json({ streams });
+    } catch (e) {
+        console.error('[API] Errore risoluzione remota:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 const PORT = process.env.PORT || 7000;
+
+// Add warmup logic for providers that need Cloudflare bypass
+async function warmup() {
+    console.log('[Warmup] Avvio riscaldamento provider...');
+    try {
+        const { getClearance } = require('./cf_bypass');
+        // Riscaldiamo Guardoserie
+        await getClearance('https://guardoserie.team', process.env.IN_DOCKER === 'true');
+        console.log('[Warmup] Guardoserie pronto!');
+    } catch (e) {
+        console.error('[Warmup] Errore riscaldamento:', e.message);
+    }
+}
+
 const server = app.listen(PORT, () => {
     logInfo(`Stremio Addon running at http://localhost:${PORT}`);
+    // Avvia warmup in background
+    warmup();
 });
 
 // Graceful Shutdown
