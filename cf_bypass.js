@@ -30,8 +30,13 @@ async function getClearance(url, headless = false) {
 
     // Su Linux/Docker cerchiamo l'installazione di Chrome/Chromium
     if (isDocker) {
-        if (fs.existsSync('/usr/bin/chromium')) launchOptions.executablePath = '/usr/bin/chromium';
-        else if (fs.existsSync('/usr/bin/google-chrome')) launchOptions.executablePath = '/usr/bin/google-chrome';
+        if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+            launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+        } else if (fs.existsSync('/usr/bin/chromium')) {
+            launchOptions.executablePath = '/usr/bin/chromium';
+        } else if (fs.existsSync('/usr/bin/google-chrome')) {
+            launchOptions.executablePath = '/usr/bin/google-chrome';
+        }
     }
 
     const browser = await puppeteer.launch(launchOptions);
