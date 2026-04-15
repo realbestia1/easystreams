@@ -306,8 +306,7 @@ function htmlMatchesTitle(html, title, originalTitle) {
 
 async function tryFetchPageHtml(url) {
     if (!url) return null;
-    const proxiedUrl = getProxiedUrl(url);
-    const html = await smartFetch(proxiedUrl, getGuardoserieBaseUrl(), {
+    const html = await smartFetch(url, getGuardoserieBaseUrl(), {
         headers: {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
@@ -462,10 +461,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                 console.error('[Guardoserie] AJAX search error:', e.message);
             }
 
-            // Fallback: try the public search page (GET) and allow proxy.
+            // Fallback: try the public search page (GET)
             const searchPageUrl = `${baseUrl}/?s=${encodeURIComponent(query)}`;
-            const proxiedSearchUrl = getProxiedUrl(searchPageUrl);
-            const pageHtml = await smartFetch(proxiedSearchUrl, baseUrl, {
+            const pageHtml = await smartFetch(searchPageUrl, baseUrl, {
                 headers: {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7'
