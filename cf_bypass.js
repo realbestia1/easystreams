@@ -14,7 +14,7 @@ async function getClearance(url) {
     }
 
     activeClearancePromise = (async () => {
-        const flaresolverrUrl = process.env.FLARESOLVERR_URL || 'http://localhost:8191/v1';
+        const flaresolverrUrl = process.env.FLARESOLVERR_URL || 'http://127.0.0.1:8191/v1';
         
         console.log(`[CF] Richiesta bypass a FlareSolverr: ${url}`);
         
