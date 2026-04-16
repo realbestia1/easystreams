@@ -34,7 +34,6 @@ const QUIET_PROVIDER_LOGS = true;
 
 const PROVIDER_LOG_PREFIXES = [
     '[GuardaHD]',
-    '[Guardoserie]',
     '[Guardaserie]',
     '[AnimeUnity]',
     '[AnimeWorld]',
@@ -1178,7 +1177,6 @@ async function resolveCanonicalStreamCacheKey(type, providerId, season, episode,
 const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardaserie: require('./src/guardaserie/index.js'),
-    guardoserie: require('./src/guardoserie/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
@@ -1242,27 +1240,27 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
     if (normalizedType === 'movie') {
         if (isKitsuRequest) {
             // For Kitsu movies, use anime providers first and keep non-anime fallbacks.
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd', 'cinemacity'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'streamingcommunity', 'guardahd', 'cinemacity'];
         } else if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'streamingcommunity', 'guardahd']
+                : ['streamingcommunity', 'guardahd', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
+            plan = ['animeunity', 'animeworld', 'animesaturn'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardahd', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
-        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie'];
+        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie'];
     } else {
         if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie']
-                : ['streamingcommunity', 'guardaserie', 'guardoserie', 'cinemacity'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardaserie']
+                : ['streamingcommunity', 'guardaserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardaserie'];
         } else {
-            plan = ['streamingcommunity', 'guardaserie', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardaserie', 'cinemacity'];
         }
     }
 
