@@ -73,8 +73,32 @@ class FlareSolverrManager {
                 
                 console.log('[FlareSolverr] Installazione completata.');
             }
+
+            // Imposta i permessi e debug ad ogni avvio
+            if (!isWin) {
+                const exePath = path.join(this.fsDir, 'flaresolverr');
+                if (fs.existsSync(exePath)) {
+                    console.log('[FlareSolverr] Verifica permessi esecuzione...');
+                    try {
+                        await this.execCommand(`chmod -R 755 '${this.fsDir}'`);
+                    } catch (e) {
+                        console.error('[FlareSolverr] Errore durante chmod:', e.message);
+                    }
+                }
+                
+                // Debug: list files and permissions
+                try {
+                    console.log('[FlareSolverr] Stato cartella ' + this.fsDir + ':');
+                    const files = fs.readdirSync(this.fsDir);
+                    files.forEach(file => {
+                        const filePath = path.join(this.fsDir, file);
+                        const stats = fs.statSync(filePath);
+                        console.log(` - ${file} [mode: ${stats.mode.toString(8)}]`);
+                    });
+                } catch (de) {}
+            }
         } catch (e) {
-            console.error('[FlareSolverr] Errore durante installazione:', e.message);
+            console.error('[FlareSolverr] Errore durante preparazione:', e.message);
         }
 
         console.log('[FlareSolverr] Avvio servizio...');
