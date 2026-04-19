@@ -66,10 +66,13 @@ function logVerbose(...args) {
     console.log(...args);
 }
 
+// Increase event listeners limit for high traffic
+process.setMaxListeners(0);
+
 // Connection pooling configuration
 const agentOptions = {
     keepAlive: true,
-    maxSockets: 250,
+    maxSockets: 500,
     maxFreeSockets: 100,
     timeout: 30000,
     keepAliveMsecs: 30000
