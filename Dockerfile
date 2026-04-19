@@ -44,6 +44,21 @@ ENV HEADLESS=true
 ENV BROWSER_TIMEOUT=60000
 ENV DISPLAY=:99
 
+# Pre-install FlareSolverr based on architecture
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        FLARE_URL="https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_x64.tar.gz"; \
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        FLARE_URL="https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_arm64.tar.gz"; \
+    else \
+        FLARE_URL="https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_arm32.tar.gz"; \
+    fi && \
+    mkdir -p /app/flaresolverr-bin && \
+    curl -L "$FLARE_URL" -o /tmp/flaresolverr.tar.gz && \
+    tar -xzf /tmp/flaresolverr.tar.gz -C /app/flaresolverr-bin --strip-components=1 && \
+    rm /tmp/flaresolverr.tar.gz && \
+    chmod -R 755 /app/flaresolverr-bin
+
 # Copy package files and install dependencies
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev

@@ -32,9 +32,19 @@ class FlareSolverrManager {
         try {
             if (!fs.existsSync(this.fsDir)) {
                 console.log('[FlareSolverr] Installazione automatica in corso...');
-                const downloadUrl = isWin 
-                    ? 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_windows_x64.zip'
-                    : 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_x64.tar.gz';
+                let downloadUrl;
+                if (isWin) {
+                    downloadUrl = 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_windows_x64.zip';
+                } else {
+                    const arch = process.arch;
+                    if (arch === 'arm64') {
+                        downloadUrl = 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_arm64.tar.gz';
+                    } else if (arch === 'arm') {
+                        downloadUrl = 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_arm32.tar.gz';
+                    } else {
+                        downloadUrl = 'https://github.com/FlareSolverr/FlareSolverr/releases/latest/download/flaresolverr_linux_x64.tar.gz';
+                    }
+                }
                 
                 console.log('[FlareSolverr] Download del pacchetto...');
                 if (isWin) {
