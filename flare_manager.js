@@ -50,11 +50,16 @@ class FlareSolverrManager {
                     await this.execCommand(`tar -xzf '${tarPath}' -C '${this.fsDir}' --strip-components=1`);
                     if (fs.existsSync(tarPath)) fs.unlinkSync(tarPath);
                     const exePath = path.join(this.fsDir, 'flaresolverr');
-                    await this.execCommand(`chmod +x '${exePath}'`);
+                    if (fs.existsSync(exePath)) {
+                        fs.chmodSync(exePath, 0o755);
+                    }
                 }
                 
-                // Pulizia zip
+                // Pulizia zip/tar
                 if (fs.existsSync(this.zipPath)) fs.unlinkSync(this.zipPath);
+                const tarPath = path.join(process.cwd(), 'flaresolverr.tar.gz');
+                if (fs.existsSync(tarPath)) fs.unlinkSync(tarPath);
+                
                 console.log('[FlareSolverr] Installazione completata.');
             }
         } catch (e) {
@@ -79,17 +84,17 @@ class FlareSolverrManager {
                 return resolve();
             }
 
-            if (!fs.existsSync(exePath)) {
-                console.error('[FlareSolverr] Eseguibile non trovato in:', exePath);
+            try {
+                this.process = spawn(exePath, [], {
+                    cwd: path.dirname(exePath),
+                    stdio: 'pipe',
+                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'info', HEADLESS: 'true', BROWSER_TIMEOUT: '60000' }
+                });
+            } catch (spawnError) {
+                console.error('[FlareSolverr] Errore critico durante lo spawn:', spawnError.message);
                 this.isStarting = false;
                 return resolve();
             }
-
-            this.process = spawn(exePath, [], {
-                cwd: path.dirname(exePath),
-                stdio: 'pipe',
-                env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'info' }
-            });
 
             this.process.on('error', (err) => {
                 console.error('[FlareSolverr] Errore avvio processo:', err.message);
