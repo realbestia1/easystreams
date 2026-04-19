@@ -136,13 +136,11 @@ class FlareSolverrManager {
 
         this.process.stderr.on('data', (data) => {
             const output = data.toString();
+            console.error('[FlareSolverr-Stderr]', output.trim());
             if (output.includes('address already in use')) {
                 console.log('[FlareSolverr] Porta 8191 già in uso (stderr), utilizzo istanza esistente.');
                 this.isStarting = false;
                 resolve();
-            }
-            if (output.includes('error') || output.includes('Error')) {
-                console.error('[FlareSolverr-Error]', output.trim());
             }
         });
 

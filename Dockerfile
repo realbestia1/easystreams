@@ -1,7 +1,6 @@
 FROM node:18-slim
 
 # Install system dependencies for FlareSolverr and Chromium
-# These are the correct package names for Debian Bookworm
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
@@ -40,9 +39,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV IN_DOCKER=true
 
-# FlareSolverr environment variables for better Docker compatibility
+# FlareSolverr environment variables
 ENV HEADLESS=true
 ENV BROWSER_TIMEOUT=60000
+ENV DISPLAY=:99
 
 # Copy package files and install dependencies
 COPY package.json package-lock.json* ./
@@ -53,5 +53,5 @@ COPY . .
 
 EXPOSE 7000
 
-# Start the addon directly
-CMD ["node", "stremio_addon.js"]
+# Start Xvfb and then the addon
+CMD Xvfb :99 -screen 0 1024x768x16 & node stremio_addon.js
