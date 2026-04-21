@@ -4,9 +4,7 @@ const { formatStream } = require('../formatter.js');
 const { checkQualityFromPlaylist } = require('../quality_helper.js');
 const { fetchWithTimeout } = require('../fetch_helper.js');
 
-// Environment detection: Server (Node) or Client (Nuvio/React Native)
-const IS_SERVER = typeof process !== 'undefined' && process.versions && process.versions.node;
-const { smartFetch } = IS_SERVER ? require('../utils/cf_handler') : { smartFetch: null };
+const { smartFetch } = require('../utils/cf_handler');
 
 const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
@@ -81,37 +79,6 @@ function getSessionCookies() {
     return base64Decode(cookieB64);
 }
 
-async function fetchPage(url, options = {}) {
-    const headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-        ...options.headers
-    };
-
-    if (IS_SERVER) {
-        return await smartFetch(url, BASE_URL, {
-            timeout: options.timeout || FETCH_TIMEOUT,
-            method: options.method,
-            body: options.body,
-            headers
-        });
-    }
-
-    const response = await fetchWithTimeout(url, {
-        timeout: options.timeout || FETCH_TIMEOUT,
-        method: options.method || 'GET',
-        headers,
-        body: options.body
-    });
-
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-    }
-
-    return await response.text();
-}
-
 async function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
     try {
         if (!kitsuId) return null;
@@ -165,10 +132,12 @@ async function getIdsFromKitsu(kitsuId, season, episode, providerContext = null)
 }
 
 async function searchByImdb(imdbId) {
+    const cookies = getSessionCookies();
+
     const trySearch = async (query) => {
         const searchUrl = `${BASE_URL}/index.php?do=search&subaction=search&story=${query}`;
         try {
-            const html = await fetchPage(searchUrl, {
+            const html = await smartFetch(searchUrl, BASE_URL, {
                 timeout: FETCH_TIMEOUT,
                 headers: {
                     "Referer": `${BASE_URL}/`
@@ -509,7 +478,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             return [formatStream(stremioResult, "CinemaCity")];
         }
 
-        const html = await fetchPage(movieUrl, {
+        // Logic for Server extraction
+        const html = await smartFetch(movieUrl, BASE_URL, {
             timeout: FETCH_TIMEOUT,
             headers: {
                 "Referer": `${BASE_URL}/`

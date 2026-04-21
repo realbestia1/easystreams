@@ -5,7 +5,7 @@
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",
-      "version": "1.1.17",
+      "version": "1.1.18",
       "description": "Movies and Series from Guardoserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-cinemacity",
       "name": "CinemaCity",
-      "version": "1.0.21",
+      "version": "1.0.22",
       "description": "Movies and Series from CinemaCity",
       "resources": ["stream"],
       "contentLanguage": ["it"],

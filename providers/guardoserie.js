@@ -289,11 +289,12 @@ var require_quality_helper = __commonJS({
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
     var fs = require("fs");
+    var path = require("path");
     var axios = require("axios");
     var activeBypasses = /* @__PURE__ */ new Map();
     function getClearance(_0) {
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = `cf-session-${provider}.json`;
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
           console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
           return activeBypasses.get(provider);
@@ -374,7 +375,7 @@ var require_cf_handler = __commonJS({
     function smartFetch2(_0, _1) {
       return __async(this, arguments, function* (url, domain, options = {}) {
         const provider = options.provider || domain.replace(/https?:\/\//, "").split(".")[0];
-        const sessionFile = path.join(__dirname, `../../cf-session-${provider}.json`);
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
         if (requestCache.has(cacheKey)) {
           const cached = requestCache.get(cacheKey);
@@ -385,7 +386,11 @@ var require_cf_handler = __commonJS({
         const loadSession = () => {
           if (fs.existsSync(sessionFile)) {
             try {
-              return JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+              if (data && data.userAgent) {
+                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
+                return data;
+              }
             } catch (e) {
               return {};
             }
@@ -395,12 +400,17 @@ var require_cf_handler = __commonJS({
         let session = loadSession();
         const doRequest = (sess) => __async(null, null, function* () {
           const mergedHeaders = __spreadValues({
-            "User-Agent": sess.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
           }, options.headers);
+          if (sess.userAgent) {
+            mergedHeaders["User-Agent"] = sess.userAgent;
+          } else if (!mergedHeaders["User-Agent"]) {
+            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+          }
           if (sess.cookies) {
-            mergedHeaders.Cookie = sess.cookies;
+            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
+            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
           }
           const response = yield axios({
             url,
@@ -7661,7 +7671,7 @@ var { USER_AGENT, getProxiedUrl } = require_common();
 var { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
 var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
 function getGuardoserieBaseUrl() {
-  return "https://guardoserie.team";
+  return "https://guardoserie.work";
 }
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 function getMappingApiUrl() {

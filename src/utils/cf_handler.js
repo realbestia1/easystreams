@@ -28,7 +28,7 @@ const CACHE_TTL = 600000; // 10 minutes
  */
 async function smartFetch(url, domain, options = {}) {
     const provider = options.provider || domain.replace(/https?:\/\//, '').split('.')[0];
-    const sessionFile = path.join(__dirname, `../../cf-session-${provider}.json`);
+    const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
     const cacheKey = `${options.method || 'GET'}:${url}:${options.body || ''}`;
 
     // Cache check
@@ -42,7 +42,11 @@ async function smartFetch(url, domain, options = {}) {
     const loadSession = () => {
         if (fs.existsSync(sessionFile)) {
             try {
-                return JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+                const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+                if (data && data.userAgent) {
+                    console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
+                    return data;
+                }
             } catch (e) { return {}; }
         }
         return {};
@@ -52,15 +56,26 @@ async function smartFetch(url, domain, options = {}) {
 
     const doRequest = async (sess) => {
         const mergedHeaders = {
-            'User-Agent': sess.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
             ...options.headers
         };
 
-        if (sess.cookies) {
-            mergedHeaders.Cookie = sess.cookies;
+        // Prioritize session User-Agent to match Cloudflare clearance
+        if (sess.userAgent) {
+            mergedHeaders['User-Agent'] = sess.userAgent;
+        } else if (!mergedHeaders['User-Agent']) {
+            mergedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
         }
+
+        // Merge session cookies with provided cookies
+        if (sess.cookies) {
+            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || '';
+            mergedHeaders.Cookie = existingCookies 
+                ? (existingCookies.endsWith(';') ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}`)
+                : sess.cookies;
+        }
+
 
         const response = await axios({
             url,

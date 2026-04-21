@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 
 /**
@@ -8,7 +9,7 @@ const axios = require('axios');
 const activeBypasses = new Map();
  
 async function getClearance(url, provider = 'default', options = {}) {
-    const sessionFile = `cf-session-${provider}.json`;
+    const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
     
     if (activeBypasses.has(provider)) {
         console.log(`[CF] FlareSolverr bypass già in corso per il provider [${provider}], attendo...`);
