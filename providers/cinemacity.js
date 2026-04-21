@@ -449,23 +449,7 @@ var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { fetchWithTimeout } = require_fetch_helper();
 var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
-if (!IS_SERVER) {
-  module.exports = {
-    getStreams: (id, type, season, episode) => __async(null, null, function* () {
-      try {
-        const url = `https://easystreams.realbestia.com/resolve/cinemacity?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
-        const response = yield fetch(url);
-        const data = yield response.json();
-        return data.streams || [];
-      } catch (e) {
-        console.error("[CinemaCity-Client] API Error:", e.message);
-        return [];
-      }
-    })
-  };
-  return;
-}
-var { smartFetch } = require_cf_handler();
+var { smartFetch } = IS_SERVER ? require_cf_handler() : { smartFetch: null };
 var BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 function base64Decode(str) {
   try {
@@ -522,6 +506,33 @@ function getSessionCookies() {
   const cookieB64 = "ZGxlX3VzZXJfaWQ9MzI3Mjk7IGRsZV9wYXNzd29yZD04OTQxNzFjNmE4ZGFiMThlZTU5NGQ1YzY1MjAwOWEzNTs=";
   return base64Decode(cookieB64);
 }
+function fetchPage(_0) {
+  return __async(this, arguments, function* (url, options = {}) {
+    const headers = __spreadValues({
+      "User-Agent": USER_AGENT,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+    }, options.headers);
+    if (IS_SERVER) {
+      return yield smartFetch(url, BASE_URL, {
+        timeout: options.timeout || FETCH_TIMEOUT,
+        method: options.method,
+        body: options.body,
+        headers
+      });
+    }
+    const response = yield fetchWithTimeout(url, {
+      timeout: options.timeout || FETCH_TIMEOUT,
+      method: options.method || "GET",
+      headers,
+      body: options.body
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return yield response.text();
+  });
+}
 function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     try {
@@ -569,11 +580,10 @@ function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
 }
 function searchByImdb(imdbId) {
   return __async(this, null, function* () {
-    const cookies = getSessionCookies();
     const trySearch = (query) => __async(null, null, function* () {
       const searchUrl = `${BASE_URL}/index.php?do=search&subaction=search&story=${query}`;
       try {
-        const html = yield smartFetch(searchUrl, BASE_URL, {
+        const html = yield fetchPage(searchUrl, {
           timeout: FETCH_TIMEOUT,
           headers: {
             "Referer": `${BASE_URL}/`
@@ -830,7 +840,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         };
         return [formatStream(stremioResult, "CinemaCity")];
       }
-      const html = yield smartFetch(movieUrl, BASE_URL, {
+      const html = yield fetchPage(movieUrl, {
         timeout: FETCH_TIMEOUT,
         headers: {
           "Referer": `${BASE_URL}/`
