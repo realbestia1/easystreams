@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.63",
+  "version": "1.1.64",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -26,19 +26,6 @@
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/guardahd.js",
       "supportedTypes": ["movie"],
-      "enabled": true
-    },
-    {
-      "id": "easystreams-guardaserie",
-      "name": "Guardaserie",
-      "version": "1.1.12",
-      "description": "TV Series from Guardaserie",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
-      "filename": "providers/guardaserie.js",
-      "supportedTypes": ["tv"],
       "enabled": true
     },
     {

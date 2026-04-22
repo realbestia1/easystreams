@@ -1,5 +1,4 @@
 const guardahd = require('./guardahd/index');
-const guardaserie = require('./guardaserie/index');
 const guardoserie = require('./guardoserie/index');
 const streamingcommunity = require('./streamingcommunity/index');
 const animeunity = require('./animeunity/index');
@@ -164,15 +163,15 @@ async function getStreams(id, type, season, episode) {
             selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
-        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie');
+        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
     } else if (normalizedType === 'tv' || normalizedType === 'series') {
         if (likelyAnime) {
-            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardaserie', 'guardoserie');
+            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'guardaserie', 'guardoserie', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'cinemacity');
             } else {
-                selectedProviders.push('streamingcommunity', 'guardaserie', 'guardoserie', 'animeunity', 'animeworld', 'animesaturn');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'animeunity', 'animeworld', 'animesaturn');
             }
         }
     } else {
@@ -193,14 +192,6 @@ async function getStreams(id, type, season, episode) {
                 guardahd.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode)
                     .then(s => ({ provider: 'GuardaHD', streams: s, status: 'fulfilled' }))
                     .catch(e => ({ provider: 'GuardaHD', error: e, status: 'rejected' }))
-            );
-            continue;
-        }
-        if (providerName === 'guardaserie') {
-            promises.push(
-                guardaserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'Guardaserie', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'Guardaserie', error: e, status: 'rejected' }))
             );
             continue;
         }
