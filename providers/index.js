@@ -11947,6 +11947,7 @@ var require_cinemacity = __commonJS({
     var { formatStream } = require_formatter();
     var { checkQualityFromPlaylist } = require_quality_helper();
     var { fetchWithTimeout } = require_fetch_helper();
+    var IS_SERVER = typeof process !== "undefined" && !!(process.versions && process.versions.node);
     var BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
     function base64Decode(str) {
       try {
@@ -12003,8 +12004,29 @@ var require_cinemacity = __commonJS({
       const cookieB64 = "ZGxlX3VzZXJfaWQ9MzI3Mjk7IGRsZV9wYXNzd29yZD04OTQxNzFjNmE4ZGFiMThlZTU5NGQ1YzY1MjAwOWEzNTs=";
       return base64Decode(cookieB64);
     }
+    function getServerSmartFetch() {
+      if (!IS_SERVER) return null;
+      try {
+        return require_cf_handler().smartFetch;
+      } catch (e) {
+        return null;
+      }
+    }
     function fetchHtml(_0) {
-      return __async(this, arguments, function* (url, headers = {}) {
+      return __async(this, arguments, function* (url, headers = {}, options = {}) {
+        const useBypass = options && options.useBypass === true;
+        const smartFetch = useBypass ? getServerSmartFetch() : null;
+        if (typeof smartFetch === "function") {
+          return yield smartFetch(url, BASE_URL, {
+            timeout: FETCH_TIMEOUT,
+            headers: __spreadValues({
+              "User-Agent": USER_AGENT,
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+            }, headers),
+            provider: "cinemacity"
+          });
+        }
         const response = yield fetchWithTimeout(url, {
           timeout: FETCH_TIMEOUT,
           headers: __spreadValues({
@@ -12080,6 +12102,8 @@ var require_cinemacity = __commonJS({
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-User": "?1"
+          }, {
+            useBypass: false
           });
           return extractImdbIdFromHtml(html);
         } catch (e) {
@@ -12159,8 +12183,8 @@ var require_cinemacity = __commonJS({
         }
       });
     }
-    function searchByImdb(imdbId) {
-      return __async(this, null, function* () {
+    function searchByImdb(_0) {
+      return __async(this, arguments, function* (imdbId, options = {}) {
         const cookies = getSessionCookies();
         const trySearch = (query) => __async(null, null, function* () {
           const searchUrl = `${BASE_URL}/index.php?do=search&subaction=search&story=${query}`;
@@ -12171,7 +12195,7 @@ var require_cinemacity = __commonJS({
               "User-Agent": USER_AGENT,
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
               "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            });
+            }, options);
             const resultMatch = html.match(/Found\s+(\d+)\s+responses/i) || html.match(/Trovat[io]\s+(\d+)\s+risultat[io]/i) || html.match(/Query results\s*\d+\s*-\s*(\d+)/i);
             if (!resultMatch || parseInt(resultMatch[1]) === 0) {
               if (!html.includes(query)) return null;
@@ -12224,8 +12248,8 @@ var require_cinemacity = __commonJS({
         return link;
       });
     }
-    function searchByTitleFallback(id, providerType) {
-      return __async(this, null, function* () {
+    function searchByTitleFallback(_0, _1) {
+      return __async(this, arguments, function* (id, providerType, options = {}) {
         const metadata = yield getTmdbMetadata(id, providerType);
         const expectedTitles = Array.from(new Set([
           metadata == null ? void 0 : metadata.title,
@@ -12250,7 +12274,7 @@ var require_cinemacity = __commonJS({
               "Sec-Fetch-Mode": "navigate",
               "Sec-Fetch-Site": "same-origin",
               "Sec-Fetch-User": "?1"
-            });
+            }, options);
             const candidates = extractCandidateLinksFromListing(html, providerType);
             if (candidates.length === 0) {
               break;
@@ -12447,11 +12471,12 @@ var require_cinemacity = __commonJS({
         }
         try {
           const isStremioAddon = providerContext && providerContext.__requestContext === true;
+          const useServerBypass = isStremioAddon && IS_SERVER;
           const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
           const proxyPassword = providerContext && providerContext.proxyPassword || "";
-          let searchResult = yield searchByImdb(imdbId);
+          let searchResult = yield searchByImdb(imdbId, { useBypass: useServerBypass });
           if (!searchResult || !searchResult.url) {
-            searchResult = yield searchByTitleFallback(imdbId, providerType);
+            searchResult = yield searchByTitleFallback(imdbId, providerType, { useBypass: useServerBypass });
           }
           if (!searchResult || !searchResult.url) {
             return [];
@@ -12491,6 +12516,8 @@ var require_cinemacity = __commonJS({
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+          }, {
+            useBypass: useServerBypass
           });
           const playerReferer = extractPlayerReferer(html, movieUrl);
           const atobRegex = /atob\s*\(\s*['"](.*?)['"]\s*\)/gi;
