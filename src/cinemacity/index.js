@@ -134,6 +134,11 @@ function decodeHtmlEntities(str) {
         .replace(/\u2013|\u2014/g, '-');
 }
 
+function getHttpStatusFromError(error) {
+    const match = String(error && error.message ? error.message : error).match(/HTTP\s+(\d+)/i);
+    return match ? Number.parseInt(match[1], 10) : null;
+}
+
 function normalizeTitle(value) {
     return decodeHtmlEntities(String(value || ""))
         .normalize("NFKD")
@@ -212,8 +217,7 @@ async function verifyCandidateImdb(candidateUrl, expectedImdbId) {
             useBypass: false
         });
         return extractImdbIdFromHtml(html);
-    } catch (e) {
-        console.error(`[CinemaCity] IMDb verify error for ${candidateUrl}:`, e);
+    } catch (_) {
         return null;
     }
 }
@@ -352,7 +356,7 @@ async function searchByImdb(imdbId, options = {}) {
             // We match the full tag to get the title
             const links = [...searchArea.matchAll(/<a[^>]+href=["']((?:https?:\/\/cinemacity\.cc)?\/(?:movies|anime|series|tv-series)\/\d+-[^"']+\.html)["'][^>]*>([\s\S]*?)<\/a>/gi)];
 
-            if (links.length > 0) {
+        if (links.length > 0) {
                 // The first link after the "Found X responses" marker is almost certainly the correct result
                 let bestMatch = links[0];
 
@@ -376,7 +380,10 @@ async function searchByImdb(imdbId, options = {}) {
                 return { url: bestLink, title: bestTitle };
             }
         } catch (e) {
-            console.error(`[CinemaCity] Search error for ${query}:`, e);
+            const status = getHttpStatusFromError(e);
+            if (status !== 403 && status !== 404) {
+                console.error(`[CinemaCity] Search error for ${query}:`, e);
+            }
         }
         return null;
     };
@@ -451,7 +458,10 @@ async function searchByTitleFallback(id, providerType, options = {}) {
                 return bestResult;
             }
         } catch (e) {
-            console.error(`[CinemaCity] Listing fallback error for page ${pageUrl}:`, e);
+            const status = getHttpStatusFromError(e);
+            if (status !== 404 && status !== 403) {
+                console.error(`[CinemaCity] Listing fallback error for page ${pageUrl}:`, e);
+            }
             break;
         }
     }

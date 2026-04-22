@@ -555,6 +555,10 @@ function fetchHtml(_0) {
 function decodeHtmlEntities(str) {
   return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
 }
+function getHttpStatusFromError(error) {
+  const match = String(error && error.message ? error.message : error).match(/HTTP\s+(\d+)/i);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
 function normalizeTitle(value) {
   return decodeHtmlEntities(String(value || "")).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "").trim();
 }
@@ -617,8 +621,7 @@ function verifyCandidateImdb(candidateUrl, expectedImdbId) {
         useBypass: false
       });
       return extractImdbIdFromHtml(html);
-    } catch (e) {
-      console.error(`[CinemaCity] IMDb verify error for ${candidateUrl}:`, e);
+    } catch (_) {
       return null;
     }
   });
@@ -746,7 +749,10 @@ function searchByImdb(_0) {
           return { url: bestLink, title: bestTitle };
         }
       } catch (e) {
-        console.error(`[CinemaCity] Search error for ${query}:`, e);
+        const status = getHttpStatusFromError(e);
+        if (status !== 403 && status !== 404) {
+          console.error(`[CinemaCity] Search error for ${query}:`, e);
+        }
       }
       return null;
     });
@@ -810,7 +816,10 @@ function searchByTitleFallback(_0, _1) {
           return bestResult;
         }
       } catch (e) {
-        console.error(`[CinemaCity] Listing fallback error for page ${pageUrl}:`, e);
+        const status = getHttpStatusFromError(e);
+        if (status !== 404 && status !== 403) {
+          console.error(`[CinemaCity] Listing fallback error for page ${pageUrl}:`, e);
+        }
         break;
       }
     }
