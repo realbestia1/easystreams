@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# 1. Install system dependencies (Chromium and Python for FlareSolverr source)
+# 1. Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     chromium \
     chromium-driver \
-    xvfb \
     xauth \
     libnss3 \
     libatk1.0-0 \
@@ -26,7 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    gnupg2 \
+    lsb-release \
     && rm -rf /var/lib/apt/lists/*
+
+# 1.5 Install Cloudflare Warp
+RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
+    apt-get update && apt-get install -y cloudflare-warp && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -40,7 +47,6 @@ RUN git clone https://github.com/FlareSolverr/FlareSolverr.git /app/flaresolverr
 # 3. Environment Settings
 ENV NODE_ENV=production
 ENV IN_DOCKER=true
-ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
@@ -51,7 +57,10 @@ RUN npm install --omit=dev
 # Copy the rest of the application
 COPY . .
 
+# Ensure entrypoint is executable
+RUN chmod +x entrypoint.sh
+
 EXPOSE 7000
 
-# Start Xvfb and then the addon
-CMD Xvfb :99 -screen 0 1024x768x16 & node stremio_addon.js
+# Use the entrypoint script to start everything
+CMD ["./entrypoint.sh"]
