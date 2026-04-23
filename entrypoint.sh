@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Start WARP daemon
-warpd &
-sleep 2
+warp-svc &
+sleep 5
 
 # Register and Connect WARP
 echo "[WARP] Registro e connetto..."
-warp-cli --accept-tos register
-warp-cli --accept-tos set-mode warp
+warp-cli --accept-tos registration register
+warp-cli --accept-tos mode set warp
 warp-cli --accept-tos connect
 
 # Wait for WARP to be connected
