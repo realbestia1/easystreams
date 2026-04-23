@@ -6,8 +6,8 @@ sleep 5
 
 # Register and Connect WARP
 echo "[WARP] Registro e connetto..."
-warp-cli --accept-tos registration register
-warp-cli --accept-tos mode set warp
+warp-cli --accept-tos registration new
+warp-cli --accept-tos mode warp
 warp-cli --accept-tos connect
 
 # Wait for WARP to be connected
