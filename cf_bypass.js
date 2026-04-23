@@ -24,7 +24,7 @@ async function getClearance(url, provider = 'default', options = {}) {
         const payload = {
             cmd: options.method === 'POST' ? 'request.post' : 'request.get',
             url: url,
-            maxTimeout: 22000
+            maxTimeout: 40000
         };
 
         if (options.method === 'POST' && options.body) {
@@ -33,7 +33,7 @@ async function getClearance(url, provider = 'default', options = {}) {
 
         try {
             const response = await axios.post(FLARE_URL, payload, { 
-                timeout: 25000,
+                timeout: 45000,
                 headers: { 'Content-Type': 'application/json' }
             });
 
