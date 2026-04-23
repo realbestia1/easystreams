@@ -10,4 +10,8 @@ services:
       - VERBOSE_LOGS=0
       - QUIET_PROVIDER_LOGS=1
       # FlareSolverr viene gestito internamente dall'addon
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
     restart: unless-stopped

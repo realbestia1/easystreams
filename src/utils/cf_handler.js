@@ -53,8 +53,25 @@ async function smartFetch(url, domain, options = {}) {
     };
 
     let session = loadSession();
+    let currentUrl = url;
 
-    const doRequest = async (sess) => {
+    // Se la sessione salvata indica un URL diverso (es. redirect di dominio), aggiorniamo l'URL corrente
+    if (session.url) {
+        try {
+            const oldUrlObj = new URL(url);
+            const sessUrlObj = new URL(session.url);
+            if (oldUrlObj.hostname !== sessUrlObj.hostname) {
+                console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${oldUrlObj.hostname} -> ${sessUrlObj.hostname}`);
+                oldUrlObj.hostname = sessUrlObj.hostname;
+                oldUrlObj.protocol = sessUrlObj.protocol;
+                currentUrl = oldUrlObj.toString();
+            }
+        } catch (e) {
+            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
+        }
+    }
+
+    const doRequest = async (sess, targetUrl = currentUrl) => {
         const mergedHeaders = {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -78,7 +95,7 @@ async function smartFetch(url, domain, options = {}) {
 
 
         const response = await axios({
-            url,
+            url: targetUrl,
             method: options.method || 'GET',
             data: options.body,
             headers: mergedHeaders,
@@ -110,7 +127,23 @@ async function smartFetch(url, domain, options = {}) {
             console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
             
             const newSession = await getClearance(url, provider, options);
-            const res = await doRequest(newSession);
+            
+            // Se FlareSolverr ha seguito un redirect, aggiorniamo l'URL finale
+            let finalUrl = currentUrl;
+            if (newSession.url) {
+                try {
+                    const oldUrlObj = new URL(url);
+                    const newUrlObj = new URL(newSession.url);
+                    if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                        console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
+                        oldUrlObj.hostname = newUrlObj.hostname;
+                        oldUrlObj.protocol = newUrlObj.protocol;
+                        finalUrl = oldUrlObj.toString();
+                    }
+                } catch (e) {}
+            }
+
+            const res = await doRequest(newSession, finalUrl);
             requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
             return res.data;
         }

@@ -46,12 +46,16 @@ async function getClearance(url, provider = 'default', options = {}) {
                     userAgent: solution.userAgent,
                     cookies: cookies,
                     cf_clearance: cf_clearance || null,
+                    url: solution.url,
                     response: solution.response,
                     timestamp: Date.now()
                 };
 
                 fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
                 console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+                if (solution.url && solution.url !== url) {
+                    console.log(`[CF] Rilevato redirect: ${url} -> ${solution.url}`);
+                }
                 return data;
             } else {
                 const errorMsg = response.data ? response.data.message : 'Risposta non valida da FlareSolverr';
