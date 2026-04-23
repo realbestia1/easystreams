@@ -7912,7 +7912,7 @@ var require_guardoserie = __commonJS({
     var { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
     var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
     function getGuardoserieBaseUrl() {
-      return "https://guardoserie.work";
+      return "https://guardoserie.garden";
     }
     var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
     function getMappingApiUrl() {

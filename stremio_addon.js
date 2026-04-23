@@ -2163,7 +2163,7 @@ const PORT = process.env.PORT || 7000;
 async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
     const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.work/wp-admin/admin-ajax.php' },
+        { name: 'Guardoserie', url: 'https://guardoserie.garden/wp-admin/admin-ajax.php' },
         { name: 'Cinemacity', url: 'https://cinemacity.cc/index.php?do=search' }
     ];
 
