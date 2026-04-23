@@ -65,7 +65,7 @@ async function smartFetch(url, domain, options = {}) {
         if (sess.userAgent) {
             mergedHeaders['User-Agent'] = sess.userAgent;
         } else if (!mergedHeaders['User-Agent']) {
-            mergedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+            mergedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
         }
 
         // Merge session cookies with provided cookies
@@ -100,6 +100,14 @@ async function smartFetch(url, domain, options = {}) {
 
     try {
         const res = await doRequest(session);
+        
+        // Check for "soft" blocks (challenge page with 200 OK)
+        if (res.status === 200 && typeof res.data === 'string' && 
+            (res.data.includes('cf-browser-verification') || res.data.includes('cf_challenge') || res.data.includes('Just a moment...'))) {
+            console.warn(`[CF-HANDLER][${provider}] Soft-block rilevato (challenge in 200 OK).`);
+            throw { response: { status: 403, data: res.data } };
+        }
+
         if (res.status === 403 || res.status === 503) {
             throw { response: res };
         }
@@ -109,6 +117,11 @@ async function smartFetch(url, domain, options = {}) {
         if (err.response && (err.response.status === 403 || err.response.status === 503)) {
             console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
             
+            // Delete old session if it failed
+            if (fs.existsSync(sessionFile)) {
+                try { fs.unlinkSync(sessionFile); } catch(e) {}
+            }
+
             const newSession = await getClearance(url, provider, options);
             const res = await doRequest(newSession);
             requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
