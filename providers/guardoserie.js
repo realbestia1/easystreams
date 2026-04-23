@@ -324,11 +324,15 @@ var require_cf_bypass = __commonJS({
                 userAgent: solution.userAgent,
                 cookies,
                 cf_clearance: cf_clearance || null,
+                url: solution.url,
                 response: solution.response,
                 timestamp: Date.now()
               };
               fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
               console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+              if (solution.url && solution.url !== url) {
+                console.log(`[CF] Rilevato redirect: ${url} -> ${solution.url}`);
+              }
               return data;
             } else {
               const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
@@ -398,7 +402,22 @@ var require_cf_handler = __commonJS({
           return {};
         };
         let session = loadSession();
-        const doRequest = (sess) => __async(null, null, function* () {
+        let currentUrl = url;
+        if (session.url) {
+          try {
+            const oldUrlObj = new URL(url);
+            const sessUrlObj = new URL(session.url);
+            if (oldUrlObj.hostname !== sessUrlObj.hostname) {
+              console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${oldUrlObj.hostname} -> ${sessUrlObj.hostname}`);
+              oldUrlObj.hostname = sessUrlObj.hostname;
+              oldUrlObj.protocol = sessUrlObj.protocol;
+              currentUrl = oldUrlObj.toString();
+            }
+          } catch (e) {
+            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
+          }
+        }
+        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
           const mergedHeaders = __spreadValues({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -413,7 +432,7 @@ var require_cf_handler = __commonJS({
             mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
           }
           const response = yield axios({
-            url,
+            url: targetUrl,
             method: options.method || "GET",
             data: options.body,
             headers: mergedHeaders,
@@ -441,7 +460,21 @@ var require_cf_handler = __commonJS({
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
             console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
             const newSession = yield getClearance(url, provider, options);
-            const res = yield doRequest(newSession);
+            let finalUrl = currentUrl;
+            if (newSession.url) {
+              try {
+                const oldUrlObj = new URL(url);
+                const newUrlObj = new URL(newSession.url);
+                if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
+                  oldUrlObj.hostname = newUrlObj.hostname;
+                  oldUrlObj.protocol = newUrlObj.protocol;
+                  finalUrl = oldUrlObj.toString();
+                }
+              } catch (e) {
+              }
+            }
+            const res = yield doRequest(newSession, finalUrl);
             requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
             return res.data;
           }
