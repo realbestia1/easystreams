@@ -44,7 +44,13 @@ async function smartFetch(url, domain, options = {}) {
             try {
                 const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
                 if (data && data.userAgent) {
-                    console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
+                    const ageMs = Date.now() - (data.timestamp || 0);
+                    const twoHours = 2 * 60 * 60 * 1000;
+                    if (ageMs > twoHours) {
+                        console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs/60000)} min), forzo refresh.`);
+                        return {};
+                    }
+                    console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs/60000)} min fa).`);
                     return data;
                 }
             } catch (e) { return {}; }
@@ -107,12 +113,13 @@ async function smartFetch(url, domain, options = {}) {
 
         const data = response.data;
         if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
             const err = new Error(`HTTP ${response.status}`);
             err.response = { status: response.status, data };
             throw err;
         }
 
-        return { data, status: response.status };
+        return { data, status: response.status, headers: response.headers };
     };
 
     try {

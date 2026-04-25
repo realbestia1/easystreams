@@ -39,6 +39,11 @@ async function getClearance(url, provider = 'default', options = {}) {
 
             if (response.data && response.data.status === 'ok') {
                 const solution = response.data.solution;
+                
+                if (!solution.cookies || solution.cookies.length === 0) {
+                    throw new Error('FlareSolverr ha restituito successo ma zero cookie.');
+                }
+
                 const cookies = solution.cookies.map(c => `${c.name}=${c.value}`).join('; ');
                 const cf_clearance = solution.cookies.find(c => c.name === 'cf_clearance')?.value;
 
