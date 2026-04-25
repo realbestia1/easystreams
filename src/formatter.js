@@ -84,7 +84,7 @@ function formatStream(stream, providerName) {
     else if (quality === '1080p') quality = '🚀 FHD';
     else if (quality === '720p') quality = '💿 HD';
     else if (quality === '576p' || quality === '480p' || quality === '360p' || quality === '240p') quality = '💩 Low Quality';
-    else if (!quality || ['auto', 'unknown', 'unknow'].includes(String(quality).toLowerCase())) quality = 'Unknow';
+    else if (!quality || ['auto', 'unknown', 'unknow'].includes(String(quality).toLowerCase())) quality = '💿 HD';
 
     // Format title with emoji
     let title = `📁 ${stream.title || 'Stream'}`;
