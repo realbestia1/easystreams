@@ -96,7 +96,7 @@
     {
       "id": "easystreams-eurostreaming",
       "name": "EuroStreaming",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Movies and Series from EuroStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],

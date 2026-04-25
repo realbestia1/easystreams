@@ -7981,7 +7981,7 @@ var require_cf_bypass = __commonJS({
           return activeBypasses.get(provider);
         }
         const bypassPromise = (() => __async(null, null, function* () {
-          var _a;
+          var _b;
           const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
           console.log(`[CF] Richiesta bypass a FlareSolverr: ${url}`);
           const payload = {
@@ -7989,6 +7989,10 @@ var require_cf_bypass = __commonJS({
             url,
             maxTimeout: 6e4
           };
+          if (options.headers) {
+            const _a = options.headers, { host, Host, cookie, Cookie } = _a, cleanHeaders = __objRest(_a, ["host", "Host", "cookie", "Cookie"]);
+            payload.headers = cleanHeaders;
+          }
           if (options.method === "POST" && options.body) {
             payload.postData = options.body;
           }
@@ -7999,8 +8003,11 @@ var require_cf_bypass = __commonJS({
             });
             if (response.data && response.data.status === "ok") {
               const solution = response.data.solution;
+              if (!solution.cookies || solution.cookies.length === 0) {
+                throw new Error("FlareSolverr ha restituito successo ma zero cookie.");
+              }
               const cookies = solution.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-              const cf_clearance = (_a = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
+              const cf_clearance = (_b = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _b.value;
               const data = {
                 userAgent: solution.userAgent,
                 cookies,
@@ -8073,7 +8080,13 @@ var require_cf_handler = __commonJS({
             try {
               const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
               if (data && data.userAgent) {
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
+                const ageMs = Date.now() - (data.timestamp || 0);
+                const twoHours = 2 * 60 * 60 * 1e3;
+                if (ageMs > twoHours) {
+                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
+                  return {};
+                }
+                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
                 return data;
               }
             } catch (e) {
@@ -8124,11 +8137,12 @@ var require_cf_handler = __commonJS({
           });
           const data = response.data;
           if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
             const err = new Error(`HTTP ${response.status}`);
             err.response = { status: response.status, data };
             throw err;
           }
-          return { data, status: response.status };
+          return { data, status: response.status, headers: response.headers };
         });
         try {
           const res = yield doRequest(session);
@@ -8139,15 +8153,29 @@ var require_cf_handler = __commonJS({
           return res.data;
         } catch (err) {
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
+            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato o sessione scaduta. Avvio bypass per ${url}...`);
+            if (fs.existsSync(sessionFile)) {
+              try {
+                fs.unlinkSync(sessionFile);
+              } catch (e) {
+              }
+            }
             const newSession = yield getClearance(url, provider, options);
+            if (!newSession || !newSession.cookies) {
+              throw new Error(`Bypass fallito per ${provider}: FlareSolverr non ha restituito cookie validi.`);
+            }
+            if (newSession.response) {
+              console.log(`[CF-HANDLER][${provider}] Uso risposta diretta da FlareSolverr.`);
+              requestCache.set(cacheKey, { data: newSession.response, timestamp: Date.now() });
+              return newSession.response;
+            }
             let finalUrl = currentUrl;
             if (newSession.url) {
               try {
                 const oldUrlObj = new URL(url);
                 const newUrlObj = new URL(newSession.url);
                 if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
+                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato durante bypass: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
                   oldUrlObj.hostname = newUrlObj.hostname;
                   oldUrlObj.protocol = newUrlObj.protocol;
                   finalUrl = oldUrlObj.toString();
@@ -8156,6 +8184,9 @@ var require_cf_handler = __commonJS({
               }
             }
             const res = yield doRequest(newSession, finalUrl);
+            if (res.status === 403 || res.status === 503) {
+              throw new Error(`Bypass inefficace per ${provider}: il sito continua a restituire ${res.status}`);
+            }
             requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
             return res.data;
           }
@@ -12958,7 +12989,7 @@ var require_eurostreaming = __commonJS({
     }
     function searchProvider(info) {
       return __async(this, null, function* () {
-        const queries = [...new Set([info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && q.length > 1))];
+        const queries = [...new Set([info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && q.length > 1))].slice(0, 3);
         const pages = yield Promise.all(queries.map((q) => fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(q)}`).catch(() => "")));
         return pages.flatMap(extractSearchResults);
       });
@@ -12975,19 +13006,30 @@ var require_eurostreaming = __commonJS({
       const text = pageText(html);
       const lowText = text.toLowerCase();
       let score = 0;
-      if (titleScore && (titleScore === wanted || wantedOrig && titleScore === wantedOrig)) score += 50;
-      else if (titleScore && (titleScore.includes(wanted) || wanted.includes(titleScore))) score += 25;
-      if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
-      const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((m) => m[1]);
-      if (info.year && years.length && !years.includes(info.year)) score -= 50;
-      if (info.type === "tv") {
-        if (/serie tv|prima stagione|stagione|1\s*[x×]\s*0?1/i.test(text)) score += 30;
-        if (/streaming film|film in streaming/i.test(lowText)) score -= 50;
-        if (info.year && info.year !== "2023" && /live action|one piece \(2023\)/i.test(text)) score -= 80;
+      const titleClean = decodeEntitiesBasic(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      const wantedClean = info.title.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      const wantedOrigClean = (info.originalTitle || "").toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      if (titleScore && (titleScore === wanted || wantedOrig && titleScore === wantedOrig)) {
+        score += 60;
+      } else if (titleScore && wanted && (titleScore.includes(wanted) || wanted.includes(titleScore))) {
+        score += 40;
+      } else if (titleScore && wantedOrig && (titleScore.includes(wantedOrig) || wantedOrig.includes(titleScore))) {
+        score += 40;
       } else {
-        if (/streaming film|film in streaming/i.test(lowText)) score += 25;
-        if (/prima stagione|stagione|1\s*[x×]\s*0?1/i.test(text)) score -= 40;
+        const w1 = wantedClean.split(/\s+/).filter((w) => w.length > 3);
+        const w2 = titleClean.split(/\s+/).filter((w) => w.length > 3);
+        const intersection = w1.filter((w) => w2.includes(w));
+        if (intersection.length > 0) score += 25 * intersection.length;
       }
+      if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
+      if (info.type === "tv") {
+        if (/serie tv|prima stagione|stagione|episodi|1\s*[x×]\s*0?1/i.test(lowText)) score += 30;
+        if (/streaming film|film in streaming/i.test(lowText)) score -= 40;
+      } else {
+        if (/streaming film|film in streaming/i.test(lowText)) score += 30;
+        if (/prima stagione|stagione/i.test(lowText)) score -= 40;
+      }
+      return score;
       if (info.overview) {
         const words = info.overview.toLowerCase().replace(/[^a-z0-9à-ÿ ]/gi, " ").split(/\s+/).filter((w) => w.length > 5).slice(0, 15);
         const hits = words.filter((w) => lowText.includes(w)).length;
@@ -13009,7 +13051,7 @@ var require_eurostreaming = __commonJS({
         const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
         const best = ranked[0];
         const second = ranked[1];
-        if (!best || best.score < 70) return null;
+        if (!best || best.score < 50) return null;
         if (second && best.score - second.score < 15 && best.score < 95) return null;
         return best;
       });
@@ -13160,23 +13202,6 @@ var require_eurostreaming = __commonJS({
         } catch (e) {
           console.error(`[EuroStreaming] Extraction error for ${hostUrl}:`, e.message);
           return [];
-        }
-      });
-    }
-    function resolveShortlink(url) {
-      return __async(this, null, function* () {
-        if (!/clicka\.cc|uprot\.net/i.test(url)) return url;
-        try {
-          const response = yield fetch(url, {
-            redirect: "follow",
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-              "Referer": `${BASE_URL}/`
-            }
-          });
-          return response && response.url ? response.url : url;
-        } catch (e) {
-          return url;
         }
       });
     }

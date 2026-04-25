@@ -7743,7 +7743,7 @@ var require_cf_bypass = __commonJS({
           return activeBypasses.get(provider);
         }
         const bypassPromise = (() => __async(null, null, function* () {
-          var _a;
+          var _b;
           const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
           console.log(`[CF] Richiesta bypass a FlareSolverr: ${url}`);
           const payload = {
@@ -7751,6 +7751,10 @@ var require_cf_bypass = __commonJS({
             url,
             maxTimeout: 6e4
           };
+          if (options.headers) {
+            const _a = options.headers, { host, Host, cookie, Cookie } = _a, cleanHeaders = __objRest(_a, ["host", "Host", "cookie", "Cookie"]);
+            payload.headers = cleanHeaders;
+          }
           if (options.method === "POST" && options.body) {
             payload.postData = options.body;
           }
@@ -7761,8 +7765,11 @@ var require_cf_bypass = __commonJS({
             });
             if (response.data && response.data.status === "ok") {
               const solution = response.data.solution;
+              if (!solution.cookies || solution.cookies.length === 0) {
+                throw new Error("FlareSolverr ha restituito successo ma zero cookie.");
+              }
               const cookies = solution.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-              const cf_clearance = (_a = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
+              const cf_clearance = (_b = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _b.value;
               const data = {
                 userAgent: solution.userAgent,
                 cookies,
@@ -7835,7 +7842,13 @@ var require_cf_handler = __commonJS({
             try {
               const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
               if (data && data.userAgent) {
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
+                const ageMs = Date.now() - (data.timestamp || 0);
+                const twoHours = 2 * 60 * 60 * 1e3;
+                if (ageMs > twoHours) {
+                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
+                  return {};
+                }
+                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
                 return data;
               }
             } catch (e) {
@@ -7886,11 +7899,12 @@ var require_cf_handler = __commonJS({
           });
           const data = response.data;
           if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
             const err = new Error(`HTTP ${response.status}`);
             err.response = { status: response.status, data };
             throw err;
           }
-          return { data, status: response.status };
+          return { data, status: response.status, headers: response.headers };
         });
         try {
           const res = yield doRequest(session);
@@ -7901,15 +7915,29 @@ var require_cf_handler = __commonJS({
           return res.data;
         } catch (err) {
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
+            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato o sessione scaduta. Avvio bypass per ${url}...`);
+            if (fs.existsSync(sessionFile)) {
+              try {
+                fs.unlinkSync(sessionFile);
+              } catch (e) {
+              }
+            }
             const newSession = yield getClearance(url, provider, options);
+            if (!newSession || !newSession.cookies) {
+              throw new Error(`Bypass fallito per ${provider}: FlareSolverr non ha restituito cookie validi.`);
+            }
+            if (newSession.response) {
+              console.log(`[CF-HANDLER][${provider}] Uso risposta diretta da FlareSolverr.`);
+              requestCache.set(cacheKey, { data: newSession.response, timestamp: Date.now() });
+              return newSession.response;
+            }
             let finalUrl = currentUrl;
             if (newSession.url) {
               try {
                 const oldUrlObj = new URL(url);
                 const newUrlObj = new URL(newSession.url);
                 if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
+                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato durante bypass: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
                   oldUrlObj.hostname = newUrlObj.hostname;
                   oldUrlObj.protocol = newUrlObj.protocol;
                   finalUrl = oldUrlObj.toString();
@@ -7918,6 +7946,9 @@ var require_cf_handler = __commonJS({
               }
             }
             const res = yield doRequest(newSession, finalUrl);
+            if (res.status === 403 || res.status === 503) {
+              throw new Error(`Bypass inefficace per ${provider}: il sito continua a restituire ${res.status}`);
+            }
             requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
             return res.data;
           }

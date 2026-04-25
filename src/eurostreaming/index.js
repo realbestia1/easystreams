@@ -367,22 +367,34 @@ function scoreCandidate(candidate, html, info) {
     const text = pageText(html);
     const lowText = text.toLowerCase();
     let score = 0;
+    const titleClean = decodeEntitiesBasic(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, ' ');
+    const wantedClean = info.title.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ');
+    const wantedOrigClean = (info.originalTitle || '').toLowerCase().replace(/[^a-z0-9\s]+/g, ' ');
 
-    if (titleScore && (titleScore === wanted || (wantedOrig && titleScore === wantedOrig))) score += 50;
-    else if (titleScore && (titleScore.includes(wanted) || wanted.includes(titleScore))) score += 25;
+    if (titleScore && (titleScore === wanted || (wantedOrig && titleScore === wantedOrig))) {
+        score += 60;
+    } else if (titleScore && wanted && (titleScore.includes(wanted) || wanted.includes(titleScore))) {
+        score += 40;
+    } else if (titleScore && wantedOrig && (titleScore.includes(wantedOrig) || wantedOrig.includes(titleScore))) {
+        score += 40;
+    } else {
+        const w1 = wantedClean.split(/\s+/).filter(w => w.length > 3);
+        const w2 = titleClean.split(/\s+/).filter(w => w.length > 3);
+        const intersection = w1.filter(w => w2.includes(w));
+        if (intersection.length > 0) score += 25 * intersection.length;
+    }
 
     if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
-    const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map(m => m[1]);
-    if (info.year && years.length && !years.includes(info.year)) score -= 50;
-
+    
     if (info.type === 'tv') {
-        if (/serie tv|prima stagione|stagione|1\s*[x×]\s*0?1/i.test(text)) score += 30;
-        if (/streaming film|film in streaming/i.test(lowText)) score -= 50;
-        if (info.year && info.year !== '2023' && /live action|one piece \(2023\)/i.test(text)) score -= 80;
+        if (/serie tv|prima stagione|stagione|episodi|1\s*[x×]\s*0?1/i.test(lowText)) score += 30;
+        if (/streaming film|film in streaming/i.test(lowText)) score -= 40;
     } else {
-        if (/streaming film|film in streaming/i.test(lowText)) score += 25;
-        if (/prima stagione|stagione|1\s*[x×]\s*0?1/i.test(text)) score -= 40;
+        if (/streaming film|film in streaming/i.test(lowText)) score += 30;
+        if (/prima stagione|stagione/i.test(lowText)) score -= 40;
     }
+
+    return score;
 
     if (info.overview) {
         const words = info.overview.toLowerCase().replace(/[^a-z0-9à-ÿ ]/gi, ' ').split(/\s+/).filter(w => w.length > 5).slice(0, 15);
@@ -406,7 +418,7 @@ async function pickCandidate(candidates, info) {
     const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const second = ranked[1];
-    if (!best || best.score < 70) return null;
+    if (!best || best.score < 50) return null;
     if (second && best.score - second.score < 15 && best.score < 95) return null;
     return best;
 }
