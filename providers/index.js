@@ -8101,16 +8101,19 @@ var require_cf_handler = __commonJS({
           try {
             const currentUrlObj = new URL(currentUrl);
             const sessionUrl = new URL(session.url);
-            const sessionParts = sessionUrl.hostname.split(".");
-            const currentParts = currentUrlObj.hostname.split(".");
-            const sessionRoot = sessionParts.slice(-2).join(".");
-            const currentRoot = currentParts.slice(-2).join(".");
-            if (sessionRoot === currentRoot || currentUrlObj.hostname.includes(sessionParts[sessionParts.length - 2])) {
-              console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${currentUrlObj.hostname} -> ${sessionUrl.hostname}`);
-              currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+            const currentHost = currentUrlObj.hostname.toLowerCase();
+            const sessionHost = sessionUrl.hostname.toLowerCase();
+            if (sessionHost !== currentHost) {
+              const sessionParts = sessionHost.split(".");
+              const currentParts = currentHost.split(".");
+              const sessionRoot = sessionParts.slice(-2).join(".");
+              const currentRoot = currentParts.slice(-2).join(".");
+              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
+                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
+                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+              }
             }
           } catch (e) {
-            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
           }
         }
         const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
@@ -8177,11 +8180,19 @@ var require_cf_handler = __commonJS({
               try {
                 const oldUrlObj = new URL(url);
                 const newUrlObj = new URL(newSession.url);
-                if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato durante bypass: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
-                  oldUrlObj.hostname = newUrlObj.hostname;
-                  oldUrlObj.protocol = newUrlObj.protocol;
-                  finalUrl = oldUrlObj.toString();
+                const oldHost = oldUrlObj.hostname.toLowerCase();
+                const newHost = newUrlObj.hostname.toLowerCase();
+                if (oldHost !== newHost) {
+                  const oldParts = oldHost.split(".");
+                  const newParts = newHost.split(".");
+                  const oldRoot = oldParts.slice(-2).join(".");
+                  const newRoot = newParts.slice(-2).join(".");
+                  if (oldRoot === newRoot || oldHost.includes(newParts[newParts.length - 2])) {
+                    console.log(`[CF-HANDLER][${provider}] Redirect bypass: ${oldHost} -> ${newHost}`);
+                    oldUrlObj.hostname = newUrlObj.hostname;
+                    oldUrlObj.protocol = newUrlObj.protocol;
+                    finalUrl = oldUrlObj.toString();
+                  }
                 }
               } catch (e) {
               }
@@ -13179,7 +13190,7 @@ var require_eurostreaming = __commonJS({
     function buildEasyProxyExtractorUrl(proxyUrl, proxyPassword, host, url) {
       const proxyBaseUrl = normalizeEasyProxyUrl(proxyUrl);
       const normalizedHost = String(host || "").trim().toLowerCase();
-      const normalizedUrl = String(url || "").trim();
+      let normalizedUrl = String(url || "").trim();
       if (!proxyBaseUrl || !normalizedHost || !normalizedUrl) return null;
       const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(String(proxyPassword))}` : "";
       return `${proxyBaseUrl}/extractor/video.m3u8?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedUrl)}&redirect_stream=true${passwordQuery}`;
@@ -13249,17 +13260,19 @@ var require_eurostreaming = __commonJS({
                   },
                   body: postBody
                 });
-                const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+                const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
                 if (finalMatch) return finalMatch[0];
               }
             }
-            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|deltabit)[^"']+)["']/i);
+            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|deltabit|mixdrop|m1xdrop)[^"']+)["']/i);
             if (linkMatch) return linkMatch[1];
             const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/);
             if (deltabitMatch) return deltabitMatch[0];
             const maxMatch = html.match(/https?:\/\/(?:maxstream|stayonline)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
             if (maxMatch) return maxMatch[0];
-            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline)\.[^"']+)/i);
+            const mixMatch = html.match(/https?:\/\/(?:mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+            if (mixMatch) return mixMatch[0];
+            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline|mixdrop|m1xdrop)\.[^"']+)/i);
             if (refreshMatch) return refreshMatch[1];
           } catch (e) {
             console.error(`[EuroStreaming] Errore risoluzione shortlink ${url}:`, e.message);
@@ -13368,7 +13381,8 @@ var require_eurostreaming = __commonJS({
             return { links: resolvedLinks };
           }
           const isStremioAddon = providerContext && providerContext.__requestContext === true;
-          if (isStremioAddon) {
+          const hasProxy = providerContext && providerContext.proxyUrl;
+          if (isStremioAddon || hasProxy) {
             streams = links.map((link) => makeEasyProxyStream(link, displayName, providerContext)).filter(Boolean);
           } else {
             const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values());
