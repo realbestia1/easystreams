@@ -62,26 +62,29 @@ async function smartFetch(url, domain, options = {}) {
     let currentUrl = url;
 
     // Se la sessione salvata indica un URL diverso (es. redirect di dominio), aggiorniamo l'URL corrente
-    if (session.url) {
-        try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            
-            // ✅ FIX: Sostituisci l'hostname solo se i domini sono simili (stessa radice)
-            // Evita di sostituire domini esterni come uprot.net o mixdrop.co
-            const sessionParts = sessionUrl.hostname.split('.');
-            const currentParts = currentUrlObj.hostname.split('.');
-            const sessionRoot = sessionParts.slice(-2).join('.');
-            const currentRoot = currentParts.slice(-2).join('.');
-            
-            if (sessionRoot === currentRoot || currentUrlObj.hostname.includes(sessionParts[sessionParts.length - 2])) {
-                console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${currentUrlObj.hostname} -> ${sessionUrl.hostname}`);
-                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+        if (session.url) {
+            try {
+                const currentUrlObj = new URL(currentUrl);
+                const sessionUrl = new URL(session.url);
+                
+                const currentHost = currentUrlObj.hostname.toLowerCase();
+                const sessionHost = sessionUrl.hostname.toLowerCase();
+
+                if (sessionHost !== currentHost) {
+                    const sessionParts = sessionHost.split('.');
+                    const currentParts = currentHost.split('.');
+                    const sessionRoot = sessionParts.slice(-2).join('.');
+                    const currentRoot = currentParts.slice(-2).join('.');
+                    
+                    if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
+                        console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
+                        currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+                    }
+                }
+            } catch (e) {
+                console.warn(`[CF-HANDLER][${provider}] Errore check dominio:`, e.message);
             }
-        } catch (e) {
-            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
         }
-    }
 
     const doRequest = async (sess, targetUrl = currentUrl) => {
         const mergedHeaders = {
