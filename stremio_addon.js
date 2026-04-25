@@ -1565,9 +1565,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         }
 
                         // For Stremio, we reconstruct the legacy multiline format using metadata
-                        const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
+                        const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : (s.providerName || s.name || 'EasyStreams');
                         const displayTitle = s.originalTitle || s.title || 'Stream';
-                        let titleUI = `📁 ${displayTitle}\n${s.providerName || 'EasyStreams'}`;
+                        let titleUI = `📁 ${displayTitle}\n${s.providerName || s.name || 'EasyStreams'}`;
                         if (s.description) titleUI += ` | ${s.description}`;
                         if (s.language) {
                             titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
