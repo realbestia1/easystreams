@@ -585,22 +585,22 @@ async function resolveShortlink(url) {
                         body: postBody
                     });
 
-                    const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+                    const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop)\.[a-z]+\/(?:msf|mse|v|e|embed|embed-[a-z0-9]+|mix|delta)\/[a-zA-Z0-9\/=_+-]+/i);
                     if (finalMatch) return finalMatch[0];
                 }
             }
 
             // 2. Fallback: cerca link in bottoni/ancore o redirect standard
-            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|uprot|deltabit|mixdrop|m1xdrop)[^"']+)["']/i);
+            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|uprot|deltabit|mixdrop|m1xdrop)\.[a-z]+\/(?:msf|mse|v|e|embed|mix|delta)\/[^"']+(?<!\.ico|\.png|\.jpg|\.jpeg|\.gif))["']/i);
             if (linkMatch) return linkMatch[1];
 
-            const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/);
+            const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
             if (deltabitMatch) return deltabitMatch[0];
-            const maxMatch = html.match(/https?:\/\/(?:maxstream|stayonline|uprot)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+            const maxMatch = html.match(/https?:\/\/(?:maxstream|stayonline|uprot)\.[a-z]+\/(?:msf|mse|v)\/[a-zA-Z0-9\/=_+-]+/i);
             if (maxMatch) return maxMatch[0];
-            const mixMatch = html.match(/https?:\/\/(?:mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+            const mixMatch = html.match(/https?:\/\/(?:mixdrop|m1xdrop)\.[a-z]+\/(?:mix|e)\/[a-zA-Z0-9\/=_+-]+/i);
             if (mixMatch) return mixMatch[0];
-            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop)\.[^"']+)/i);
+            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop)\.[^"']+(?<!\.ico|\.png|\.jpg))/i);
             if (refreshMatch) return refreshMatch[1];
         } catch (e) {
             console.error(`[EuroStreaming] Errore risoluzione shortlink ${url}:`, e.message);
