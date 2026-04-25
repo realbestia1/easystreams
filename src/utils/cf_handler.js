@@ -143,6 +143,14 @@ async function smartFetch(url, domain, options = {}) {
                 throw new Error(`Bypass fallito per ${provider}: FlareSolverr non ha restituito cookie validi.`);
             }
             
+            // ✅ FIX: Se FlareSolverr ha già scaricato la pagina durante il bypass, usiamola direttamente!
+            // Questo evita il blocco TLS/Fingerprint che avviene facendo una nuova richiesta con axios.
+            if (newSession.response) {
+                console.log(`[CF-HANDLER][${provider}] Uso risposta diretta da FlareSolverr.`);
+                requestCache.set(cacheKey, { data: newSession.response, timestamp: Date.now() });
+                return newSession.response;
+            }
+
             let finalUrl = currentUrl;
             if (newSession.url) {
                 try {

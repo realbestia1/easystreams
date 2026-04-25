@@ -27,6 +27,12 @@ async function getClearance(url, provider = 'default', options = {}) {
             maxTimeout: 60000
         };
 
+        if (options.headers) {
+            // Rimuovi header che possono confondere FlareSolverr o che vengono gestiti internamente
+            const { host, Host, cookie, Cookie, ...cleanHeaders } = options.headers;
+            payload.headers = cleanHeaders;
+        }
+
         if (options.method === 'POST' && options.body) {
             payload.postData = options.body;
         }
