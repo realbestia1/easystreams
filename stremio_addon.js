@@ -1686,6 +1686,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
             };
 
             const getScore = (str) => {
+                if (!str) return 0;
                 for (const [k, v] of Object.entries(qualityOrder)) {
                     if (str.includes(k)) return v;
                 }
