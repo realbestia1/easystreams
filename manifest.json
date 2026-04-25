@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.68",
+  "version": "1.1.69",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-eurostreaming",
       "name": "EuroStreaming",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "description": "Movies and Series from EuroStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],
