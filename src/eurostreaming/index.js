@@ -515,9 +515,11 @@ function normalizeEasyProxyUrl(value) {
 function buildEasyProxyExtractorUrl(proxyUrl, proxyPassword, host, url) {
     const proxyBaseUrl = normalizeEasyProxyUrl(proxyUrl);
     const normalizedHost = String(host || '').trim().toLowerCase();
-    const normalizedUrl = String(url || '').trim();
+    let normalizedUrl = String(url || '').trim();
     if (!proxyBaseUrl || !normalizedHost || !normalizedUrl) return null;
+    
     const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(String(proxyPassword))}` : '';
+    
     return `${proxyBaseUrl}/extractor/video.m3u8?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
@@ -603,20 +605,22 @@ async function resolveShortlink(url) {
                         body: postBody
                     });
 
-                    const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+                    const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
                     if (finalMatch) return finalMatch[0];
                 }
             }
 
             // 2. Fallback: cerca link in bottoni/ancore o redirect standard
-            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|deltabit)[^"']+)["']/i);
+            const linkMatch = html.match(/href=["'](https?:\/\/(?:maxstream|stayonline|deltabit|mixdrop|m1xdrop)[^"']+)["']/i);
             if (linkMatch) return linkMatch[1];
 
             const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/);
             if (deltabitMatch) return deltabitMatch[0];
             const maxMatch = html.match(/https?:\/\/(?:maxstream|stayonline)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
             if (maxMatch) return maxMatch[0];
-            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline)\.[^"']+)/i);
+            const mixMatch = html.match(/https?:\/\/(?:mixdrop|m1xdrop)\.[a-z]+\/[a-zA-Z0-9\/=_+-]+/);
+            if (mixMatch) return mixMatch[0];
+            const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline|mixdrop|m1xdrop)\.[^"']+)/i);
             if (refreshMatch) return refreshMatch[1];
         } catch (e) {
             console.error(`[EuroStreaming] Errore risoluzione shortlink ${url}:`, e.message);
@@ -732,7 +736,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         }
 
         const isStremioAddon = providerContext && providerContext.__requestContext === true;
-        if (isStremioAddon) {
+        const hasProxy = providerContext && providerContext.proxyUrl;
+
+        if (isStremioAddon || hasProxy) {
             streams = links
                 .map(link => makeEasyProxyStream(link, displayName, providerContext))
                 .filter(Boolean);
