@@ -7917,6 +7917,9 @@ var require_cf_handler = __commonJS({
           if (res.status === 403 || res.status === 503) {
             throw { response: res };
           }
+          if (session.cookies) {
+            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+          }
           requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
           return res.data;
         } catch (err) {

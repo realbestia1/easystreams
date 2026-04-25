@@ -8155,6 +8155,9 @@ var require_cf_handler = __commonJS({
           if (res.status === 403 || res.status === 503) {
             throw { response: res };
           }
+          if (session.cookies) {
+            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+          }
           requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
           return res.data;
         } catch (err) {
@@ -13354,7 +13357,9 @@ var require_eurostreaming = __commonJS({
             streams = resolvedLinks.map((l) => ({
               url: l.url,
               host: l.host,
-              name: displayName
+              name: displayName,
+              title: displayName,
+              originalTitle: displayName
             }));
           } else {
             const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values());
