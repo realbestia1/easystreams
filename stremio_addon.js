@@ -422,14 +422,14 @@ function buildEasyProxyManifestUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
     return `${proxyBaseUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
-function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl) {
+function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl, extension = 'm3u8') {
     const proxyBaseUrl = normalizeEasyProxyUrl(easyProxyUrl);
     const proxyPassword = String(easyProxyPassword || '').trim();
     const normalizedHost = String(host || '').trim();
     const normalizedStreamUrl = String(streamUrl || '').trim();
     if (!proxyBaseUrl || !normalizedHost || !normalizedStreamUrl) return normalizedStreamUrl;
     const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(proxyPassword)}` : '';
-    return `${proxyBaseUrl}/extractor/video.m3u8?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
+    return `${proxyBaseUrl}/extractor/video.${extension}?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
 function isMixdropStreamUrl(streamUrl) {
@@ -1543,7 +1543,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 easyProxyUrl,
                                 easyProxyPassword,
                                 'mixdrop',
-                                s.easyProxySourceUrl || s.url
+                                s.easyProxySourceUrl || s.url,
+                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMaxstreamStreamUrl(s.url)) {
@@ -1559,7 +1560,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 easyProxyUrl,
                                 easyProxyPassword,
                                 'deltabit',
-                                s.easyProxySourceUrl || s.url
+                                s.easyProxySourceUrl || s.url,
+                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
