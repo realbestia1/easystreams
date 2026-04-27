@@ -8,8 +8,8 @@ const axios = require('axios');
  */
 const activeBypasses = new Map();
 const globalQueue = [];
+const MAX_GLOBAL_CONCURRENT = 4; // Aumentato per ridurre le attese in coda
 let activeGlobalRequests = 0;
-const MAX_GLOBAL_CONCURRENT = 2; // Limite massimo di browser istanze simultanee in FlareSolverr
 
 async function getClearance(url, provider = 'default', options = {}) {
     const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
@@ -32,26 +32,17 @@ async function getClearance(url, provider = 'default', options = {}) {
             
             console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}]: ${url}`);
             
-            // Funzione per assicurarsi che la sessione esista
-            async function ensureSession() {
-                try {
-                    const sessionsResp = await axios.post(FLARE_URL, { cmd: 'sessions.list' }, { timeout: 5000 });
-                    if (sessionsResp.data && sessionsResp.data.sessions && !sessionsResp.data.sessions.includes(provider)) {
-                        await axios.post(FLARE_URL, { cmd: 'sessions.create', session: provider }, { timeout: 15000 });
-                        console.log(`[CF] Creata nuova sessione FlareSolverr: ${provider}`);
-                    }
-                } catch (e) {
-                    console.warn(`[CF] Errore verifica sessioni FlareSolverr: ${e.message}`);
-                }
-            }
-
-            await ensureSession();
+            // FlareSolverr gestisce già internamente la creazione se non esiste o l'uso se esiste
+            // ma per sicurezza proviamo a crearla velocemente ignorando l'errore se esiste già
+            try {
+                await axios.post(FLARE_URL, { cmd: 'sessions.create', session: provider }, { timeout: 5000 }).catch(() => {});
+            } catch (e) {}
 
             const payload = {
                 cmd: options.method === 'POST' ? 'request.post' : 'request.get',
                 url: url,
                 session: provider,
-                maxTimeout: 60000
+                maxTimeout: 35000 // Ridotto per rientrare nei 40s del provider
             };
 
             if (options.method === 'POST' && options.body) {
@@ -60,7 +51,7 @@ async function getClearance(url, provider = 'default', options = {}) {
 
             try {
                 const response = await axios.post(FLARE_URL, payload, { 
-                    timeout: 75000, // Leggermente più alto di maxTimeout
+                    timeout: 40000, // Leggermente più alto di maxTimeout (35s)
                     headers: { 'Content-Type': 'application/json' }
                 });
 
