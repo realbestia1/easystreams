@@ -17,26 +17,7 @@ const agentOptions = {
 const httpsAgent = new https.Agent(agentOptions);
 const httpAgent = new http.Agent(agentOptions);
 
-// Cache for requests
- const requestCache = new Map();
- const CACHE_TTL = 600000; // 10 minutes
- const os = require('os');
- // Runtime cache controls
- const CF_CACHE_ENABLED = (process.env.CF_CACHE_ENABLED ?? '1') !== '0' && (process.env.CF_CACHE_ENABLED ?? '1') !== 'false';
- const MAX_CACHE_ENTRIES = parseInt(process.env.CF_CACHE_MAX_ENTRIES || '1000', 10);
- function maybeTrimRequestCache() {
-   if (!CF_CACHE_ENABLED) return;
-   const heapUsed = process.memoryUsage().heapUsed;
-   const heapLimit = Math.min(os.totalmem() * 0.5, 1024 * 1024 * 1024);
-   if (heapUsed > heapLimit && requestCache.size > 0) {
-     const toEvict = Math.max(1, Math.floor(requestCache.size / 2));
-     for (let i = 0; i < toEvict; i++) {
-       const oldest = requestCache.keys().next().value;
-       if (oldest === undefined) break;
-       requestCache.delete(oldest);
-     }
-   }
- }
+// Cache completely disabled: no in-memory cache for bypass
 
 
 
@@ -57,13 +38,7 @@ async function smartFetch(url, domain, options = {}) {
     const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
     const cacheKey = `${options.method || 'GET'}:${url}:${options.body || ''}`;
 
-    // Cache check (only when memory cache is enabled)
-    if (CF_CACHE_ENABLED && requestCache.has(cacheKey)) {
-        const cached = requestCache.get(cacheKey);
-        if (Date.now() - cached.timestamp < CACHE_TTL) {
-            return cached.data;
-        }
-    }
+    // No in-memory/disk cache: always fetch fresh
     
     const loadSession = () => {
         if (fs.existsSync(sessionFile)) {
@@ -164,14 +139,7 @@ async function smartFetch(url, domain, options = {}) {
         if (session.cookies) {
             console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
         }
-          if (CF_CACHE_ENABLED) {
-            maybeTrimRequestCache();
-            if (requestCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = requestCache.keys().next().value;
-              if (oldestKey !== undefined) requestCache.delete(oldestKey);
-            }
-            requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
-          }
+          // caching disabled
         return res.data;
     } catch (err) {
         if (err.response && (err.response.status === 403 || err.response.status === 503)) {
@@ -187,7 +155,6 @@ async function smartFetch(url, domain, options = {}) {
             
             // Se FlareSolverr ha già restituito il contenuto della pagina, usiamolo
             if (newSession.response) {
-                requestCache.set(cacheKey, { data: newSession.response, timestamp: Date.now() });
                 return newSession.response;
             }
 
@@ -206,7 +173,6 @@ async function smartFetch(url, domain, options = {}) {
             }
 
             const res = await doRequest(newSession, finalUrl);
-            requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
             return res.data;
         }
         throw err;
