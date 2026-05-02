@@ -422,14 +422,15 @@ function buildEasyProxyManifestUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
     return `${proxyBaseUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
-function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl, extension = 'm3u8') {
+function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl, extension = 'm3u8', redirectStream = true) {
     const proxyBaseUrl = normalizeEasyProxyUrl(easyProxyUrl);
     const proxyPassword = String(easyProxyPassword || '').trim();
     const normalizedHost = String(host || '').trim();
     const normalizedStreamUrl = String(streamUrl || '').trim();
     if (!proxyBaseUrl || !normalizedHost || !normalizedStreamUrl) return normalizedStreamUrl;
+    const redirectQuery = redirectStream ? '&redirect_stream=true' : '';
     const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(proxyPassword)}` : '';
-    return `${proxyBaseUrl}/extractor/video.${extension}?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
+    return `${proxyBaseUrl}/extractor/video.${extension}?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedStreamUrl)}${redirectQuery}${passwordQuery}`;
 }
 
 function isMixdropStreamUrl(streamUrl) {
@@ -1517,16 +1518,20 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
                         if (name === 'streamingcommunity') {
-                            finalStreamUrl = buildEasyProxyManifestUrl(
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
-                                s.easyProxySourceUrl || s.url
+                                'vixsrc',
+                                s.easyProxySourceUrl || s.url,
+                                'm3u8',
+                                false
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (name === 'animeunity') {
-                            finalStreamUrl = buildEasyProxyManifestUrl(
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
+                                'vixcloud',
                                 s.easyProxySourceUrl || s.url
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
