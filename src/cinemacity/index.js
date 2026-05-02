@@ -78,32 +78,7 @@ function getSessionCookies() {
     return base64Decode(cookieB64);
 }
 
-function getServerSmartFetch() {
-    if (!IS_SERVER) return null;
-    try {
-        return require('../utils/cf_handler').smartFetch;
-    } catch {
-        return null;
-    }
-}
-
 async function fetchHtml(url, headers = {}, options = {}) {
-    const useBypass = options && options.useBypass === true;
-    const smartFetch = useBypass ? getServerSmartFetch() : null;
-
-    if (typeof smartFetch === 'function') {
-        return await smartFetch(url, BASE_URL, {
-            timeout: FETCH_TIMEOUT,
-            headers: {
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                ...headers
-            },
-            provider: 'cinemacity'
-        });
-    }
-
     const response = await fetchWithTimeout(url, {
         timeout: FETCH_TIMEOUT,
         headers: {
@@ -213,8 +188,6 @@ async function verifyCandidateImdb(candidateUrl, expectedImdbId) {
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-User": "?1"
-        }, {
-            useBypass: false
         });
         return extractImdbIdFromHtml(html);
     } catch (_) {
@@ -682,13 +655,12 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
     try {
         const isStremioAddon = providerContext && providerContext.__requestContext === true;
-        const useServerBypass = isStremioAddon && IS_SERVER;
         const proxyUrl = (providerContext && providerContext.proxyUrl) || (typeof global !== 'undefined' && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
         const proxyPassword = (providerContext && providerContext.proxyPassword) || "";
 
-        let searchResult = await searchByImdb(imdbId, { useBypass: useServerBypass });
+        let searchResult = await searchByImdb(imdbId);
         if (!searchResult || !searchResult.url) {
-            searchResult = await searchByTitleFallback(imdbId, providerType, { useBypass: useServerBypass });
+            searchResult = await searchByTitleFallback(imdbId, providerType);
         }
         if (!searchResult || !searchResult.url) {
             return [];
@@ -737,8 +709,6 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-        }, {
-            useBypass: useServerBypass
         });
 
         const playerReferer = extractPlayerReferer(html, movieUrl);

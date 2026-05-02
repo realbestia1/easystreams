@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     gnupg2 \
     lsb-release \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 1.5 Install Cloudflare Warp
@@ -36,6 +38,7 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY requirements.txt .
 
 # 2. Setup FlareSolverr from source and PATCH IT
 RUN git clone https://github.com/FlareSolverr/FlareSolverr.git /app/flaresolverr-src && \
@@ -46,6 +49,9 @@ RUN git clone https://github.com/FlareSolverr/FlareSolverr.git /app/flaresolverr
     sed -i "s|options.add_argument('--no-sandbox')|options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage'); options.add_argument('--disable-gpu'); options.add_argument('--headless=new')|" src/utils.py && \
     # Patch 3: Disable Xvfb by replacing start_xvfb_display() with pass
     sed -i "s|^\([[:space:]]*\)start_xvfb_display()|\1pass|g" src/utils.py && \
+    pip3 install --no-cache-dir -r requirements.txt --break-system-packages && \
+    cd /app && \
+    # Install main project Python dependencies
     pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 # 3. Environment Settings

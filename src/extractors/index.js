@@ -8,6 +8,8 @@ const { extractVidoza } = require('./vidoza');
 const { extractVixCloud } = require('./vixcloud');
 const { extractLoadm } = require('./loadm');
 const { extractStreamHG } = require('./streamhg');
+const { extractMaxStream } = require('./maxstream');
+const { extractDeltaBit } = require('./deltabit');
 const { USER_AGENT, unPack } = require('./common');
 
 module.exports = {
@@ -21,6 +23,8 @@ module.exports = {
   extractVixCloud,
   extractLoadm,
   extractStreamHG,
+  extractMaxStream,
+  extractDeltaBit,
   USER_AGENT,
   unPack
 };

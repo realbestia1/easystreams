@@ -96,7 +96,7 @@ var require_formatter = __commonJS({
       else if (quality === "1080p") quality = "\u{1F680} FHD";
       else if (quality === "720p") quality = "\u{1F4BF} HD";
       else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
-      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "Unknow";
+      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
       if (!language) {
@@ -286,207 +286,6 @@ var require_quality_helper = __commonJS({
   }
 });
 
-// cf_bypass.js
-var require_cf_bypass = __commonJS({
-  "cf_bypass.js"(exports2, module2) {
-    var fs = require("fs");
-    var path = require("path");
-    var axios = require("axios");
-    var activeBypasses = /* @__PURE__ */ new Map();
-    function getClearance(_0) {
-      return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        if (activeBypasses.has(provider)) {
-          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
-          return activeBypasses.get(provider);
-        }
-        const bypassPromise = (() => __async(null, null, function* () {
-          var _a;
-          const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
-          console.log(`[CF] Richiesta bypass a FlareSolverr: ${url}`);
-          const payload = {
-            cmd: options.method === "POST" ? "request.post" : "request.get",
-            url,
-            maxTimeout: 6e4
-          };
-          if (options.method === "POST" && options.body) {
-            payload.postData = options.body;
-          }
-          try {
-            const response = yield axios.post(FLARE_URL, payload, {
-              timeout: 7e4,
-              headers: { "Content-Type": "application/json" }
-            });
-            if (response.data && response.data.status === "ok") {
-              const solution = response.data.solution;
-              const cookies = solution.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-              const cf_clearance = (_a = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
-              const data = {
-                userAgent: solution.userAgent,
-                cookies,
-                cf_clearance: cf_clearance || null,
-                url: solution.url,
-                response: solution.response,
-                timestamp: Date.now()
-              };
-              fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
-              console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
-              if (solution.url && solution.url !== url) {
-                console.log(`[CF] Rilevato redirect: ${url} -> ${solution.url}`);
-              }
-              return data;
-            } else {
-              const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
-              throw new Error(errorMsg);
-            }
-          } catch (error) {
-            console.error(`[CF] Errore FlareSolverr: ${error.message}`);
-            if (error.code === "ECONNREFUSED") {
-              console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
-            }
-            throw error;
-          } finally {
-            activeBypasses.delete(provider);
-          }
-        }))();
-        activeBypasses.set(provider, bypassPromise);
-        return bypassPromise;
-      });
-    }
-    module2.exports = { getClearance };
-  }
-});
-
-// src/utils/cf_handler.js
-var require_cf_handler = __commonJS({
-  "src/utils/cf_handler.js"(exports2, module2) {
-    var axios = require("axios");
-    var fs = require("fs");
-    var path = require("path");
-    var { getClearance } = require_cf_bypass();
-    var https = require("https");
-    var http = require("http");
-    var agentOptions = {
-      keepAlive: true,
-      maxSockets: 250,
-      maxFreeSockets: 100,
-      timeout: 3e4,
-      keepAliveMsecs: 3e4
-    };
-    var httpsAgent = new https.Agent(agentOptions);
-    var httpAgent = new http.Agent(agentOptions);
-    var requestCache = /* @__PURE__ */ new Map();
-    var CACHE_TTL = 6e5;
-    function smartFetch(_0, _1) {
-      return __async(this, arguments, function* (url, domain, options = {}) {
-        const provider = options.provider || domain.replace(/https?:\/\//, "").split(".")[0];
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
-        if (requestCache.has(cacheKey)) {
-          const cached = requestCache.get(cacheKey);
-          if (Date.now() - cached.timestamp < CACHE_TTL) {
-            return cached.data;
-          }
-        }
-        const loadSession = () => {
-          if (fs.existsSync(sessionFile)) {
-            try {
-              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-              if (data && data.userAgent) {
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
-                return data;
-              }
-            } catch (e) {
-              return {};
-            }
-          }
-          return {};
-        };
-        let session = loadSession();
-        let currentUrl = url;
-        if (session.url) {
-          try {
-            const oldUrlObj = new URL(url);
-            const sessUrlObj = new URL(session.url);
-            if (oldUrlObj.hostname !== sessUrlObj.hostname) {
-              console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${oldUrlObj.hostname} -> ${sessUrlObj.hostname}`);
-              oldUrlObj.hostname = sessUrlObj.hostname;
-              oldUrlObj.protocol = sessUrlObj.protocol;
-              currentUrl = oldUrlObj.toString();
-            }
-          } catch (e) {
-            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
-          }
-        }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          const mergedHeaders = __spreadValues({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
-          if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-          }
-          if (sess.cookies) {
-            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
-          }
-          const response = yield axios({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 2e4,
-            validateStatus: false
-          });
-          const data = response.data;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data };
-            throw err;
-          }
-          return { data, status: response.status };
-        });
-        try {
-          const res = yield doRequest(session);
-          if (res.status === 403 || res.status === 503) {
-            throw { response: res };
-          }
-          requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
-          return res.data;
-        } catch (err) {
-          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
-            const newSession = yield getClearance(url, provider, options);
-            let finalUrl = currentUrl;
-            if (newSession.url) {
-              try {
-                const oldUrlObj = new URL(url);
-                const newUrlObj = new URL(newSession.url);
-                if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
-                  oldUrlObj.hostname = newUrlObj.hostname;
-                  oldUrlObj.protocol = newUrlObj.protocol;
-                  finalUrl = oldUrlObj.toString();
-                }
-              } catch (e) {
-              }
-            }
-            const res = yield doRequest(newSession, finalUrl);
-            requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
-            return res.data;
-          }
-          throw err;
-        }
-      });
-    }
-    module2.exports = { smartFetch };
-  }
-});
-
 // src/cinemacity/index.js
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
@@ -548,29 +347,8 @@ function getSessionCookies() {
   const cookieB64 = "ZGxlX3VzZXJfaWQ9MzI3Mjk7IGRsZV9wYXNzd29yZD04OTQxNzFjNmE4ZGFiMThlZTU5NGQ1YzY1MjAwOWEzNTs=";
   return base64Decode(cookieB64);
 }
-function getServerSmartFetch() {
-  if (!IS_SERVER) return null;
-  try {
-    return require_cf_handler().smartFetch;
-  } catch (e) {
-    return null;
-  }
-}
 function fetchHtml(_0) {
   return __async(this, arguments, function* (url, headers = {}, options = {}) {
-    const useBypass = options && options.useBypass === true;
-    const smartFetch = useBypass ? getServerSmartFetch() : null;
-    if (typeof smartFetch === "function") {
-      return yield smartFetch(url, BASE_URL, {
-        timeout: FETCH_TIMEOUT,
-        headers: __spreadValues({
-          "User-Agent": USER_AGENT,
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-          "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-        }, headers),
-        provider: "cinemacity"
-      });
-    }
     const response = yield fetchWithTimeout(url, {
       timeout: FETCH_TIMEOUT,
       headers: __spreadValues({
@@ -650,8 +428,6 @@ function verifyCandidateImdb(candidateUrl, expectedImdbId) {
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-User": "?1"
-      }, {
-        useBypass: false
       });
       return extractImdbIdFromHtml(html);
     } catch (_) {
@@ -1024,12 +800,11 @@ function getStreams(id, type, season, episode, providerContext = null) {
     }
     try {
       const isStremioAddon = providerContext && providerContext.__requestContext === true;
-      const useServerBypass = isStremioAddon && IS_SERVER;
       const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
       const proxyPassword = providerContext && providerContext.proxyPassword || "";
-      let searchResult = yield searchByImdb(imdbId, { useBypass: useServerBypass });
+      let searchResult = yield searchByImdb(imdbId);
       if (!searchResult || !searchResult.url) {
-        searchResult = yield searchByTitleFallback(imdbId, providerType, { useBypass: useServerBypass });
+        searchResult = yield searchByTitleFallback(imdbId, providerType);
       }
       if (!searchResult || !searchResult.url) {
         return [];
@@ -1069,8 +844,6 @@ function getStreams(id, type, season, episode, providerContext = null) {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-      }, {
-        useBypass: useServerBypass
       });
       const playerReferer = extractPlayerReferer(html, movieUrl);
       const atobRegex = /atob\s*\(\s*['"](.*?)['"]\s*\)/gi;

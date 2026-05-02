@@ -154,7 +154,7 @@ class FlareSolverrManager {
                 this.process = spawn(exePath, spawnArgs, {
                     cwd: process.env.IN_DOCKER === 'true' ? '/app/flaresolverr-src' : path.dirname(exePath),
                     stdio: 'pipe',
-                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'info', HEADLESS: 'true', BROWSER_TIMEOUT: '60000' },
+                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'debug', HEADLESS: 'true', BROWSER_TIMEOUT: '40000' },
                     shell: !isWin
                 });
             } catch (spawnError) {

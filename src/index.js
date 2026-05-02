@@ -5,6 +5,7 @@ const animeunity = require('./animeunity/index');
 const animeworld = require('./animeworld/index');
 const animesaturn = require('./animesaturn/index');
 const cinemacity = require('./cinemacity/index');
+const eurostreaming = require('./eurostreaming/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
 
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
@@ -163,15 +164,15 @@ async function getStreams(id, type, season, episode) {
             selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
-        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
+        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming');
     } else if (normalizedType === 'tv' || normalizedType === 'series') {
         if (likelyAnime) {
-            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
+            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity');
             } else {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'animeunity', 'animeworld', 'animesaturn');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'eurostreaming', 'animeunity', 'animeworld', 'animesaturn');
             }
         }
     } else {
@@ -224,6 +225,14 @@ async function getStreams(id, type, season, episode) {
                 guardoserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
                     .then(s => ({ provider: 'Guardoserie', streams: s, status: 'fulfilled' }))
                     .catch(e => ({ provider: 'Guardoserie', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'eurostreaming') {
+            promises.push(
+                eurostreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'EuroStreaming', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'EuroStreaming', error: e, status: 'rejected' }))
             );
             continue;
         }

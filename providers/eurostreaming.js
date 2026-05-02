@@ -231,14 +231,14 @@ var require_fetch_helper = __commonJS({
 var require_quality_helper = __commonJS({
   "src/quality_helper.js"(exports2, module2) {
     var { createTimeoutSignal } = require_fetch_helper();
-    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     function checkQualityFromPlaylist2(_0) {
       return __async(this, arguments, function* (url, headers = {}) {
         try {
           if (!url.includes(".m3u8")) return null;
           const finalHeaders = __spreadValues({}, headers);
           if (!finalHeaders["User-Agent"]) {
-            finalHeaders["User-Agent"] = USER_AGENT2;
+            finalHeaders["User-Agent"] = USER_AGENT;
           }
           const timeoutConfig = createTimeoutSignal(3e3);
           try {
@@ -558,8 +558,8 @@ var require_cf_handler = __commonJS({
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    function getProxiedUrl2(url) {
+    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+    function getProxiedUrl(url) {
       let proxyUrl = null;
       try {
         if (typeof global !== "undefined" && global.CF_PROXY_URL) {
@@ -597,9 +597,9 @@ var require_common = __commonJS({
       return p;
     }
     module2.exports = {
-      USER_AGENT: USER_AGENT2,
+      USER_AGENT,
       unPack,
-      getProxiedUrl: getProxiedUrl2
+      getProxiedUrl
     };
   }
 });
@@ -607,7 +607,7 @@ var require_common = __commonJS({
 // src/extractors/mixdrop.js
 var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { USER_AGENT, unPack } = require_common();
     function isMixDropDisabled() {
       if (typeof global !== "undefined" && global && global.DISABLE_MIXDROP === true) {
         return true;
@@ -622,7 +622,7 @@ var require_mixdrop = __commonJS({
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -643,7 +643,7 @@ var require_mixdrop = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT2,
+                  "User-Agent": USER_AGENT,
                   "Referer": "https://m1xdrop.net/",
                   "Origin": "https://m1xdrop.net"
                 }
@@ -664,8 +664,8 @@ var require_mixdrop = __commonJS({
 // src/extractors/dropload.js
 var require_dropload = __commonJS({
   "src/extractors/dropload.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
-    function extractDropLoad2(url, refererBase = null) {
+    var { USER_AGENT, unPack } = require_common();
+    function extractDropLoad(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
@@ -675,7 +675,7 @@ var require_dropload = __commonJS({
           }
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -699,7 +699,7 @@ var require_dropload = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT2,
+                  "User-Agent": USER_AGENT,
                   "Referer": url,
                   "Origin": origin
                 }
@@ -715,25 +715,25 @@ var require_dropload = __commonJS({
         }
       });
     }
-    module2.exports = { extractDropLoad: extractDropLoad2 };
+    module2.exports = { extractDropLoad };
   }
 });
 
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl: getProxiedUrl2 } = require_common();
-    function extractSuperVideo2(url, refererBase = null) {
+    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
+    function extractSuperVideo(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const id = url.split("/").pop();
           const embedUrl = `https://supervideo.tv/e/${id}`;
           if (!refererBase) refererBase = "https://supervideo.tv/";
-          const proxiedUrl = getProxiedUrl2(embedUrl);
+          const proxiedUrl = getProxiedUrl(embedUrl);
           let response = yield fetch(proxiedUrl, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -775,14 +775,14 @@ var require_supervideo = __commonJS({
         }
       });
     }
-    module2.exports = { extractSuperVideo: extractSuperVideo2 };
+    module2.exports = { extractSuperVideo };
   }
 });
 
 // src/extractors/streamtape.js
 var require_streamtape = __commonJS({
   "src/extractors/streamtape.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { USER_AGENT } = require_common();
     function extractStreamTape(url) {
       return __async(this, null, function* () {
         try {
@@ -815,7 +815,7 @@ var require_streamtape = __commonJS({
 // src/extractors/uqload.js
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { USER_AGENT } = require_common();
     function isUqloadDisabled() {
       if (typeof global !== "undefined" && global && global.DISABLE_UQLOAD === true) {
         return true;
@@ -823,14 +823,14 @@ var require_uqload = __commonJS({
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_UQLOAD === "string" ? process.env.DISABLE_UQLOAD.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
     }
-    function extractUqload2(url, refererBase = "https://uqload.io/") {
+    function extractUqload(url, refererBase = "https://uqload.io/") {
       return __async(this, null, function* () {
         if (isUqloadDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -844,7 +844,7 @@ var require_uqload = __commonJS({
             return {
               url: streamUrl,
               headers: {
-                "User-Agent": USER_AGENT2,
+                "User-Agent": USER_AGENT,
                 "Referer": "https://uqload.io/"
               }
             };
@@ -856,21 +856,21 @@ var require_uqload = __commonJS({
         }
       });
     }
-    module2.exports = { extractUqload: extractUqload2 };
+    module2.exports = { extractUqload };
   }
 });
 
 // src/extractors/upstream.js
 var require_upstream = __commonJS({
   "src/extractors/upstream.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { USER_AGENT, unPack } = require_common();
     function extractUpstream(url, refererBase = "https://upstream.to/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -891,7 +891,7 @@ var require_upstream = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT2,
+                  "User-Agent": USER_AGENT,
                   "Referer": "https://upstream.to/"
                 }
               };
@@ -941,14 +941,14 @@ var require_vidoza = __commonJS({
 // src/extractors/vixcloud.js
 var require_vixcloud = __commonJS({
   "src/extractors/vixcloud.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { USER_AGENT } = require_common();
     var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     function extractVixCloud(url) {
       return __async(this, null, function* () {
         try {
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"
             }
           });
@@ -983,7 +983,7 @@ var require_vixcloud = __commonJS({
             }
             let quality = "Auto";
             const detectedQuality = yield checkQualityFromPlaylist2(finalUrl, {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
@@ -992,7 +992,7 @@ var require_vixcloud = __commonJS({
               quality,
               type: "m3u8",
               headers: {
-                "User-Agent": USER_AGENT2,
+                "User-Agent": USER_AGENT,
                 "Referer": "https://vixcloud.co/"
               }
             });
@@ -7563,8 +7563,8 @@ var require_crypto_js = __commonJS({
 var require_loadm = __commonJS({
   "src/extractors/loadm.js"(exports2, module2) {
     var CryptoJS = require_crypto_js();
-    var { USER_AGENT: USER_AGENT2 } = require_common();
-    function extractLoadm2(playerUrl, referer = "guardoserie.horse") {
+    var { USER_AGENT } = require_common();
+    function extractLoadm(playerUrl, referer = "guardoserie.horse") {
       return __async(this, null, function* () {
         try {
           if (!playerUrl.includes("#")) return [];
@@ -7577,7 +7577,7 @@ var require_loadm = __commonJS({
           const queryParams = `id=${encodeURIComponent(id)}&w=2560&h=1440&r=${encodeURIComponent(referer)}`;
           const response = yield fetch(`${apiUrl}?${queryParams}`, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": baseUrl,
               "X-Requested-With": "XMLHttpRequest"
             }
@@ -7610,7 +7610,7 @@ var require_loadm = __commonJS({
           if (data.source) {
             const playbackHeaders = {
               "Referer": baseUrl,
-              "User-Agent": USER_AGENT2
+              "User-Agent": USER_AGENT
             };
             streams.push({
               name: "Loadm",
@@ -7632,14 +7632,14 @@ var require_loadm = __commonJS({
         }
       });
     }
-    module2.exports = { extractLoadm: extractLoadm2 };
+    module2.exports = { extractLoadm };
   }
 });
 
 // src/extractors/streamhg.js
 var require_streamhg = __commonJS({
   "src/extractors/streamhg.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl: getProxiedUrl2 } = require_common();
+    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
     function resolveAbsoluteUrl(candidate, baseUrl) {
       if (!candidate) return null;
       try {
@@ -7657,7 +7657,7 @@ var require_streamhg = __commonJS({
     }
     function getBaseHeaders(referer) {
       const headers = {
-        "User-Agent": USER_AGENT2
+        "User-Agent": USER_AGENT
       };
       if (referer) headers["Referer"] = referer;
       return headers;
@@ -7679,7 +7679,7 @@ var require_streamhg = __commonJS({
           let finalUrl = null;
           let packedMatch = null;
           for (const candidate of candidates) {
-            const response = yield fetch(getProxiedUrl2(candidate), {
+            const response = yield fetch(getProxiedUrl(candidate), {
               headers: getBaseHeaders(initialReferer),
               redirect: "follow"
             });
@@ -7720,9 +7720,9 @@ var require_streamhg = __commonJS({
 // src/extractors/maxstream.js
 var require_maxstream = __commonJS({
   "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { USER_AGENT, unPack } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
-    function extractMaxStream(url, refererBase = "https://uprot.net/") {
+    function extractMaxStream2(url, refererBase = "https://uprot.net/") {
       return __async(this, null, function* () {
         try {
           let targetUrl = url;
@@ -7730,7 +7730,7 @@ var require_maxstream = __commonJS({
           if (targetUrl.includes("uprot.net")) {
             targetUrl = targetUrl.replace("/msf/", "/mse/");
             const html2 = yield smartFetch2(targetUrl, "uprot", {
-              headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
+              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
             });
             if (!html2) return null;
             const redirectMatch = html2.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/);
@@ -7750,7 +7750,7 @@ var require_maxstream = __commonJS({
           const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
           const html = yield smartFetch2(targetUrl, provider, {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": "https://uprot.net/",
               "Accept-Language": "en-US,en;q=0.5"
             }
@@ -7761,7 +7761,7 @@ var require_maxstream = __commonJS({
             return {
               url: directMatch[1],
               headers: {
-                "User-Agent": USER_AGENT2,
+                "User-Agent": USER_AGENT,
                 "Referer": targetUrl
               }
             };
@@ -7779,7 +7779,7 @@ var require_maxstream = __commonJS({
               return {
                 url: srcMatch[1],
                 headers: {
-                  "User-Agent": USER_AGENT2,
+                  "User-Agent": USER_AGENT,
                   "Referer": targetUrl
                 }
               };
@@ -7811,7 +7811,7 @@ var require_maxstream = __commonJS({
                 return {
                   url: finalUrl,
                   headers: {
-                    "User-Agent": USER_AGENT2,
+                    "User-Agent": USER_AGENT,
                     "Referer": targetUrl
                   }
                 };
@@ -7827,14 +7827,14 @@ var require_maxstream = __commonJS({
         }
       });
     }
-    module2.exports = { extractMaxStream };
+    module2.exports = { extractMaxStream: extractMaxStream2 };
   }
 });
 
 // src/utils/ocr.js
 var require_ocr = __commonJS({
   "src/utils/ocr.js"(exports2, module2) {
-    function solveNumericCaptcha(imgBase64) {
+    function solveNumericCaptcha2(imgBase64) {
       return __async(this, null, function* () {
         const { spawn } = require("child_process");
         return new Promise((resolve, reject) => {
@@ -7869,17 +7869,17 @@ var require_ocr = __commonJS({
         });
       });
     }
-    module2.exports = { solveNumericCaptcha };
+    module2.exports = { solveNumericCaptcha: solveNumericCaptcha2 };
   }
 });
 
 // src/extractors/deltabit.js
 var require_deltabit = __commonJS({
   "src/extractors/deltabit.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { USER_AGENT } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
-    var { solveNumericCaptcha } = require_ocr();
-    function extractDeltaBit(url, refererBase = "https://eurostreamings.help/") {
+    var { solveNumericCaptcha: solveNumericCaptcha2 } = require_ocr();
+    function extractDeltaBit2(url, refererBase = "https://eurostreamings.help/") {
       return __async(this, null, function* () {
         try {
           let targetUrl = url;
@@ -7888,7 +7888,7 @@ var require_deltabit = __commonJS({
           while (redirectLoopCount < 3 && (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc"))) {
             redirectLoopCount++;
             const html2 = yield smartFetch2(targetUrl, "clicka", {
-              headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
+              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
             });
             if (!html2) break;
             const nextMatch = html2.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
@@ -7906,7 +7906,7 @@ var require_deltabit = __commonJS({
           }
           const html = yield smartFetch2(targetUrl, "deltabit", {
             headers: {
-              "User-Agent": USER_AGENT2,
+              "User-Agent": USER_AGENT,
               "Referer": refererBase
             }
           });
@@ -7916,7 +7916,7 @@ var require_deltabit = __commonJS({
             return {
               url: directMatch[1],
               headers: {
-                "User-Agent": USER_AGENT2,
+                "User-Agent": USER_AGENT,
                 "Referer": targetUrl
               }
             };
@@ -7953,7 +7953,7 @@ var require_deltabit = __commonJS({
                   responseType: "arraybuffer"
                 });
                 const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
-                const captchaCode = yield solveNumericCaptcha(base64);
+                const captchaCode = yield solveNumericCaptcha2(base64);
                 if (captchaCode) {
                   console.log(`[DeltaBit] Captcha risolto (locale): ${captchaCode}`);
                   formData.set("code", captchaCode);
@@ -7966,7 +7966,7 @@ var require_deltabit = __commonJS({
             const postHtml = yield smartFetch2(targetUrl, "deltabit", {
               method: "POST",
               headers: {
-                "User-Agent": USER_AGENT2,
+                "User-Agent": USER_AGENT,
                 "Referer": targetUrl,
                 "Content-Type": "application/x-www-form-urlencoded"
               },
@@ -7978,7 +7978,7 @@ var require_deltabit = __commonJS({
               return {
                 url: finalMatch[1],
                 headers: {
-                  "User-Agent": USER_AGENT2,
+                  "User-Agent": USER_AGENT,
                   "Referer": targetUrl
                 }
               };
@@ -7991,7 +7991,7 @@ var require_deltabit = __commonJS({
         }
       });
     }
-    module2.exports = { extractDeltaBit };
+    module2.exports = { extractDeltaBit: extractDeltaBit2 };
   }
 });
 
@@ -7999,644 +7999,685 @@ var require_deltabit = __commonJS({
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
     var { extractMixDrop: extractMixDrop2 } = require_mixdrop();
-    var { extractDropLoad: extractDropLoad2 } = require_dropload();
-    var { extractSuperVideo: extractSuperVideo2 } = require_supervideo();
+    var { extractDropLoad } = require_dropload();
+    var { extractSuperVideo } = require_supervideo();
     var { extractStreamTape } = require_streamtape();
-    var { extractUqload: extractUqload2 } = require_uqload();
+    var { extractUqload } = require_uqload();
     var { extractUpstream } = require_upstream();
     var { extractVidoza } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
-    var { extractLoadm: extractLoadm2 } = require_loadm();
+    var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
-    var { extractMaxStream } = require_maxstream();
-    var { extractDeltaBit } = require_deltabit();
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { extractMaxStream: extractMaxStream2 } = require_maxstream();
+    var { extractDeltaBit: extractDeltaBit2 } = require_deltabit();
+    var { USER_AGENT, unPack } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
-      extractDropLoad: extractDropLoad2,
-      extractSuperVideo: extractSuperVideo2,
+      extractDropLoad,
+      extractSuperVideo,
       extractStreamTape,
-      extractUqload: extractUqload2,
+      extractUqload,
       extractUpstream,
       extractVidoza,
       extractVixCloud,
-      extractLoadm: extractLoadm2,
+      extractLoadm,
       extractStreamHG,
-      extractMaxStream,
-      extractDeltaBit,
-      USER_AGENT: USER_AGENT2,
+      extractMaxStream: extractMaxStream2,
+      extractDeltaBit: extractDeltaBit2,
+      USER_AGENT,
       unPack
     };
   }
 });
 
-// src/guardoserie/index.js
+// src/eurostreaming/index.js
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
+var { smartFetch } = require_cf_handler();
+var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
 var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
 if (!IS_SERVER) {
   module.exports = {
     getStreams: (id, type, season, episode) => __async(null, null, function* () {
       try {
-        const url = `https://easystreams.realbestia.com/resolve/guardoserie?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
-        const response = yield fetch(url);
+        const apiUrl = `https://easystreams.realbestia.com/resolve/eurostreaming?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}&s=${season || 1}&ep=${episode || 1}&format=links`;
+        const response = yield fetch(apiUrl);
         const data = yield response.json();
-        return data.streams || [];
+        const rawLinks = data.links || [];
+        console.log(`[EuroStreaming-Client] Trovati ${rawLinks.length} link dal server.`);
+        const streams = [];
+        for (const link of rawLinks) {
+          try {
+            console.log(`[EuroStreaming-Client] Estrazione da: ${link.host} (${link.url})`);
+            let extracted = null;
+            const lower = link.url.toLowerCase();
+            if (lower.includes("maxstream") || lower.includes("uprot.net")) {
+              extracted = yield extractMaxStream(link.url, "https://eurostreamings.work/");
+            } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+              extracted = yield extractDeltaBit(link.url, "https://eurostreamings.work/");
+            } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
+              console.log(`[EuroStreaming-Client] MixDrop aggiunto direttamente.`);
+              streams.push({ name: `[EuroStreaming] MixDrop`, url: link.url, quality: "HD" });
+            }
+            if (extracted) {
+              console.log(`[EuroStreaming-Client] Estrazione riuscita per ${link.host}`);
+              const items = Array.isArray(extracted) ? extracted : [extracted];
+              for (const item of items) {
+                streams.push({
+                  name: `[EuroStreaming] ${link.host}`,
+                  url: item.url,
+                  quality: item.quality || "HD",
+                  headers: item.headers || {}
+                });
+              }
+            } else if (!lower.includes("mixdrop")) {
+              console.warn(`[EuroStreaming-Client] Estrazione fallita o non supportata per ${link.host}`);
+            }
+          } catch (err) {
+            console.error(`[EuroStreaming-Client] Errore estrazione ${link.host}:`, err.message);
+          }
+        }
+        console.log(`[EuroStreaming-Client] Totale stream pronti: ${streams.length}`);
+        return streams;
       } catch (e) {
-        console.error("[Guardoserie-Client] API Error:", e.message);
+        console.error("[EuroStreaming-Client] API Error:", e.message);
         return [];
       }
     })
   };
   return;
 }
-var { smartFetch } = require_cf_handler();
-var { USER_AGENT, getProxiedUrl } = require_common();
-var { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
-var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
-function getGuardoserieBaseUrl() {
-  return "https://guardoserie.run";
-}
+var BASE_URL = "https://eurostreamings.work";
+var PROVIDER = "eurostreaming";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
-function getMappingApiUrl() {
+var solveNumericCaptcha = null;
+if (IS_SERVER) {
+  try {
+    solveNumericCaptcha = require_ocr().solveNumericCaptcha;
+  } catch (e) {
+    console.error("[EuroStreaming] Errore caricamento modulo OCR:", e.message);
+  }
+}
+var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
+function getMappingApiBase() {
   return "https://animemapping.realbestia.com";
 }
-function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
-  return __async(this, null, function* () {
-    try {
-      if (!kitsuId) return null;
-      const params = new URLSearchParams();
-      const parsedEpisode = Number.parseInt(String(episode || ""), 10);
-      const parsedSeason = Number.parseInt(String(season || ""), 10);
-      if (Number.isInteger(parsedEpisode) && parsedEpisode > 0) {
-        params.set("ep", String(parsedEpisode));
-      } else {
-        params.set("ep", "1");
-      }
-      if (Number.isInteger(parsedSeason) && parsedSeason >= 0) {
-        params.set("s", String(parsedSeason));
-      }
-      params.set("lang", "it");
-      const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
-      const response = yield fetch(url);
-      if (!response.ok) return null;
-      const payload = yield response.json();
-      const ids = payload && payload.mappings && payload.mappings.ids ? payload.mappings.ids : {};
-      const tmdbEpisode = payload && payload.mappings && (payload.mappings.tmdb_episode || payload.mappings.tmdbEpisode) || payload && (payload.tmdb_episode || payload.tmdbEpisode) || null;
-      const tmdbId = ids && /^\d+$/.test(String(ids.tmdb || "").trim()) ? String(ids.tmdb).trim() : null;
-      const imdbId = ids && /^tt\d+$/i.test(String(ids.imdb || "").trim()) ? String(ids.imdb).trim() : null;
-      const mappedSeason = Number.parseInt(String(
-        tmdbEpisode && (tmdbEpisode.season || tmdbEpisode.seasonNumber || tmdbEpisode.season_number) || ""
-      ), 10);
-      const mappedEpisode = Number.parseInt(String(
-        tmdbEpisode && (tmdbEpisode.episode || tmdbEpisode.episodeNumber || tmdbEpisode.episode_number) || ""
-      ), 10);
-      const rawEpisodeNumber = Number.parseInt(String(
-        tmdbEpisode && (tmdbEpisode.rawEpisodeNumber || tmdbEpisode.raw_episode_number || tmdbEpisode.rawEpisode) || ""
-      ), 10);
-      return {
-        tmdbId,
-        imdbId,
-        mappedSeason: Number.isInteger(mappedSeason) && mappedSeason > 0 ? mappedSeason : null,
-        mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
-        rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
-      };
-    } catch (e) {
-      console.error("[Guardoserie] Kitsu mapping error:", e);
-      return null;
-    }
-  });
-}
-function extractEpisodeUrlFromSeriesPage(pageHtml, season, episode) {
-  if (!pageHtml) return null;
-  const seasonIndex = parseInt(season, 10) - 1;
-  const episodeIndex = parseInt(episode, 10) - 1;
-  if (!Number.isInteger(seasonIndex) || !Number.isInteger(episodeIndex) || seasonIndex < 0 || episodeIndex < 0) {
-    return null;
-  }
-  const seasonBlocks = pageHtml.split(/class=['"]les-content['"]/i);
-  if (seasonBlocks.length > seasonIndex + 1) {
-    const targetSeasonBlock = seasonBlocks[seasonIndex + 1];
-    const blockEnd = targetSeasonBlock.indexOf("</div>");
-    const cleanBlock = blockEnd !== -1 ? targetSeasonBlock.substring(0, blockEnd) : targetSeasonBlock;
-    const episodeRegex = /<a[^>]+href=['"]([^'"]+)['"][^>]*>/g;
-    const episodes = [];
-    let eMatch;
-    while ((eMatch = episodeRegex.exec(cleanBlock)) !== null) {
-      if (eMatch[1] && /\/episodio\//i.test(eMatch[1])) {
-        episodes.push(eMatch[1]);
-      }
-    }
-    if (episodes.length > episodeIndex) {
-      return episodes[episodeIndex];
-    }
-  }
-  const explicitEpisodeRegex = new RegExp(`https?:\\/\\/[^"'\\s]+\\/episodio\\/[^"'\\s]*stagione-${season}-episodio-${episode}[^"'\\s]*`, "i");
-  const explicitMatch = pageHtml.match(explicitEpisodeRegex);
-  if (explicitMatch && explicitMatch[0]) {
-    return explicitMatch[0];
-  }
-  return null;
-}
-function normalizePlayerLink(link) {
-  if (!link) return null;
-  let normalized = String(link).trim().replace(/&amp;/g, "&").replace(/\\\//g, "/");
-  if (!normalized || normalized.startsWith("data:")) return null;
-  if (normalized.startsWith("//")) {
-    normalized = `https:${normalized}`;
-  } else if (normalized.startsWith("/")) {
-    normalized = `${getGuardoserieBaseUrl()}${normalized}`;
-  } else if (!/^https?:\/\//i.test(normalized) && /(loadm|uqload|dropload|dr0pstream)/i.test(normalized)) {
-    normalized = `https://${normalized.replace(/^\/+/, "")}`;
-  }
-  return /^https?:\/\//i.test(normalized) ? normalized : null;
-}
-function extractPlayerLinksFromHtml(html) {
-  if (!html) return [];
-  const links = /* @__PURE__ */ new Set();
-  const iframeTags = html.match(/<iframe\b[^>]*>/ig) || [];
-  for (const tag of iframeTags) {
-    const attrRegex = /\b(?:data-src|src)\s*=\s*(['"])(.*?)\1/ig;
-    let attrMatch;
-    while ((attrMatch = attrRegex.exec(tag)) !== null) {
-      const candidate = normalizePlayerLink(attrMatch[2]);
-      if (candidate) links.add(candidate);
-    }
-  }
-  const directRegexes = [
-    /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig,
-    /https?:\\\/\\\/(?:www\\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig
-  ];
-  for (const regex of directRegexes) {
-    const matches = html.match(regex) || [];
-    for (const raw of matches) {
-      const candidate = normalizePlayerLink(raw);
-      if (candidate) links.add(candidate);
-    }
-  }
-  return Array.from(links);
-}
-function getQualityFromName(qualityStr) {
-  if (!qualityStr) return "Unknown";
-  const quality = qualityStr.toUpperCase();
-  if (quality === "ORG" || quality === "ORIGINAL") return "Original";
-  if (quality === "4K" || quality === "2160P") return "4K";
-  if (quality === "1440P" || quality === "2K") return "1440p";
-  if (quality === "1080P" || quality === "FHD") return "1080p";
-  if (quality === "720P" || quality === "HD") return "720p";
-  if (quality === "480P" || quality === "SD") return "480p";
-  if (quality === "360P") return "360p";
-  if (quality === "240P") return "240p";
-  const match = qualityStr.match(/(\d{3,4})[pP]?/);
-  if (match) {
-    const resolution = parseInt(match[1]);
-    if (resolution >= 2160) return "4K";
-    if (resolution >= 1440) return "1440p";
-    if (resolution >= 1080) return "1080p";
-    if (resolution >= 720) return "720p";
-    if (resolution >= 480) return "480p";
-    if (resolution >= 360) return "360p";
-    return "240p";
-  }
-  return "Unknown";
-}
-function normalizeBaseUrl(url) {
-  return String(url || "").trim().replace(/\/+$/, "");
-}
-function resolveCandidateUrl(baseUrl, href) {
-  if (!href || !baseUrl) return null;
-  try {
-    return new URL(href, baseUrl).toString();
-  } catch (e) {
-    return null;
-  }
-}
-function isSameHost(baseUrl, candidateUrl) {
-  try {
-    return new URL(baseUrl).host === new URL(candidateUrl).host;
-  } catch (e) {
-    return false;
-  }
-}
-function extractSearchResultsFromHtml(html, baseUrl) {
-  if (!html) return [];
-  const results = [];
-  const pushResult = (url, title) => {
-    const resolved = resolveCandidateUrl(baseUrl, url);
-    if (!resolved || !isSameHost(baseUrl, resolved)) return;
-    if (/\/(?:wp-|tag\/|category\/|author\/|page\/|search\/|\\?s=)/i.test(resolved)) return;
-    results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
-  };
-  const patterns = [
-    /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
-    /<a[^>]+class=["'][^"']*ss-title[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
-    /<a[^>]+href=["']([^"']+)["'][^>]+class=["'][^"']*ss-title[^"']*["'][^>]*>(.*?)<\/a>/gi
-  ];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      pushResult(match[1], match[2]);
-    }
-    if (results.length > 0) break;
-  }
-  if (results.length === 0) {
-    const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
-    let match;
-    while ((match = linkRegex.exec(html)) !== null) {
-      const text = match[2] ? match[2].replace(/<[^>]+>/g, "").trim() : "";
-      if (!text || text.length < 2) continue;
-      pushResult(match[1], text);
-    }
-  }
-  return Array.from(new Map(results.map((item) => [item.url, item])).values());
-}
 function decodeEntitiesBasic(str) {
-  return String(str || "").replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#8211;/g, "-").replace(/&#8217;/g, "'");
+  return String(str || "").replace(/&#(\d+);/g, (m, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#215;|&times;/g, "x").replace(/&#8211;|&#8212;/g, "-").replace(/&#8217;|&#039;/g, "'");
+}
+function stripTags(str) {
+  return decodeEntitiesBasic(String(str || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 function normalizeTitle(str) {
-  return decodeEntitiesBasic(str).toLowerCase().replace(/[^a-z0-9]/g, "").replace("iltronodispade", "gameofthrones");
+  return decodeEntitiesBasic(str).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "");
 }
-function slugifyTitle(value) {
-  return String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "and").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+function resolveUrl(href) {
+  try {
+    return new URL(decodeEntitiesBasic(href), BASE_URL).toString();
+  } catch (e) {
+    return null;
+  }
 }
-function extractTitleFromHtml(html) {
-  if (!html) return "";
-  const ogMatch = html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
-  if (ogMatch && ogMatch[1]) return ogMatch[1];
-  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-  if (titleMatch && titleMatch[1]) return titleMatch[1];
-  return "";
-}
-function htmlMatchesTitle(html, title, originalTitle) {
-  const pageTitle = extractTitleFromHtml(html);
-  if (!pageTitle) return false;
-  const nPage = normalizeTitle(pageTitle);
-  const nTitle = normalizeTitle(title || "");
-  const nOrig = normalizeTitle(originalTitle || "");
-  if (nPage === nTitle || nOrig && nPage === nOrig) return true;
-  if (nTitle && nPage.includes(nTitle)) return true;
-  if (nOrig && nPage.includes(nOrig)) return true;
-  return false;
-}
-function tryFetchPageHtml(url) {
-  return __async(this, null, function* () {
-    if (!url) return null;
-    const html = yield smartFetch(url, getGuardoserieBaseUrl(), {
-      headers: {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-      }
-    });
-    return html;
+function fetchHtml(_0) {
+  return __async(this, arguments, function* (url, options = {}) {
+    return yield smartFetch(url, BASE_URL, __spreadValues({
+      provider: PROVIDER,
+      timeout: 25e3,
+      headers: __spreadValues({
+        "Referer": `${BASE_URL}/`
+      }, options.headers)
+    }, options));
   });
 }
-function guessUrlFromSlug(baseUrl, title, originalTitle) {
-  return __async(this, null, function* () {
-    const candidates = /* @__PURE__ */ new Set();
-    const slugs = [slugifyTitle(title), slugifyTitle(originalTitle)].filter(Boolean);
-    const patterns = [
-      (slug) => `${baseUrl}/${slug}/`,
-      (slug) => `${baseUrl}/film/${slug}/`,
-      (slug) => `${baseUrl}/movie/${slug}/`,
-      (slug) => `${baseUrl}/serie/${slug}/`,
-      (slug) => `${baseUrl}/serietv/${slug}/`
-    ];
-    for (const slug of slugs) {
-      for (const makeUrl of patterns) {
-        candidates.add(makeUrl(slug));
-      }
-    }
-    const candidateArray = Array.from(candidates);
-    const results = yield Promise.all(candidateArray.map((url) => __async(null, null, function* () {
-      try {
-        const html = yield tryFetchPageHtml(url);
-        if (html && htmlMatchesTitle(html, title, originalTitle)) {
-          return url;
-        }
-      } catch (e) {
-      }
-      return null;
-    })));
-    return results.find(Boolean) || null;
-  });
-}
-function getShowInfo(tmdbId, type) {
+function fetchTmdbJson(path) {
   return __async(this, null, function* () {
     try {
-      const endpoint = type === "movie" ? "movie" : "tv";
-      const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`;
+      const sep = path.includes("?") ? "&" : "?";
+      const url = `https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY}&language=it-IT`;
       const response = yield fetch(url);
       if (!response.ok) return null;
       return yield response.json();
     } catch (e) {
-      console.error("[Guardoserie] TMDB error:", e);
       return null;
+    }
+  });
+}
+function normalizeConfigBoolean(value) {
+  if (value === true) return true;
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+}
+function getMappingLanguage(providerContext = null) {
+  const explicit = String(providerContext && providerContext.mappingLanguage || "").trim().toLowerCase();
+  if (explicit === "it") return "it";
+  return normalizeConfigBoolean(providerContext && providerContext.easyCatalogsLangIt) ? "it" : null;
+}
+function fetchMapping(provider, value, season, episode, providerContext = null) {
+  return __async(this, null, function* () {
+    try {
+      const normalizedProvider = String(provider || "").trim().toLowerCase();
+      const mappingApiBase = getMappingApiBase();
+      if (!mappingApiBase || !normalizedProvider || !value) return null;
+      if (!["imdb", "tmdb", "kitsu"].includes(normalizedProvider)) return null;
+      const params = new URLSearchParams();
+      const parsedSeason = Number.parseInt(String(season || ""), 10);
+      const parsedEpisode = Number.parseInt(String(episode || ""), 10);
+      if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
+      if (Number.isInteger(parsedEpisode) && parsedEpisode > 0) params.set("ep", String(parsedEpisode));
+      const mappingLanguage = normalizedProvider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+      if (mappingLanguage === "it") params.set("lang", "it");
+      const query = params.toString();
+      const url = `${mappingApiBase}/${normalizedProvider}/${encodeURIComponent(String(value).trim())}${query ? `?${query}` : ""}`;
+      const response = yield fetch(url);
+      if (!response.ok) return null;
+      return yield response.json();
+    } catch (e) {
+      return null;
+    }
+  });
+}
+function getNested(obj, paths) {
+  for (const path of paths) {
+    const parts = path.split(".");
+    let current = obj;
+    for (const part of parts) {
+      current = current && current[part];
+    }
+    if (current !== void 0 && current !== null && current !== "") return current;
+  }
+  return null;
+}
+function normalizeMappingPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const ids = payload.ids || payload.mappings && payload.mappings.ids || {};
+  const tmdbId = getNested(payload, ["tmdbId", "tmdb_id", "tmdb", "mappings.tmdbId", "mappings.tmdb_id"]) || ids.tmdb;
+  const imdbId = getNested(payload, ["imdbId", "imdb_id", "imdb", "mappings.imdbId", "mappings.imdb_id"]) || ids.imdb;
+  const season = getNested(payload, ["season", "mappedSeason", "mappings.season", "mappings.mappedSeason"]);
+  const episode = getNested(payload, ["episode", "mappedEpisode", "mappings.episode", "mappings.mappedEpisode"]);
+  const tmdbEpisode = payload.tmdb_episode || payload.tmdbEpisode || payload.mappings && (payload.mappings.tmdb_episode || payload.mappings.tmdbEpisode) || null;
+  const mappedSeason = Number.parseInt(String(season || tmdbEpisode && (tmdbEpisode.season || tmdbEpisode.season_number) || ""), 10);
+  const mappedEpisode = Number.parseInt(String(episode || tmdbEpisode && (tmdbEpisode.episode || tmdbEpisode.episode_number) || ""), 10);
+  const rawEpisodeNumber = Number.parseInt(String(tmdbEpisode && (tmdbEpisode.rawEpisodeNumber || tmdbEpisode.raw_episode_number || tmdbEpisode.rawEpisode) || payload.rawEpisodeNumber || ""), 10);
+  return {
+    tmdbId: /^\d+$/.test(String(tmdbId || "").trim()) ? String(tmdbId).trim() : null,
+    imdbId: /^tt\d+$/i.test(String(imdbId || "").trim()) ? String(imdbId).trim() : null,
+    mappedSeason: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : null,
+    mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
+    rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null,
+    seasonName: payload.seasonName || payload.mappedSeasonName || null,
+    titleHints: Array.isArray(payload.titleHints) ? payload.titleHints.filter(Boolean) : [],
+    longSeries: payload.longSeries === true,
+    episodeMode: String(payload.episodeMode || "").trim().toLowerCase() || null
+  };
+}
+function resolveMappedRequest(id, normalizedType, season, episode, providerContext) {
+  return __async(this, null, function* () {
+    const mapped = {
+      tmdbId: providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null,
+      imdbId: providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null,
+      season: Number.parseInt(String(providerContext && (providerContext.mappedSeason || providerContext.season) || season || ""), 10),
+      episode: Number.parseInt(String(episode || ""), 10) || 1,
+      titleHints: [
+        ...Array.isArray(providerContext && providerContext.titleHints) ? providerContext.titleHints : [],
+        ...Array.isArray(providerContext && providerContext.mappedTitleHints) ? providerContext.mappedTitleHints : []
+      ].filter(Boolean),
+      seasonName: providerContext && (providerContext.seasonName || providerContext.mappedSeasonName) || null,
+      longSeries: providerContext && providerContext.longSeries === true,
+      episodeMode: String(providerContext && providerContext.episodeMode || "").trim().toLowerCase() || null
+    };
+    if (!Number.isInteger(mapped.season) || mapped.season < 0) mapped.season = Number.parseInt(String(season || ""), 10) || 1;
+    const raw = String(id || "").trim();
+    let provider = null;
+    let value = null;
+    if (/^kitsu:\d+$/i.test(raw)) {
+      provider = "kitsu";
+      value = raw.replace(/^kitsu:/i, "");
+    } else if (/^tt\d+$/i.test(raw)) {
+      provider = "imdb";
+      value = raw;
+    } else if (/^tmdb:\d+$/i.test(raw)) {
+      provider = "tmdb";
+      value = raw.replace(/^tmdb:/i, "");
+    } else if (/^\d+$/.test(raw)) {
+      provider = "tmdb";
+      value = raw;
+    } else if (mapped.tmdbId) {
+      provider = "tmdb";
+      value = mapped.tmdbId;
+    }
+    const shouldMap = provider === "kitsu" || normalizedType !== "movie" || normalizedType === "anime" || provider && (providerContext && (providerContext.mappingLanguage || providerContext.easyCatalogsLangIt || providerContext.longSeries));
+    if (shouldMap && provider && value) {
+      const payload = yield fetchMapping(provider, value, season, episode, providerContext);
+      const normalized = normalizeMappingPayload(payload);
+      if (normalized) {
+        if (normalized.tmdbId) mapped.tmdbId = normalized.tmdbId;
+        if (normalized.imdbId) mapped.imdbId = normalized.imdbId;
+        if (normalized.mappedSeason !== null) mapped.season = normalized.mappedSeason;
+        if (normalized.mappedEpisode) mapped.episode = normalized.mappedEpisode;
+        if (normalized.rawEpisodeNumber && (normalized.longSeries || normalized.episodeMode === "absolute")) {
+          mapped.episode = normalized.rawEpisodeNumber;
+        }
+        if (normalized.seasonName) mapped.seasonName = normalized.seasonName;
+        mapped.titleHints.push(...normalized.titleHints);
+        if (normalized.longSeries) mapped.longSeries = true;
+        if (normalized.episodeMode) mapped.episodeMode = normalized.episodeMode;
+      }
+    }
+    if (mapped.longSeries && mapped.episodeMode === "absolute") {
+      const requestedEpisode = Number.parseInt(String(episode || ""), 10);
+      if (Number.isInteger(requestedEpisode) && requestedEpisode > 0 && mapped.episode === requestedEpisode) {
+        mapped.season = 1;
+      }
+    }
+    mapped.titleHints = [...new Set(mapped.titleHints.map((x) => String(x).trim()).filter(Boolean))];
+    return mapped;
+  });
+}
+function resolveTmdbId(id, normalizedType, providerContext, mappedRequest = null) {
+  return __async(this, null, function* () {
+    if (mappedRequest && mappedRequest.tmdbId) return mappedRequest.tmdbId;
+    const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+    if (contextTmdbId) return contextTmdbId;
+    const raw = String(id || "").trim();
+    if (/^tmdb:\d+$/i.test(raw)) return raw.replace(/^tmdb:/i, "");
+    if (/^\d+$/.test(raw)) return raw;
+    if (/^tt\d+$/i.test(raw)) {
+      const data = yield fetchTmdbJson(`/find/${encodeURIComponent(raw)}?external_source=imdb_id`);
+      if (!data) return null;
+      if (normalizedType === "movie" && data.movie_results && data.movie_results[0]) return String(data.movie_results[0].id);
+      if (data.tv_results && data.tv_results[0]) return String(data.tv_results[0].id);
+    }
+    return null;
+  });
+}
+function getTmdbInfo(tmdbId, normalizedType) {
+  return __async(this, null, function* () {
+    const endpoint = normalizedType === "movie" ? "movie" : "tv";
+    const info = yield fetchTmdbJson(`/${endpoint}/${encodeURIComponent(tmdbId)}`);
+    if (!info) return null;
+    let external = null;
+    if (normalizedType !== "movie") {
+      external = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/external_ids`);
+    }
+    return {
+      id: tmdbId,
+      type: normalizedType === "movie" ? "movie" : "tv",
+      title: info.title || info.name || "",
+      originalTitle: info.original_title || info.original_name || "",
+      year: String((info.release_date || info.first_air_date || "").split("-")[0] || ""),
+      overview: info.overview || "",
+      numberOfEpisodes: info.number_of_episodes || null,
+      numberOfSeasons: info.number_of_seasons || null,
+      imdbId: info.imdb_id || external && external.imdb_id || null
+    };
+  });
+}
+function getEpisodeGroupHints(tmdbId, season, episode) {
+  return __async(this, null, function* () {
+    const hints = [];
+    const groups = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/episode_groups`);
+    if (!groups || !Array.isArray(groups.results)) return hints;
+    const groupIds = groups.results.filter((g) => [1, 3, 4, 6].includes(Number(g.type)) || /absolute|dvd|arc|saga|season/i.test(String(g.name || ""))).slice(0, 8).map((g) => g.id).filter(Boolean);
+    const details = yield Promise.all(groupIds.map((id) => fetchTmdbJson(`/tv/episode_group/${encodeURIComponent(id)}`).catch(() => null)));
+    for (const detail of details.filter(Boolean)) {
+      for (const group of detail.groups || []) {
+        const order = Number.parseInt(String(group.order || group.season_number || ""), 10);
+        if (Number.isInteger(order) && order > 0 && order !== Number(season)) continue;
+        const episodes = Array.isArray(group.episodes) ? group.episodes : [];
+        const ep = episodes.find((item) => Number(item.order) === Number(episode) || Number(item.episode_number) === Number(episode));
+        if (ep && ep.name) hints.push(ep.name);
+      }
+    }
+    return [...new Set(hints.filter(Boolean))];
+  });
+}
+function extractSearchResults(html) {
+  const results = [];
+  const linkRegex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = linkRegex.exec(html)) !== null) {
+    const href = resolveUrl(match[1]);
+    const title = stripTags(match[2]);
+    if (!href || !title) continue;
+    if (!href.startsWith(`${BASE_URL}/`)) continue;
+    if (/\/(?:category|tag|author|page|wp-|nuovi-ep|film\/?$|elenco|richieste|istruzioni)/i.test(href)) continue;
+    results.push({ url: href, title });
+  }
+  return Array.from(new Map(results.map((item) => [item.url, item])).values());
+}
+function searchProvider(info) {
+  return __async(this, null, function* () {
+    const queries = [...new Set(
+      [info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && q.length > 1).map((q) => q.replace(/[^\x00-\x7F]/g, "").trim()).filter((q) => q.length > 1)
+    )].slice(0, 3);
+    const pages = yield Promise.all(queries.map((q) => fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(q)}`).catch(() => "")));
+    return pages.flatMap(extractSearchResults);
+  });
+}
+function pageText(html) {
+  return stripTags(
+    String(html || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>|<\/h\d>/gi, "\n")
+  );
+}
+function scoreCandidate(candidate, html, info) {
+  const titleScore = normalizeTitle(candidate.title);
+  const wanted = normalizeTitle(info.title);
+  const wantedOrig = normalizeTitle(info.originalTitle);
+  const text = pageText(html);
+  const lowText = text.toLowerCase();
+  let score = 0;
+  const titleClean = decodeEntitiesBasic(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+  const wantedClean = info.title.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+  const wantedOrigClean = (info.originalTitle || "").toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+  if (titleScore && (titleScore === wanted || wantedOrig && titleScore === wantedOrig)) {
+    score += 60;
+  } else if (titleScore && wanted && (titleScore.includes(wanted) || wanted.includes(titleScore))) {
+    score += 40;
+  } else if (titleScore && wantedOrig && (titleScore.includes(wantedOrig) || wantedOrig.includes(titleScore))) {
+    score += 40;
+  } else {
+    const w1 = wantedClean.split(/\s+/).filter((w) => w.length > 3);
+    const w2 = titleClean.split(/\s+/).filter((w) => w.length > 3);
+    const intersection = w1.filter((w) => w2.includes(w));
+    if (intersection.length > 0) score += 25 * intersection.length;
+  }
+  if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
+  if (info.type === "tv") {
+    if (/serie tv|prima stagione|stagione|episodi|1\s*[x×]\s*0?1/i.test(lowText)) score += 30;
+    if (/streaming film|film in streaming/i.test(lowText)) score -= 40;
+  } else {
+    if (/streaming film|film in streaming/i.test(lowText)) score += 30;
+    if (/prima stagione|stagione/i.test(lowText)) score -= 40;
+  }
+  return score;
+  if (info.overview) {
+    const words = info.overview.toLowerCase().replace(/[^a-z0-9à-ÿ ]/gi, " ").split(/\s+/).filter((w) => w.length > 5).slice(0, 15);
+    const hits = words.filter((w) => lowText.includes(w)).length;
+    if (hits >= 2) score += Math.min(20, hits * 4);
+  }
+  return score;
+}
+function pickCandidate(candidates, info) {
+  return __async(this, null, function* () {
+    const unique = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, 8);
+    const checked = yield Promise.all(unique.map((candidate) => __async(null, null, function* () {
+      try {
+        const html = yield fetchHtml(candidate.url);
+        return __spreadProps(__spreadValues({}, candidate), { html, score: scoreCandidate(candidate, html, info) });
+      } catch (e) {
+        return null;
+      }
+    })));
+    const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    const second = ranked[1];
+    if (!best || best.score < 50) return null;
+    if (second && best.score - second.score < 15 && best.score < 95) return null;
+    return best;
+  });
+}
+function extractAnchors(html) {
+  const anchors = [];
+  const regex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const href = resolveUrl(match[1]);
+    const text = stripTags(match[2]);
+    if (href) anchors.push({ text, href, index: match.index, raw: match[0] || "" });
+  }
+  return anchors;
+}
+function isHostLink(anchor) {
+  const value = `${anchor.text} ${anchor.href}`.toLowerCase();
+  return /(maxstream|uprot|deltabit|clicka\.cc\/delta|mixdrop|m1xdrop)/i.test(value);
+}
+function detectHost(anchorOrUrl) {
+  const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
+  const lower = String(value || "").toLowerCase();
+  if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) return "deltabit";
+  if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
+  if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
+  return null;
+}
+function findEpisodeOffset(html, season, episode, episodeHints = []) {
+  const candidates = [
+    new RegExp(`${season}\\s*[x\xD7]\\s*0?${episode}\\b`, "i"),
+    new RegExp(`stagione\\s*${season}[^\\n<]{0,80}episodio\\s*0?${episode}\\b`, "i")
+  ];
+  for (const hint of episodeHints) {
+    const clean = String(hint || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (clean.length > 2) candidates.push(new RegExp(clean, "i"));
+  }
+  for (const regex of candidates) {
+    const match = regex.exec(decodeEntitiesBasic(html));
+    if (match) return match.index;
+  }
+  return -1;
+}
+function extractEpisodeLinks(html, season, episode, episodeHints = []) {
+  const anchors = extractAnchors(html).filter(isHostLink);
+  if (anchors.length === 0) return [];
+  const start = findEpisodeOffset(html, season, episode, episodeHints);
+  if (start >= 0) {
+    const next = findEpisodeOffset(html.slice(start + 20), season, Number(episode) + 1, []);
+    const end = next >= 0 ? start + 20 + next : Number.MAX_SAFE_INTEGER;
+    const scoped = anchors.filter((a) => a.index >= start && a.index < end);
+    if (scoped.length > 0) return scoped.map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
+  }
+  const ep = Number.parseInt(String(episode || ""), 10) || 1;
+  const perEpisode = Math.max(1, Math.round(anchors.length / Math.max(ep, 1)));
+  return anchors.slice((ep - 1) * perEpisode, ep * perEpisode).map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
+}
+function normalizeHostUrl(url) {
+  if (!url) return null;
+  return decodeEntitiesBasic(String(url)).trim();
+}
+function resolveShortlink(url) {
+  return __async(this, null, function* () {
+    var _a;
+    console.log(`[EuroStreaming] Tentativo di risoluzione link breve: ${url}`);
+    if (url.includes("uprot.net/msf/")) {
+      url = url.replace("/msf/", "/mse/");
+    }
+    let currentUrl = url;
+    let hops = 0;
+    while (hops < 3 && (currentUrl.includes("uprot.net") || currentUrl.includes("clicka.cc") || currentUrl.includes("safego.cc"))) {
+      hops++;
+      try {
+        const html = yield fetchHtml(currentUrl);
+        const captchaMatch = html.match(/<img[^>]+src=["']([^"']*(?:captcha|secure)[^"']*)["']/i);
+        const formMatch = html.match(/<form[^>]*method=["']POST["'][^>]*>([\s\S]*?)<\/form>/i);
+        if (captchaMatch && formMatch) {
+          console.log(`[EuroStreaming] Captcha numerico rilevato per ${currentUrl}. Risoluzione in corso...`);
+          let captchaUrl = captchaMatch[1];
+          if (captchaUrl.startsWith("/")) {
+            const urlObj = new URL(currentUrl);
+            captchaUrl = `${urlObj.protocol}//${urlObj.host}${captchaUrl}`;
+          }
+          const imgData = yield smartFetch(captchaUrl, BASE_URL, {
+            provider: PROVIDER,
+            responseType: "arraybuffer"
+          });
+          const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
+          const captchaCode = yield solveNumericCaptcha(base64);
+          if (captchaCode) {
+            console.log(`[EuroStreaming] Captcha risolto: ${captchaCode}. Sblocco link...`);
+            const inputs = {};
+            const inputRegex = /<input[^>]+name=["']([^"']+)["'][^>]+value=["']([^"']*)["']/gi;
+            let inputMatch;
+            while ((inputMatch = inputRegex.exec(formMatch[1])) !== null) {
+              inputs[inputMatch[1]] = inputMatch[2];
+            }
+            const captchaFieldName = ((_a = formMatch[1].match(/name=["']([^"']*(?:captcha|code|response)[^"']*)["']/i)) == null ? void 0 : _a[1]) || "captcha";
+            inputs[captchaFieldName] = captchaCode;
+            const postBody = new URLSearchParams(inputs).toString();
+            const postHtml = yield smartFetch(currentUrl, BASE_URL, {
+              method: "POST",
+              provider: PROVIDER,
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": currentUrl
+              },
+              body: postBody
+            });
+            const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[a-z]+\/(?:msf|mse|v|e|embed|embed-[a-z0-9]+|mix|delta|safe\.php)\/[a-zA-Z0-9\/=_+-]+/i);
+            if (finalMatch) {
+              currentUrl = finalMatch[0];
+              if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+              continue;
+            }
+          }
+        }
+        const linkMatch = html.match(new RegExp(`href=["'](https?:\\/\\/(?:maxstream|stayonline|uprot|deltabit|mixdrop|m1xdrop|safego|clicka)\\.[a-z]+\\/(?:msf|mse|v|e|embed|mix|delta|safe\\.php)\\/[^"']+(?<!\\.ico|\\.png|\\.jpg|\\.jpeg|\\.gif))["']`, "i"));
+        if (linkMatch) {
+          currentUrl = linkMatch[1];
+          if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+          continue;
+        }
+        const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
+        if (deltabitMatch) {
+          currentUrl = deltabitMatch[0];
+          break;
+        }
+        const refreshMatch = html.match(new RegExp(`url=(https?:\\/\\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\\.[^"']+(?<!\\.ico|\\.png|\\.jpg))`, "i"));
+        if (refreshMatch) {
+          currentUrl = refreshMatch[1];
+          if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+          continue;
+        }
+        break;
+      } catch (e) {
+        console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+        break;
+      }
+    }
+    return currentUrl;
+  });
+}
+function extractStreamFromHost(link, displayName) {
+  return __async(this, null, function* () {
+    let hostUrl = normalizeHostUrl(link && link.url ? link.url : link);
+    if (!hostUrl) return [];
+    try {
+      hostUrl = yield resolveShortlink(hostUrl);
+      let extracted = null;
+      const lower = hostUrl.toLowerCase();
+      if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) {
+        extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
+      } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
+        extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
+      } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+        extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
+      }
+      const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
+      const streams = [];
+      for (const item of items) {
+        const streamUrl = typeof item === "string" ? item : item.url;
+        if (!streamUrl) continue;
+        const headers = typeof item === "object" ? item.headers : null;
+        let quality = "720p";
+        if (streamUrl.includes(".m3u8")) {
+          const detected = yield checkQualityFromPlaylist(streamUrl, headers || {});
+          if (detected) quality = detected;
+        }
+        streams.push(formatStream({
+          url: streamUrl,
+          easyProxySourceUrl: hostUrl,
+          headers,
+          name: "EuroStreaming",
+          title: displayName,
+          quality,
+          type: "direct",
+          behaviorHints: item && item.behaviorHints
+        }, "EuroStreaming"));
+      }
+      return streams;
+    } catch (e) {
+      console.error(`[EuroStreaming] Extraction error for ${hostUrl}:`, e.message);
+      return [];
     }
   });
 }
 function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
-    var _a, _b;
     const benchStart = Date.now();
     const bench = [];
     const mark = (step, meta = {}) => {
-      if (!STEP_BENCH_ENABLED) return;
-      bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
+      if (STEP_BENCH_ENABLED) bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
     };
     try {
-      const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
-      if (!baseUrl) {
-        console.log("[Guardoserie] Base URL not available yet.");
+      const requestedType = String(type || "").toLowerCase();
+      if (requestedType === "movie") return [];
+      const normalizedType = "tv";
+      const mappedRequest = yield resolveMappedRequest(id, normalizedType, season, episode, providerContext);
+      mark("mapping_done", {
+        tmdb: mappedRequest.tmdbId,
+        season: mappedRequest.season,
+        episode: mappedRequest.episode,
+        mode: mappedRequest.episodeMode || null
+      });
+      const tmdbId = yield resolveTmdbId(id, normalizedType, providerContext, mappedRequest);
+      if (!tmdbId) return [];
+      const info = yield getTmdbInfo(tmdbId, normalizedType);
+      mark("tmdb_done", { ok: Boolean(info) });
+      if (!info || !info.title) return [];
+      info.titleHints = mappedRequest.titleHints || [];
+      if (mappedRequest.seasonName) info.titleHints.push(mappedRequest.seasonName);
+      const candidates = yield searchProvider(info);
+      mark("search_done", { results: candidates.length });
+      if (candidates.length === 0) return [];
+      const picked = yield pickCandidate(candidates, info);
+      mark("candidate_done", { ok: Boolean(picked), score: picked && picked.score });
+      if (!picked) {
+        if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_candidate" })}`);
         return [];
       }
-      let tmdbId = id;
-      let effectiveSeason = Number.parseInt(String(season || ""), 10);
-      if (!Number.isInteger(effectiveSeason) || effectiveSeason < 1) effectiveSeason = 1;
-      let effectiveEpisode = Number.parseInt(String(episode || ""), 10);
-      if (!Number.isInteger(effectiveEpisode) || effectiveEpisode < 1) effectiveEpisode = 1;
-      const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
-      const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
-      const shouldIncludeSeasonHintForKitsu = providerContext && providerContext.seasonProvided === true;
-      if (id.toString().startsWith("kitsu:") || contextKitsuId) {
-        const kitsuId = contextKitsuId || ((id.toString().match(/^kitsu:(\d+)/i) || [])[1] || null);
-        const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-        const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
-        mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
-        if (mapped && mapped.tmdbId) {
-          tmdbId = mapped.tmdbId;
-          console.log(`[Guardoserie] Kitsu ${kitsuId} mapped to TMDB ID ${tmdbId}`);
-          if (mapped.mappedSeason && mapped.mappedEpisode) {
-            effectiveSeason = mapped.mappedSeason;
-            effectiveEpisode = mapped.mappedEpisode;
-            console.log(`[Guardoserie] Using TMDB episode mapping ${effectiveSeason}x${effectiveEpisode} (raw=${mapped.rawEpisodeNumber || "n/a"})`);
-          } else if (mapped.rawEpisodeNumber) {
-            effectiveEpisode = mapped.rawEpisodeNumber;
-            console.log(`[Guardoserie] Using mapped raw episode number ${effectiveEpisode}`);
-          }
-        } else {
-          console.log(`[Guardoserie] No Kitsu->TMDB mapping found for ${kitsuId}`);
-        }
-      } else if (id.toString().startsWith("tt")) {
-        if (contextTmdbId) {
-          tmdbId = contextTmdbId;
-          console.log(`[Guardoserie] Using prefetched TMDB ID ${tmdbId} for ${id}`);
-        } else {
-          const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
-          const response = yield fetch(url);
-          mark("imdb_to_tmdb_done", { ok: response.ok });
-          if (response.ok) {
-            const data = yield response.json();
-            if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) tmdbId = data.movie_results[0].id;
-            else if ((type === "series" || type === "tv") && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) tmdbId = data.tv_results[0].id;
-          }
-        }
-      } else if (id.toString().startsWith("tmdb:")) {
-        tmdbId = id.toString().replace("tmdb:", "");
-      }
-      const showInfo = yield getShowInfo(tmdbId, type === "movie" ? "movie" : "tv");
-      mark("tmdb_showinfo_done", { ok: Boolean(showInfo) });
-      if (!showInfo) return [];
-      const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title;
-      const originalTitle = showInfo.original_title || showInfo.original_name;
-      const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
-      console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
-      const searchProvider = (query) => __async(null, null, function* () {
-        const searchStartedAt = Date.now();
-        const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-        const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
-        const [ajaxHtml, fallbackHtml] = yield Promise.all([
-          smartFetch(searchUrl, baseUrl, {
-            method: "POST",
-            body,
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            provider: "guardoserie"
-          }).catch(() => ""),
-          smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, { provider: "guardoserie" }).catch(() => "")
-        ]);
-        const ajaxResults = ajaxHtml ? extractSearchResultsFromHtml(ajaxHtml, baseUrl) : [];
-        const fallbackResults = fallbackHtml ? extractSearchResultsFromHtml(fallbackHtml, baseUrl) : [];
-        const results = [...ajaxResults, ...fallbackResults];
-        mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length });
-        return results;
-      });
-      const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2)));
-      const searchPromises = queries.map((q) => searchProvider(q));
-      const allResultsArray = yield Promise.all(searchPromises);
-      let allResults = allResultsArray.flat();
-      mark("search_phase_done", { queries: queries.length, results: allResults.length });
-      allResults = Array.from(new Map(allResults.map((item) => [item.url, item])).values());
-      const nTitle = normalizeTitle(title);
-      const nOrig = normalizeTitle(originalTitle || "");
-      const scoreTitleMatch = (nResult) => {
-        if (!nResult) return 0;
-        if (nResult === nTitle || nOrig && nResult === nOrig) return 3;
-        const scorePartial = (a, b) => {
-          if (!a || !b) return 0;
-          if (!(a.includes(b) || b.includes(a))) return 0;
-          const minLen = Math.min(a.length, b.length);
-          const maxLen = Math.max(a.length, b.length);
-          const ratio = maxLen > 0 ? minLen / maxLen : 0;
-          if (ratio >= 0.8) return 2;
-          if (ratio >= 0.6) return 1;
-          return 0;
-        };
-        return Math.max(scorePartial(nResult, nTitle), scorePartial(nResult, nOrig));
-      };
-      allResults.sort((a, b) => {
-        const nA = normalizeTitle(a.title);
-        const nB = normalizeTitle(b.title);
-        const exactA = nA === nTitle || nA === nOrig;
-        const exactB = nB === nTitle || nB === nOrig;
-        if (exactA && !exactB) return -1;
-        if (!exactA && exactB) return 1;
-        return 0;
-      });
-      let targetUrl = null;
-      let bestNoYearMatch = null;
-      let bestNoYearScore = 0;
-      const topResults = allResults.slice(0, 5);
-      const verificationPromises = topResults.map((result) => __async(null, null, function* () {
-        const nResult = normalizeTitle(result.title);
-        const matchScore = scoreTitleMatch(nResult);
-        if (matchScore < 1) return null;
-        try {
-          const pageHtml = yield smartFetch(result.url, getGuardoserieBaseUrl(), {
-            provider: "guardoserie"
-          });
-          let foundYear = null;
-          const pubYearMatch = pageHtml.match(/pubblicazione.*?release-year\/(\d{4})/i);
-          if (pubYearMatch) foundYear = pubYearMatch[1];
-          if (!foundYear) {
-            const anyYearMatch = pageHtml.match(/release-year\/(\d{4})/i);
-            if (anyYearMatch) foundYear = anyYearMatch[1];
-          }
-          if (foundYear) {
-            const targetYear = parseInt(year);
-            const fYear = parseInt(foundYear);
-            const maxDiff = matchScore === 3 ? 10 : 1;
-            if (fYear === targetYear || Math.abs(fYear - targetYear) <= maxDiff) {
-              return { url: result.url, score: matchScore, exact: true };
-            }
-          } else if (matchScore >= 2) {
-            return { url: result.url, score: matchScore, exact: false };
-          }
-        } catch (e) {
-          if (matchScore >= 2) return { url: result.url, score: matchScore, exact: false };
-        }
-        return null;
-      }));
-      const verifiedResults = (yield Promise.all(verificationPromises)).filter(Boolean);
-      verifiedResults.sort((a, b) => b.score - a.score);
-      if (verifiedResults.length > 0) {
-        targetUrl = verifiedResults[0].url;
-      }
-      if (!targetUrl && bestNoYearMatch) {
-        console.log(`[Guardoserie] Year not found, using best title match: ${bestNoYearMatch}`);
-        targetUrl = bestNoYearMatch;
-      }
-      if (!targetUrl) {
-        const guessed = yield guessUrlFromSlug(baseUrl, title, originalTitle);
-        mark("slug_fallback_done", { ok: Boolean(guessed) });
-        if (guessed) {
-          console.log(`[Guardoserie] Slug fallback matched: ${guessed}`);
-          targetUrl = guessed;
-        }
-      }
-      if (!targetUrl) {
-        console.log(`[Guardoserie] No matching result found for ${title}`);
+      const effectiveSeason = Number.parseInt(String(mappedRequest.season || season || ""), 10) || 1;
+      const effectiveEpisode = Number.parseInt(String(mappedRequest.episode || episode || ""), 10) || 1;
+      const episodeHints = normalizedType === "tv" ? yield getEpisodeGroupHints(tmdbId, effectiveSeason, effectiveEpisode) : [];
+      const links = extractEpisodeLinks(picked.html, effectiveSeason, effectiveEpisode, episodeHints);
+      mark("links_done", { links: links.length });
+      if (links.length === 0) {
+        if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_links" })}`);
         return [];
       }
-      let episodeUrl = targetUrl;
-      if (type === "tv" || type === "series") {
-        season = effectiveSeason;
-        episode = effectiveEpisode;
-        const pageHtml = yield smartFetch(targetUrl, getGuardoserieBaseUrl(), {
-          headers: {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": `${getGuardoserieBaseUrl()}/`
-          }
-        });
-        const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage(pageHtml, season, episode);
-        mark("series_episode_resolve_done", { ok: Boolean(resolvedEpisodeUrl) });
-        if (resolvedEpisodeUrl) {
-          episodeUrl = resolvedEpisodeUrl;
-        } else {
-          console.log(`[Guardoserie] Episode ${episode} not found in Season ${season} at ${targetUrl}`);
-          return [];
-        }
-      }
-      console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-      const finalHtml = yield smartFetch(episodeUrl, getGuardoserieBaseUrl(), {
-        headers: {
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-          "Referer": `${getGuardoserieBaseUrl()}/`
-        }
-      });
-      mark("final_page_done");
-      let playerLinks = extractPlayerLinksFromHtml(finalHtml);
-      mark("player_links_extracted", { links: playerLinks.length });
-      if (playerLinks.length === 0 && /\/serie\//i.test(episodeUrl)) {
-        const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage(finalHtml, season, episode);
-        if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
-          console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-          const retryHtml = yield smartFetch(fallbackEpisodeUrl, getGuardoserieBaseUrl(), {
-            headers: {
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-              "Referer": `${getGuardoserieBaseUrl()}/`
-            }
-          });
-          const fallbackLinks = extractPlayerLinksFromHtml(retryHtml);
-          if (fallbackLinks.length > 0) {
-            playerLinks = fallbackLinks;
-            episodeUrl = fallbackEpisodeUrl;
-          }
-          mark("player_links_fallback_done", { links: playerLinks.length });
-        }
-      }
-      if (playerLinks.length === 0) {
-        console.log(`[Guardoserie] No player links found`);
-        return [];
-      }
-      console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
-      const displayName = type === "tv" || type === "series" ? `${title} ${season}x${episode}` : title;
+      const displayName = `${info.title} ${effectiveSeason}x${effectiveEpisode}`;
       let streams = [];
-      const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
-        try {
-          if (playerLink.includes("loadm")) {
-            const domain = "guardoserie.horse";
-            const extracted = yield extractLoadm(playerLink, domain);
-            const localStreams = [];
-            for (const s of extracted || []) {
-              const directLoadmUrl = s.url;
-              let quality = "HD";
-              if (s.url.includes(".m3u8")) {
-                const detected = yield checkQualityFromPlaylist(directLoadmUrl, s.headers || {});
-                if (detected) quality = detected;
-              }
-              const normalizedQuality = getQualityFromName(quality);
-              localStreams.push(formatStream({
-                url: directLoadmUrl,
-                headers: s.headers,
-                name: `Guardoserie - Loadm`,
-                title: displayName,
-                quality: normalizedQuality,
-                type: "direct",
-                behaviorHints: s.behaviorHints
-              }, "Guardoserie"));
-            }
-            return localStreams;
-          } else if (playerLink.includes("uqload")) {
-            const extracted = yield extractUqload(playerLink);
-            if (extracted && extracted.url) {
-              return [formatStream({
-                url: extracted.url,
-                headers: extracted.headers,
-                name: `Guardoserie - Uqload`,
-                title: displayName,
-                quality: getQualityFromName("HD"),
-                type: "direct"
-              }, "Guardoserie")];
-            }
-          } else if (playerLink.includes("dropload") || playerLink.includes("dr0pstream")) {
-            console.log(`[Guardoserie] DropLoad temporarily disabled: ${playerLink}`);
-            return [];
-          } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-            const extracted = yield extractMixDrop(playerLink);
-            if (extracted && extracted.url) {
-              return [formatStream({
-                url: extracted.url,
-                easyProxySourceUrl: playerLink,
-                headers: extracted.headers,
-                name: `Guardoserie - MixDrop`,
-                title: displayName,
-                quality: getQualityFromName("HD"),
-                type: "direct"
-              }, "Guardoserie")];
-            }
-          } else if (playerLink.includes("supervideo")) {
-            console.log(`[Guardoserie] SuperVideo temporarily disabled: ${playerLink}`);
-            return [];
-          }
-        } catch (e) {
-          console.error(`[Guardoserie] Extraction error for ${playerLink}:`, e);
-        }
-        return [];
-      }));
-      const nestedStreams = yield Promise.all(streamPromises);
-      streams = nestedStreams.flat().filter(Boolean);
-      mark("extractors_done", { streams: streams.length });
+      if (providerContext && providerContext.format === "links") {
+        const resolvedLinks = yield Promise.all(links.map((l) => __async(null, null, function* () {
+          return {
+            host: l.host,
+            url: yield resolveShortlink(l.url)
+          };
+        })));
+        if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), totalMs: Date.now() - benchStart, msg: "returning_links" })}`);
+        return { links: resolvedLinks };
+      }
+      const isStremioAddon = providerContext && providerContext.__requestContext === true;
+      if (isStremioAddon) {
+        streams = links.map((l) => formatStream({
+          url: l.url,
+          host: l.host,
+          name: `EuroStreaming - ${l.host}`,
+          title: displayName,
+          originalTitle: displayName,
+          providerName: "EuroStreaming"
+        }, "EuroStreaming")).filter(Boolean);
+      } else {
+        const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values());
+        const nested = yield Promise.all(uniqueLinks.slice(0, 5).map((link) => extractStreamFromHost(link, displayName)));
+        streams = nested.flat().filter(Boolean);
+      }
+      mark("extract_done", { streams: streams.length });
       if (STEP_BENCH_ENABLED) {
-        console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
+        console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
       }
       return streams;
     } catch (e) {
       if (STEP_BENCH_ENABLED) {
-        console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: (e == null ? void 0 : e.message) || String(e) })}`);
+        console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e.message })}`);
       }
-      console.error(`[Guardoserie] Error:`, e);
+      console.error("[EuroStreaming] Error:", e);
       return [];
     }
   });

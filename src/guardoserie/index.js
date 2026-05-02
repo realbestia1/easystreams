@@ -29,7 +29,7 @@ const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
 const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require('../extractors');
 const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
 function getGuardoserieBaseUrl() {
-    return 'https://guardoserie.garden';
+    return 'https://guardoserie.run';
 }
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
 function getMappingApiUrl() {

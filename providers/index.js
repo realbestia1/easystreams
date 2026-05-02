@@ -7334,6 +7334,554 @@ var require_streamhg = __commonJS({
   }
 });
 
+// cf_bypass.js
+var require_cf_bypass = __commonJS({
+  "cf_bypass.js"(exports2, module2) {
+    var fs = require("fs");
+    var path = require("path");
+    var axios = require("axios");
+    var activeBypasses = /* @__PURE__ */ new Map();
+    var MAX_GLOBAL_CONCURRENT = 4;
+    var activeGlobalRequests = 0;
+    function getClearance(_0) {
+      return __async(this, arguments, function* (url, provider = "default", options = {}) {
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        if (activeBypasses.has(provider)) {
+          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
+          return activeBypasses.get(provider);
+        }
+        const bypassPromise = (() => __async(null, null, function* () {
+          var _a, _b;
+          while (activeGlobalRequests >= MAX_GLOBAL_CONCURRENT) {
+            yield new Promise((resolve) => setTimeout(resolve, 1e3));
+          }
+          activeGlobalRequests++;
+          try {
+            const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
+            console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}]: ${url}`);
+            try {
+              yield axios.post(FLARE_URL, { cmd: "sessions.create", session: provider }, { timeout: 5e3 }).catch(() => {
+              });
+            } catch (e) {
+            }
+            const payload = {
+              cmd: options.method === "POST" ? "request.post" : "request.get",
+              url,
+              session: provider,
+              maxTimeout: 35e3
+              // Ridotto per rientrare nei 40s del provider
+            };
+            if (options.method === "POST" && options.body) {
+              payload.postData = options.body;
+            }
+            try {
+              const response = yield axios.post(FLARE_URL, payload, {
+                timeout: 4e4,
+                // Leggermente più alto di maxTimeout (35s)
+                headers: { "Content-Type": "application/json" }
+              });
+              if (response.data && response.data.status === "ok") {
+                const solution = response.data.solution;
+                const cookiesCount = (solution.cookies || []).length;
+                const cookies = (solution.cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
+                const cf_clearance = (_a = (solution.cookies || []).find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
+                console.log(`[CF] FlareSolverr ha restituito ${cookiesCount} cookie.`);
+                if (!cookies && !solution.response) {
+                  throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
+                }
+                const data = {
+                  userAgent: solution.userAgent,
+                  cookies: cookies || "",
+                  cf_clearance: cf_clearance || null,
+                  url: solution.url,
+                  response: solution.response,
+                  timestamp: Date.now()
+                };
+                fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
+                if (solution.cookies && solution.cookies.length > 0) {
+                  const domains = [...new Set(solution.cookies.map((c) => c.domain.replace(/^\./, "")))];
+                  for (const d of domains) {
+                    const domainProvider = d.replace("www.", "").split(".")[0];
+                    if (domainProvider && domainProvider !== provider) {
+                      const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
+                      const domainCookies = solution.cookies.filter((c) => c.domain.includes(d)).map((c) => `${c.name}=${c.value}`).join("; ");
+                      if (domainCookies) {
+                        const domainData = {
+                          userAgent: solution.userAgent,
+                          cookies: domainCookies,
+                          cf_clearance: ((_b = solution.cookies.find((c) => c.domain.includes(d) && c.name === "cf_clearance")) == null ? void 0 : _b.value) || null,
+                          url: solution.url,
+                          timestamp: Date.now()
+                        };
+                        fs.writeFileSync(domainSessionFile, JSON.stringify(domainData, null, 2));
+                        console.log(`[CF] Salvata sessione extra per dominio: ${d} -> ${domainProvider}`);
+                      }
+                    }
+                  }
+                }
+                console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+                return data;
+              } else {
+                const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
+                throw new Error(errorMsg);
+              }
+            } catch (error) {
+              console.error(`[CF] Errore FlareSolverr: ${error.message}`);
+              if (error.code === "ECONNREFUSED") {
+                console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
+              }
+              throw error;
+            }
+          } finally {
+            activeGlobalRequests--;
+            activeBypasses.delete(provider);
+          }
+        }))();
+        activeBypasses.set(provider, bypassPromise);
+        return bypassPromise;
+      });
+    }
+    module2.exports = { getClearance };
+  }
+});
+
+// src/utils/cf_handler.js
+var require_cf_handler = __commonJS({
+  "src/utils/cf_handler.js"(exports2, module2) {
+    var axios = require("axios");
+    var fs = require("fs");
+    var path = require("path");
+    var { getClearance } = require_cf_bypass();
+    var https = require("https");
+    var http = require("http");
+    var agentOptions = {
+      keepAlive: true,
+      maxSockets: 250,
+      maxFreeSockets: 100,
+      timeout: 3e4,
+      keepAliveMsecs: 3e4
+    };
+    var httpsAgent = new https.Agent(agentOptions);
+    var httpAgent = new http.Agent(agentOptions);
+    function smartFetch(_0, _1) {
+      return __async(this, arguments, function* (url, domain, options = {}) {
+        const getHost = (u) => {
+          try {
+            return new URL(u).hostname.replace("www.", "");
+          } catch (e) {
+            return u;
+          }
+        };
+        const urlHost = getHost(url);
+        const domainHost = getHost(domain);
+        const provider = urlHost !== domainHost ? urlHost.split(".")[0] : options.provider || domainHost.split(".")[0];
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
+        const loadSession = () => {
+          if (fs.existsSync(sessionFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+              if (data && data.userAgent) {
+                const ageMs = Date.now() - (data.timestamp || 0);
+                const twoHours = 2 * 60 * 60 * 1e3;
+                if (ageMs > twoHours) {
+                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
+                  try {
+                    fs.unlinkSync(sessionFile);
+                  } catch (e) {
+                  }
+                  return {};
+                }
+                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                return data;
+              }
+            } catch (e) {
+              return {};
+            }
+          }
+          return {};
+        };
+        let session = loadSession();
+        let currentUrl = url;
+        if (session.url) {
+          try {
+            const currentUrlObj = new URL(currentUrl);
+            const sessionUrl = new URL(session.url);
+            const currentHost = currentUrlObj.hostname.toLowerCase();
+            const sessionHost = sessionUrl.hostname.toLowerCase();
+            if (sessionHost !== currentHost) {
+              const sessionParts = sessionHost.split(".");
+              const currentParts = currentHost.split(".");
+              const sessionRoot = sessionParts.slice(-2).join(".");
+              const currentRoot = currentParts.slice(-2).join(".");
+              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
+                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
+                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+              }
+            }
+          } catch (e) {
+          }
+        }
+        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
+          const mergedHeaders = __spreadValues({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+          }, options.headers);
+          if (sess.userAgent) {
+            mergedHeaders["User-Agent"] = sess.userAgent;
+          } else if (!mergedHeaders["User-Agent"]) {
+            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+          }
+          if (sess.cookies) {
+            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
+            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+          }
+          const response = yield axios(__spreadValues({
+            url: targetUrl,
+            method: options.method || "GET",
+            data: options.body,
+            headers: mergedHeaders,
+            httpsAgent,
+            httpAgent,
+            timeout: options.timeout || 2e4,
+            validateStatus: false,
+            responseType: options.responseType || "text"
+          }, options.axiosConfig));
+          const data = response.data;
+          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            const err = new Error(`HTTP ${response.status}`);
+            err.response = { status: response.status, data };
+            throw err;
+          }
+          return { data, status: response.status, headers: response.headers };
+        });
+        try {
+          const res = yield doRequest(session);
+          if (res.status === 403 || res.status === 503) {
+            throw { response: res };
+          }
+          if (session.cookies) {
+            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+          }
+          return res.data;
+        } catch (err) {
+          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (fs.existsSync(sessionFile)) {
+              try {
+                fs.unlinkSync(sessionFile);
+              } catch (e) {
+              }
+            }
+            const newSession = yield getClearance(url, provider, options);
+            if (!newSession) {
+              throw new Error(`Bypass fallito per ${provider}`);
+            }
+            if (newSession.response) {
+              return newSession.response;
+            }
+            let finalUrl = currentUrl;
+            if (newSession.url) {
+              try {
+                const oldUrlObj = new URL(url);
+                const newUrlObj = new URL(newSession.url);
+                if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                  oldUrlObj.hostname = newUrlObj.hostname;
+                  oldUrlObj.protocol = newUrlObj.protocol;
+                  finalUrl = oldUrlObj.toString();
+                }
+              } catch (e) {
+              }
+            }
+            const res = yield doRequest(newSession, finalUrl);
+            return res.data;
+          }
+          throw err;
+        }
+      });
+    }
+    module2.exports = { smartFetch };
+  }
+});
+
+// src/extractors/maxstream.js
+var require_maxstream = __commonJS({
+  "src/extractors/maxstream.js"(exports2, module2) {
+    var { USER_AGENT, unPack } = require_common();
+    var { smartFetch } = require_cf_handler();
+    function extractMaxStream(url, refererBase = "https://uprot.net/") {
+      return __async(this, null, function* () {
+        try {
+          let targetUrl = url;
+          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
+          if (targetUrl.includes("uprot.net")) {
+            targetUrl = targetUrl.replace("/msf/", "/mse/");
+            const html2 = yield smartFetch(targetUrl, "uprot", {
+              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
+            });
+            if (!html2) return null;
+            const redirectMatch = html2.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/);
+            if (redirectMatch) {
+              targetUrl = redirectMatch[0].replace(/\\/g, "");
+            } else {
+              const jsMatch = html2.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/);
+              if (jsMatch) {
+                targetUrl = jsMatch[1];
+              } else {
+                const btnMatch = html2.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
+                if (btnMatch) targetUrl = btnMatch[1];
+                else return null;
+              }
+            }
+          }
+          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
+          const html = yield smartFetch(targetUrl, provider, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": "https://uprot.net/",
+              "Accept-Language": "en-US,en;q=0.5"
+            }
+          });
+          if (!html) return null;
+          const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
+          if (directMatch) {
+            return {
+              url: directMatch[1],
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": targetUrl
+              }
+            };
+          }
+          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+          const match = packedRegex.exec(html);
+          if (match) {
+            const p = match[1];
+            const a = parseInt(match[2]);
+            const c = parseInt(match[3]);
+            const k = match[4].split("|");
+            const unpacked = unPack(p, a, c, k, null, {});
+            const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
+            if (srcMatch) {
+              return {
+                url: srcMatch[1],
+                headers: {
+                  "User-Agent": USER_AGENT,
+                  "Referer": targetUrl
+                }
+              };
+            }
+            try {
+              const urlsetIdx = k.indexOf("urlset");
+              const hlsIdx = k.indexOf("hls");
+              const sourcesIdx = k.indexOf("sources");
+              if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
+                const result = k.slice(urlsetIdx + 1, hlsIdx);
+                const reversedElements = result.reverse();
+                const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
+                const reversedFirstPart = firstPartTerms.reverse();
+                let firstUrlPart = "";
+                for (const fp of reversedFirstPart) {
+                  if (fp.includes("0")) {
+                    firstUrlPart += fp;
+                  } else {
+                    firstUrlPart += fp + "-";
+                  }
+                }
+                const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
+                let finalUrl = "";
+                if (reversedElements.length === 1) {
+                  finalUrl = baseUrl + "," + reversedElements[0] + ".urlset/master.m3u8";
+                } else {
+                  finalUrl = baseUrl + reversedElements.join(",") + ".urlset/master.m3u8";
+                }
+                return {
+                  url: finalUrl,
+                  headers: {
+                    "User-Agent": USER_AGENT,
+                    "Referer": targetUrl
+                  }
+                };
+              }
+            } catch (e) {
+              console.error("[Extractors] MaxStream manual reconstruction failed:", e);
+            }
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] MaxStream extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractMaxStream };
+  }
+});
+
+// src/utils/ocr.js
+var require_ocr = __commonJS({
+  "src/utils/ocr.js"(exports2, module2) {
+    function solveNumericCaptcha(imgBase64) {
+      return __async(this, null, function* () {
+        const { spawn } = require("child_process");
+        return new Promise((resolve, reject) => {
+          try {
+            const cleanBase64 = imgBase64.includes(",") ? imgBase64.split(",")[1] : imgBase64;
+            const python = spawn("python", ["ocr_helper.py"]);
+            let result = "";
+            let error = "";
+            python.stdin.write(cleanBase64);
+            python.stdin.end();
+            python.stdout.on("data", (data) => {
+              result += data.toString();
+            });
+            python.stderr.on("data", (data) => {
+              error += data.toString();
+            });
+            python.on("close", (code) => {
+              if (code !== 0) {
+                console.error("[OCR] Errore processo Python:", error);
+                return reject(new Error("OCR engine error"));
+              }
+              const solved = result.trim();
+              resolve(solved);
+            });
+            python.on("error", (err) => {
+              console.error("[OCR] Errore avvio Python:", err.message);
+              reject(err);
+            });
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    }
+    module2.exports = { solveNumericCaptcha };
+  }
+});
+
+// src/extractors/deltabit.js
+var require_deltabit = __commonJS({
+  "src/extractors/deltabit.js"(exports2, module2) {
+    var { USER_AGENT } = require_common();
+    var { smartFetch } = require_cf_handler();
+    var { solveNumericCaptcha } = require_ocr();
+    function extractDeltaBit(url, refererBase = "https://eurostreamings.help/") {
+      return __async(this, null, function* () {
+        try {
+          let targetUrl = url;
+          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
+          let redirectLoopCount = 0;
+          while (redirectLoopCount < 3 && (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc"))) {
+            redirectLoopCount++;
+            const html2 = yield smartFetch(targetUrl, "clicka", {
+              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
+            });
+            if (!html2) break;
+            const nextMatch = html2.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
+            if (nextMatch) {
+              targetUrl = nextMatch[0].replace(/&amp;/g, "&");
+              if (targetUrl.includes("deltabit.")) break;
+            } else {
+              const refreshMatch = html2.match(/url=(https?:\/\/[^"']+)/i);
+              if (refreshMatch) {
+                targetUrl = refreshMatch[1].replace(/&amp;/g, "&");
+              } else {
+                break;
+              }
+            }
+          }
+          const html = yield smartFetch(targetUrl, "deltabit", {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": refererBase
+            }
+          });
+          if (!html) return null;
+          const directMatch = html.match(/sources:\s*\["([^"]+)"/);
+          if (directMatch) {
+            return {
+              url: directMatch[1],
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": targetUrl
+              }
+            };
+          }
+          const opMatch = html.match(/name="op" value="([^"]+)"/);
+          const idMatch = html.match(/name="id" value="([^"]+)"/);
+          if (opMatch && idMatch) {
+            const op = opMatch[1];
+            const id = idMatch[1];
+            const formData = new URLSearchParams();
+            const hiddenRegex = /<input type="hidden" name="([^"]+)" value="([^"]*)"/g;
+            let match;
+            const allFields = {};
+            while ((match = hiddenRegex.exec(html)) !== null) {
+              allFields[match[1]] = match[2];
+            }
+            allFields["op"] = allFields["op"] || op;
+            allFields["id"] = allFields["id"] || id;
+            allFields["imhuman"] = "";
+            allFields["referer"] = targetUrl;
+            for (const key in allFields) {
+              formData.append(key, allFields[key]);
+            }
+            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*captcha[^"']*)["']/i);
+            if (captchaMatch) {
+              let captchaUrl = captchaMatch[1];
+              if (captchaUrl.startsWith("/")) {
+                const urlObj = new URL(targetUrl);
+                captchaUrl = `${urlObj.origin}${captchaUrl}`;
+              }
+              try {
+                const imgData = yield smartFetch(captchaUrl, "deltabit", {
+                  headers: { "Referer": targetUrl },
+                  responseType: "arraybuffer"
+                });
+                const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
+                const captchaCode = yield solveNumericCaptcha(base64);
+                if (captchaCode) {
+                  console.log(`[DeltaBit] Captcha risolto (locale): ${captchaCode}`);
+                  formData.set("code", captchaCode);
+                }
+              } catch (ocrErr) {
+                console.error("[DeltaBit] Errore OCR locale:", ocrErr.message);
+              }
+            }
+            yield new Promise((resolve) => setTimeout(resolve, 3500));
+            const postHtml = yield smartFetch(targetUrl, "deltabit", {
+              method: "POST",
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": targetUrl,
+                "Content-Type": "application/x-www-form-urlencoded"
+              },
+              body: formData.toString()
+            });
+            if (!postHtml) return null;
+            const finalMatch = postHtml.match(/sources:\s*\["([^"]+)"/);
+            if (finalMatch) {
+              return {
+                url: finalMatch[1],
+                headers: {
+                  "User-Agent": USER_AGENT,
+                  "Referer": targetUrl
+                }
+              };
+            }
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] DeltaBit extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractDeltaBit };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -7347,6 +7895,8 @@ var require_extractors = __commonJS({
     var { extractVixCloud } = require_vixcloud();
     var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
+    var { extractMaxStream } = require_maxstream();
+    var { extractDeltaBit } = require_deltabit();
     var { USER_AGENT, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
@@ -7359,6 +7909,8 @@ var require_extractors = __commonJS({
       extractVixCloud,
       extractLoadm,
       extractStreamHG,
+      extractMaxStream,
+      extractDeltaBit,
       USER_AGENT,
       unPack
     };
@@ -7406,7 +7958,7 @@ var require_formatter = __commonJS({
       else if (quality === "1080p") quality = "\u{1F680} FHD";
       else if (quality === "720p") quality = "\u{1F4BF} HD";
       else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
-      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "Unknow";
+      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
       if (!language) {
@@ -7717,207 +8269,6 @@ var require_guardahd = __commonJS({
   }
 });
 
-// cf_bypass.js
-var require_cf_bypass = __commonJS({
-  "cf_bypass.js"(exports2, module2) {
-    var fs = require("fs");
-    var path = require("path");
-    var axios = require("axios");
-    var activeBypasses = /* @__PURE__ */ new Map();
-    function getClearance(_0) {
-      return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        if (activeBypasses.has(provider)) {
-          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
-          return activeBypasses.get(provider);
-        }
-        const bypassPromise = (() => __async(null, null, function* () {
-          var _a;
-          const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
-          console.log(`[CF] Richiesta bypass a FlareSolverr: ${url}`);
-          const payload = {
-            cmd: options.method === "POST" ? "request.post" : "request.get",
-            url,
-            maxTimeout: 6e4
-          };
-          if (options.method === "POST" && options.body) {
-            payload.postData = options.body;
-          }
-          try {
-            const response = yield axios.post(FLARE_URL, payload, {
-              timeout: 7e4,
-              headers: { "Content-Type": "application/json" }
-            });
-            if (response.data && response.data.status === "ok") {
-              const solution = response.data.solution;
-              const cookies = solution.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-              const cf_clearance = (_a = solution.cookies.find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
-              const data = {
-                userAgent: solution.userAgent,
-                cookies,
-                cf_clearance: cf_clearance || null,
-                url: solution.url,
-                response: solution.response,
-                timestamp: Date.now()
-              };
-              fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
-              console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
-              if (solution.url && solution.url !== url) {
-                console.log(`[CF] Rilevato redirect: ${url} -> ${solution.url}`);
-              }
-              return data;
-            } else {
-              const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
-              throw new Error(errorMsg);
-            }
-          } catch (error) {
-            console.error(`[CF] Errore FlareSolverr: ${error.message}`);
-            if (error.code === "ECONNREFUSED") {
-              console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
-            }
-            throw error;
-          } finally {
-            activeBypasses.delete(provider);
-          }
-        }))();
-        activeBypasses.set(provider, bypassPromise);
-        return bypassPromise;
-      });
-    }
-    module2.exports = { getClearance };
-  }
-});
-
-// src/utils/cf_handler.js
-var require_cf_handler = __commonJS({
-  "src/utils/cf_handler.js"(exports2, module2) {
-    var axios = require("axios");
-    var fs = require("fs");
-    var path = require("path");
-    var { getClearance } = require_cf_bypass();
-    var https = require("https");
-    var http = require("http");
-    var agentOptions = {
-      keepAlive: true,
-      maxSockets: 250,
-      maxFreeSockets: 100,
-      timeout: 3e4,
-      keepAliveMsecs: 3e4
-    };
-    var httpsAgent = new https.Agent(agentOptions);
-    var httpAgent = new http.Agent(agentOptions);
-    var requestCache = /* @__PURE__ */ new Map();
-    var CACHE_TTL = 6e5;
-    function smartFetch(_0, _1) {
-      return __async(this, arguments, function* (url, domain, options = {}) {
-        const provider = options.provider || domain.replace(/https?:\/\//, "").split(".")[0];
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
-        if (requestCache.has(cacheKey)) {
-          const cached = requestCache.get(cacheKey);
-          if (Date.now() - cached.timestamp < CACHE_TTL) {
-            return cached.data;
-          }
-        }
-        const loadSession = () => {
-          if (fs.existsSync(sessionFile)) {
-            try {
-              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-              if (data && data.userAgent) {
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file.`);
-                return data;
-              }
-            } catch (e) {
-              return {};
-            }
-          }
-          return {};
-        };
-        let session = loadSession();
-        let currentUrl = url;
-        if (session.url) {
-          try {
-            const oldUrlObj = new URL(url);
-            const sessUrlObj = new URL(session.url);
-            if (oldUrlObj.hostname !== sessUrlObj.hostname) {
-              console.log(`[CF-HANDLER][${provider}] Rilevato cambio dominio in sessione: ${oldUrlObj.hostname} -> ${sessUrlObj.hostname}`);
-              oldUrlObj.hostname = sessUrlObj.hostname;
-              oldUrlObj.protocol = sessUrlObj.protocol;
-              currentUrl = oldUrlObj.toString();
-            }
-          } catch (e) {
-            console.warn(`[CF-HANDLER][${provider}] Errore durante il check del dominio:`, e.message);
-          }
-        }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          const mergedHeaders = __spreadValues({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
-          if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-          }
-          if (sess.cookies) {
-            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
-          }
-          const response = yield axios({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 2e4,
-            validateStatus: false
-          });
-          const data = response.data;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data };
-            throw err;
-          }
-          return { data, status: response.status };
-        });
-        try {
-          const res = yield doRequest(session);
-          if (res.status === 403 || res.status === 503) {
-            throw { response: res };
-          }
-          requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
-          return res.data;
-        } catch (err) {
-          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-            console.warn(`[CF-HANDLER][${provider}] Blocco rilevato. Avvio bypass per ${url}...`);
-            const newSession = yield getClearance(url, provider, options);
-            let finalUrl = currentUrl;
-            if (newSession.url) {
-              try {
-                const oldUrlObj = new URL(url);
-                const newUrlObj = new URL(newSession.url);
-                if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  console.log(`[CF-HANDLER][${provider}] Redirect rilevato: ${oldUrlObj.hostname} -> ${newUrlObj.hostname}`);
-                  oldUrlObj.hostname = newUrlObj.hostname;
-                  oldUrlObj.protocol = newUrlObj.protocol;
-                  finalUrl = oldUrlObj.toString();
-                }
-              } catch (e) {
-              }
-            }
-            const res = yield doRequest(newSession, finalUrl);
-            requestCache.set(cacheKey, { data: res.data, timestamp: Date.now() });
-            return res.data;
-          }
-          throw err;
-        }
-      });
-    }
-    module2.exports = { smartFetch };
-  }
-});
-
 // src/guardoserie/index.js
 var require_guardoserie = __commonJS({
   "src/guardoserie/index.js"(exports2, module2) {
@@ -7945,7 +8296,7 @@ var require_guardoserie = __commonJS({
     var { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
     var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
     function getGuardoserieBaseUrl() {
-      return "https://guardoserie.garden";
+      return "https://guardoserie.run";
     }
     var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
     function getMappingApiUrl() {
@@ -11794,29 +12145,8 @@ var require_cinemacity = __commonJS({
       const cookieB64 = "ZGxlX3VzZXJfaWQ9MzI3Mjk7IGRsZV9wYXNzd29yZD04OTQxNzFjNmE4ZGFiMThlZTU5NGQ1YzY1MjAwOWEzNTs=";
       return base64Decode(cookieB64);
     }
-    function getServerSmartFetch() {
-      if (!IS_SERVER) return null;
-      try {
-        return require_cf_handler().smartFetch;
-      } catch (e) {
-        return null;
-      }
-    }
     function fetchHtml(_0) {
       return __async(this, arguments, function* (url, headers = {}, options = {}) {
-        const useBypass = options && options.useBypass === true;
-        const smartFetch = useBypass ? getServerSmartFetch() : null;
-        if (typeof smartFetch === "function") {
-          return yield smartFetch(url, BASE_URL, {
-            timeout: FETCH_TIMEOUT,
-            headers: __spreadValues({
-              "User-Agent": USER_AGENT,
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            }, headers),
-            provider: "cinemacity"
-          });
-        }
         const response = yield fetchWithTimeout(url, {
           timeout: FETCH_TIMEOUT,
           headers: __spreadValues({
@@ -11896,8 +12226,6 @@ var require_cinemacity = __commonJS({
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-User": "?1"
-          }, {
-            useBypass: false
           });
           return extractImdbIdFromHtml(html);
         } catch (_) {
@@ -12270,12 +12598,11 @@ var require_cinemacity = __commonJS({
         }
         try {
           const isStremioAddon = providerContext && providerContext.__requestContext === true;
-          const useServerBypass = isStremioAddon && IS_SERVER;
           const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
           const proxyPassword = providerContext && providerContext.proxyPassword || "";
-          let searchResult = yield searchByImdb(imdbId, { useBypass: useServerBypass });
+          let searchResult = yield searchByImdb(imdbId);
           if (!searchResult || !searchResult.url) {
-            searchResult = yield searchByTitleFallback(imdbId, providerType, { useBypass: useServerBypass });
+            searchResult = yield searchByTitleFallback(imdbId, providerType);
           }
           if (!searchResult || !searchResult.url) {
             return [];
@@ -12315,8 +12642,6 @@ var require_cinemacity = __commonJS({
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, {
-            useBypass: useServerBypass
           });
           const playerReferer = extractPlayerReferer(html, movieUrl);
           const atobRegex = /atob\s*\(\s*['"](.*?)['"]\s*\)/gi;
@@ -12405,6 +12730,664 @@ var require_cinemacity = __commonJS({
   }
 });
 
+// src/eurostreaming/index.js
+var require_eurostreaming = __commonJS({
+  "src/eurostreaming/index.js"(exports2, module2) {
+    var { formatStream } = require_formatter();
+    var { checkQualityFromPlaylist } = require_quality_helper();
+    var { smartFetch } = require_cf_handler();
+    var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
+    var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
+    if (!IS_SERVER) {
+      module2.exports = {
+        getStreams: (id, type, season, episode) => __async(null, null, function* () {
+          try {
+            const apiUrl = `https://easystreams.realbestia.com/resolve/eurostreaming?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}&s=${season || 1}&ep=${episode || 1}&format=links`;
+            const response = yield fetch(apiUrl);
+            const data = yield response.json();
+            const rawLinks = data.links || [];
+            console.log(`[EuroStreaming-Client] Trovati ${rawLinks.length} link dal server.`);
+            const streams = [];
+            for (const link of rawLinks) {
+              try {
+                console.log(`[EuroStreaming-Client] Estrazione da: ${link.host} (${link.url})`);
+                let extracted = null;
+                const lower = link.url.toLowerCase();
+                if (lower.includes("maxstream") || lower.includes("uprot.net")) {
+                  extracted = yield extractMaxStream(link.url, "https://eurostreamings.work/");
+                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+                  extracted = yield extractDeltaBit(link.url, "https://eurostreamings.work/");
+                } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
+                  console.log(`[EuroStreaming-Client] MixDrop aggiunto direttamente.`);
+                  streams.push({ name: `[EuroStreaming] MixDrop`, url: link.url, quality: "HD" });
+                }
+                if (extracted) {
+                  console.log(`[EuroStreaming-Client] Estrazione riuscita per ${link.host}`);
+                  const items = Array.isArray(extracted) ? extracted : [extracted];
+                  for (const item of items) {
+                    streams.push({
+                      name: `[EuroStreaming] ${link.host}`,
+                      url: item.url,
+                      quality: item.quality || "HD",
+                      headers: item.headers || {}
+                    });
+                  }
+                } else if (!lower.includes("mixdrop")) {
+                  console.warn(`[EuroStreaming-Client] Estrazione fallita o non supportata per ${link.host}`);
+                }
+              } catch (err) {
+                console.error(`[EuroStreaming-Client] Errore estrazione ${link.host}:`, err.message);
+              }
+            }
+            console.log(`[EuroStreaming-Client] Totale stream pronti: ${streams.length}`);
+            return streams;
+          } catch (e) {
+            console.error("[EuroStreaming-Client] API Error:", e.message);
+            return [];
+          }
+        })
+      };
+      return;
+    }
+    var BASE_URL = "https://eurostreamings.work";
+    var PROVIDER = "eurostreaming";
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    var solveNumericCaptcha = null;
+    if (IS_SERVER) {
+      try {
+        solveNumericCaptcha = require_ocr().solveNumericCaptcha;
+      } catch (e) {
+        console.error("[EuroStreaming] Errore caricamento modulo OCR:", e.message);
+      }
+    }
+    var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
+    function getMappingApiBase() {
+      return "https://animemapping.realbestia.com";
+    }
+    function decodeEntitiesBasic(str) {
+      return String(str || "").replace(/&#(\d+);/g, (m, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#215;|&times;/g, "x").replace(/&#8211;|&#8212;/g, "-").replace(/&#8217;|&#039;/g, "'");
+    }
+    function stripTags(str) {
+      return decodeEntitiesBasic(String(str || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+    }
+    function normalizeTitle(str) {
+      return decodeEntitiesBasic(str).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "");
+    }
+    function resolveUrl(href) {
+      try {
+        return new URL(decodeEntitiesBasic(href), BASE_URL).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function fetchHtml(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        return yield smartFetch(url, BASE_URL, __spreadValues({
+          provider: PROVIDER,
+          timeout: 25e3,
+          headers: __spreadValues({
+            "Referer": `${BASE_URL}/`
+          }, options.headers)
+        }, options));
+      });
+    }
+    function fetchTmdbJson(path) {
+      return __async(this, null, function* () {
+        try {
+          const sep = path.includes("?") ? "&" : "?";
+          const url = `https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY2}&language=it-IT`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          return yield response.json();
+        } catch (e) {
+          return null;
+        }
+      });
+    }
+    function normalizeConfigBoolean(value) {
+      if (value === true) return true;
+      const normalized = String(value || "").trim().toLowerCase();
+      return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+    }
+    function getMappingLanguage(providerContext = null) {
+      const explicit = String(providerContext && providerContext.mappingLanguage || "").trim().toLowerCase();
+      if (explicit === "it") return "it";
+      return normalizeConfigBoolean(providerContext && providerContext.easyCatalogsLangIt) ? "it" : null;
+    }
+    function fetchMapping(provider, value, season, episode, providerContext = null) {
+      return __async(this, null, function* () {
+        try {
+          const normalizedProvider = String(provider || "").trim().toLowerCase();
+          const mappingApiBase = getMappingApiBase();
+          if (!mappingApiBase || !normalizedProvider || !value) return null;
+          if (!["imdb", "tmdb", "kitsu"].includes(normalizedProvider)) return null;
+          const params = new URLSearchParams();
+          const parsedSeason = Number.parseInt(String(season || ""), 10);
+          const parsedEpisode = Number.parseInt(String(episode || ""), 10);
+          if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
+          if (Number.isInteger(parsedEpisode) && parsedEpisode > 0) params.set("ep", String(parsedEpisode));
+          const mappingLanguage = normalizedProvider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+          if (mappingLanguage === "it") params.set("lang", "it");
+          const query = params.toString();
+          const url = `${mappingApiBase}/${normalizedProvider}/${encodeURIComponent(String(value).trim())}${query ? `?${query}` : ""}`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          return yield response.json();
+        } catch (e) {
+          return null;
+        }
+      });
+    }
+    function getNested(obj, paths) {
+      for (const path of paths) {
+        const parts = path.split(".");
+        let current = obj;
+        for (const part of parts) {
+          current = current && current[part];
+        }
+        if (current !== void 0 && current !== null && current !== "") return current;
+      }
+      return null;
+    }
+    function normalizeMappingPayload(payload) {
+      if (!payload || typeof payload !== "object") return null;
+      const ids = payload.ids || payload.mappings && payload.mappings.ids || {};
+      const tmdbId = getNested(payload, ["tmdbId", "tmdb_id", "tmdb", "mappings.tmdbId", "mappings.tmdb_id"]) || ids.tmdb;
+      const imdbId = getNested(payload, ["imdbId", "imdb_id", "imdb", "mappings.imdbId", "mappings.imdb_id"]) || ids.imdb;
+      const season = getNested(payload, ["season", "mappedSeason", "mappings.season", "mappings.mappedSeason"]);
+      const episode = getNested(payload, ["episode", "mappedEpisode", "mappings.episode", "mappings.mappedEpisode"]);
+      const tmdbEpisode = payload.tmdb_episode || payload.tmdbEpisode || payload.mappings && (payload.mappings.tmdb_episode || payload.mappings.tmdbEpisode) || null;
+      const mappedSeason = Number.parseInt(String(season || tmdbEpisode && (tmdbEpisode.season || tmdbEpisode.season_number) || ""), 10);
+      const mappedEpisode = Number.parseInt(String(episode || tmdbEpisode && (tmdbEpisode.episode || tmdbEpisode.episode_number) || ""), 10);
+      const rawEpisodeNumber = Number.parseInt(String(tmdbEpisode && (tmdbEpisode.rawEpisodeNumber || tmdbEpisode.raw_episode_number || tmdbEpisode.rawEpisode) || payload.rawEpisodeNumber || ""), 10);
+      return {
+        tmdbId: /^\d+$/.test(String(tmdbId || "").trim()) ? String(tmdbId).trim() : null,
+        imdbId: /^tt\d+$/i.test(String(imdbId || "").trim()) ? String(imdbId).trim() : null,
+        mappedSeason: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : null,
+        mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
+        rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null,
+        seasonName: payload.seasonName || payload.mappedSeasonName || null,
+        titleHints: Array.isArray(payload.titleHints) ? payload.titleHints.filter(Boolean) : [],
+        longSeries: payload.longSeries === true,
+        episodeMode: String(payload.episodeMode || "").trim().toLowerCase() || null
+      };
+    }
+    function resolveMappedRequest(id, normalizedType, season, episode, providerContext) {
+      return __async(this, null, function* () {
+        const mapped = {
+          tmdbId: providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null,
+          imdbId: providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null,
+          season: Number.parseInt(String(providerContext && (providerContext.mappedSeason || providerContext.season) || season || ""), 10),
+          episode: Number.parseInt(String(episode || ""), 10) || 1,
+          titleHints: [
+            ...Array.isArray(providerContext && providerContext.titleHints) ? providerContext.titleHints : [],
+            ...Array.isArray(providerContext && providerContext.mappedTitleHints) ? providerContext.mappedTitleHints : []
+          ].filter(Boolean),
+          seasonName: providerContext && (providerContext.seasonName || providerContext.mappedSeasonName) || null,
+          longSeries: providerContext && providerContext.longSeries === true,
+          episodeMode: String(providerContext && providerContext.episodeMode || "").trim().toLowerCase() || null
+        };
+        if (!Number.isInteger(mapped.season) || mapped.season < 0) mapped.season = Number.parseInt(String(season || ""), 10) || 1;
+        const raw = String(id || "").trim();
+        let provider = null;
+        let value = null;
+        if (/^kitsu:\d+$/i.test(raw)) {
+          provider = "kitsu";
+          value = raw.replace(/^kitsu:/i, "");
+        } else if (/^tt\d+$/i.test(raw)) {
+          provider = "imdb";
+          value = raw;
+        } else if (/^tmdb:\d+$/i.test(raw)) {
+          provider = "tmdb";
+          value = raw.replace(/^tmdb:/i, "");
+        } else if (/^\d+$/.test(raw)) {
+          provider = "tmdb";
+          value = raw;
+        } else if (mapped.tmdbId) {
+          provider = "tmdb";
+          value = mapped.tmdbId;
+        }
+        const shouldMap = provider === "kitsu" || normalizedType !== "movie" || normalizedType === "anime" || provider && (providerContext && (providerContext.mappingLanguage || providerContext.easyCatalogsLangIt || providerContext.longSeries));
+        if (shouldMap && provider && value) {
+          const payload = yield fetchMapping(provider, value, season, episode, providerContext);
+          const normalized = normalizeMappingPayload(payload);
+          if (normalized) {
+            if (normalized.tmdbId) mapped.tmdbId = normalized.tmdbId;
+            if (normalized.imdbId) mapped.imdbId = normalized.imdbId;
+            if (normalized.mappedSeason !== null) mapped.season = normalized.mappedSeason;
+            if (normalized.mappedEpisode) mapped.episode = normalized.mappedEpisode;
+            if (normalized.rawEpisodeNumber && (normalized.longSeries || normalized.episodeMode === "absolute")) {
+              mapped.episode = normalized.rawEpisodeNumber;
+            }
+            if (normalized.seasonName) mapped.seasonName = normalized.seasonName;
+            mapped.titleHints.push(...normalized.titleHints);
+            if (normalized.longSeries) mapped.longSeries = true;
+            if (normalized.episodeMode) mapped.episodeMode = normalized.episodeMode;
+          }
+        }
+        if (mapped.longSeries && mapped.episodeMode === "absolute") {
+          const requestedEpisode = Number.parseInt(String(episode || ""), 10);
+          if (Number.isInteger(requestedEpisode) && requestedEpisode > 0 && mapped.episode === requestedEpisode) {
+            mapped.season = 1;
+          }
+        }
+        mapped.titleHints = [...new Set(mapped.titleHints.map((x) => String(x).trim()).filter(Boolean))];
+        return mapped;
+      });
+    }
+    function resolveTmdbId(id, normalizedType, providerContext, mappedRequest = null) {
+      return __async(this, null, function* () {
+        if (mappedRequest && mappedRequest.tmdbId) return mappedRequest.tmdbId;
+        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+        if (contextTmdbId) return contextTmdbId;
+        const raw = String(id || "").trim();
+        if (/^tmdb:\d+$/i.test(raw)) return raw.replace(/^tmdb:/i, "");
+        if (/^\d+$/.test(raw)) return raw;
+        if (/^tt\d+$/i.test(raw)) {
+          const data = yield fetchTmdbJson(`/find/${encodeURIComponent(raw)}?external_source=imdb_id`);
+          if (!data) return null;
+          if (normalizedType === "movie" && data.movie_results && data.movie_results[0]) return String(data.movie_results[0].id);
+          if (data.tv_results && data.tv_results[0]) return String(data.tv_results[0].id);
+        }
+        return null;
+      });
+    }
+    function getTmdbInfo(tmdbId, normalizedType) {
+      return __async(this, null, function* () {
+        const endpoint = normalizedType === "movie" ? "movie" : "tv";
+        const info = yield fetchTmdbJson(`/${endpoint}/${encodeURIComponent(tmdbId)}`);
+        if (!info) return null;
+        let external = null;
+        if (normalizedType !== "movie") {
+          external = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/external_ids`);
+        }
+        return {
+          id: tmdbId,
+          type: normalizedType === "movie" ? "movie" : "tv",
+          title: info.title || info.name || "",
+          originalTitle: info.original_title || info.original_name || "",
+          year: String((info.release_date || info.first_air_date || "").split("-")[0] || ""),
+          overview: info.overview || "",
+          numberOfEpisodes: info.number_of_episodes || null,
+          numberOfSeasons: info.number_of_seasons || null,
+          imdbId: info.imdb_id || external && external.imdb_id || null
+        };
+      });
+    }
+    function getEpisodeGroupHints(tmdbId, season, episode) {
+      return __async(this, null, function* () {
+        const hints = [];
+        const groups = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/episode_groups`);
+        if (!groups || !Array.isArray(groups.results)) return hints;
+        const groupIds = groups.results.filter((g) => [1, 3, 4, 6].includes(Number(g.type)) || /absolute|dvd|arc|saga|season/i.test(String(g.name || ""))).slice(0, 8).map((g) => g.id).filter(Boolean);
+        const details = yield Promise.all(groupIds.map((id) => fetchTmdbJson(`/tv/episode_group/${encodeURIComponent(id)}`).catch(() => null)));
+        for (const detail of details.filter(Boolean)) {
+          for (const group of detail.groups || []) {
+            const order = Number.parseInt(String(group.order || group.season_number || ""), 10);
+            if (Number.isInteger(order) && order > 0 && order !== Number(season)) continue;
+            const episodes = Array.isArray(group.episodes) ? group.episodes : [];
+            const ep = episodes.find((item) => Number(item.order) === Number(episode) || Number(item.episode_number) === Number(episode));
+            if (ep && ep.name) hints.push(ep.name);
+          }
+        }
+        return [...new Set(hints.filter(Boolean))];
+      });
+    }
+    function extractSearchResults(html) {
+      const results = [];
+      const linkRegex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while ((match = linkRegex.exec(html)) !== null) {
+        const href = resolveUrl(match[1]);
+        const title = stripTags(match[2]);
+        if (!href || !title) continue;
+        if (!href.startsWith(`${BASE_URL}/`)) continue;
+        if (/\/(?:category|tag|author|page|wp-|nuovi-ep|film\/?$|elenco|richieste|istruzioni)/i.test(href)) continue;
+        results.push({ url: href, title });
+      }
+      return Array.from(new Map(results.map((item) => [item.url, item])).values());
+    }
+    function searchProvider(info) {
+      return __async(this, null, function* () {
+        const queries = [...new Set(
+          [info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && q.length > 1).map((q) => q.replace(/[^\x00-\x7F]/g, "").trim()).filter((q) => q.length > 1)
+        )].slice(0, 3);
+        const pages = yield Promise.all(queries.map((q) => fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(q)}`).catch(() => "")));
+        return pages.flatMap(extractSearchResults);
+      });
+    }
+    function pageText(html) {
+      return stripTags(
+        String(html || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>|<\/h\d>/gi, "\n")
+      );
+    }
+    function scoreCandidate(candidate, html, info) {
+      const titleScore = normalizeTitle(candidate.title);
+      const wanted = normalizeTitle(info.title);
+      const wantedOrig = normalizeTitle(info.originalTitle);
+      const text = pageText(html);
+      const lowText = text.toLowerCase();
+      let score = 0;
+      const titleClean = decodeEntitiesBasic(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      const wantedClean = info.title.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      const wantedOrigClean = (info.originalTitle || "").toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+      if (titleScore && (titleScore === wanted || wantedOrig && titleScore === wantedOrig)) {
+        score += 60;
+      } else if (titleScore && wanted && (titleScore.includes(wanted) || wanted.includes(titleScore))) {
+        score += 40;
+      } else if (titleScore && wantedOrig && (titleScore.includes(wantedOrig) || wantedOrig.includes(titleScore))) {
+        score += 40;
+      } else {
+        const w1 = wantedClean.split(/\s+/).filter((w) => w.length > 3);
+        const w2 = titleClean.split(/\s+/).filter((w) => w.length > 3);
+        const intersection = w1.filter((w) => w2.includes(w));
+        if (intersection.length > 0) score += 25 * intersection.length;
+      }
+      if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
+      if (info.type === "tv") {
+        if (/serie tv|prima stagione|stagione|episodi|1\s*[x×]\s*0?1/i.test(lowText)) score += 30;
+        if (/streaming film|film in streaming/i.test(lowText)) score -= 40;
+      } else {
+        if (/streaming film|film in streaming/i.test(lowText)) score += 30;
+        if (/prima stagione|stagione/i.test(lowText)) score -= 40;
+      }
+      return score;
+      if (info.overview) {
+        const words = info.overview.toLowerCase().replace(/[^a-z0-9à-ÿ ]/gi, " ").split(/\s+/).filter((w) => w.length > 5).slice(0, 15);
+        const hits = words.filter((w) => lowText.includes(w)).length;
+        if (hits >= 2) score += Math.min(20, hits * 4);
+      }
+      return score;
+    }
+    function pickCandidate(candidates, info) {
+      return __async(this, null, function* () {
+        const unique = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, 8);
+        const checked = yield Promise.all(unique.map((candidate) => __async(null, null, function* () {
+          try {
+            const html = yield fetchHtml(candidate.url);
+            return __spreadProps(__spreadValues({}, candidate), { html, score: scoreCandidate(candidate, html, info) });
+          } catch (e) {
+            return null;
+          }
+        })));
+        const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
+        const best = ranked[0];
+        const second = ranked[1];
+        if (!best || best.score < 50) return null;
+        if (second && best.score - second.score < 15 && best.score < 95) return null;
+        return best;
+      });
+    }
+    function extractAnchors(html) {
+      const anchors = [];
+      const regex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        const href = resolveUrl(match[1]);
+        const text = stripTags(match[2]);
+        if (href) anchors.push({ text, href, index: match.index, raw: match[0] || "" });
+      }
+      return anchors;
+    }
+    function isHostLink(anchor) {
+      const value = `${anchor.text} ${anchor.href}`.toLowerCase();
+      return /(maxstream|uprot|deltabit|clicka\.cc\/delta|mixdrop|m1xdrop)/i.test(value);
+    }
+    function detectHost(anchorOrUrl) {
+      const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
+      const lower = String(value || "").toLowerCase();
+      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) return "deltabit";
+      if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
+      if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
+      return null;
+    }
+    function findEpisodeOffset(html, season, episode, episodeHints = []) {
+      const candidates = [
+        new RegExp(`${season}\\s*[x\xD7]\\s*0?${episode}\\b`, "i"),
+        new RegExp(`stagione\\s*${season}[^\\n<]{0,80}episodio\\s*0?${episode}\\b`, "i")
+      ];
+      for (const hint of episodeHints) {
+        const clean = String(hint || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (clean.length > 2) candidates.push(new RegExp(clean, "i"));
+      }
+      for (const regex of candidates) {
+        const match = regex.exec(decodeEntitiesBasic(html));
+        if (match) return match.index;
+      }
+      return -1;
+    }
+    function extractEpisodeLinks(html, season, episode, episodeHints = []) {
+      const anchors = extractAnchors(html).filter(isHostLink);
+      if (anchors.length === 0) return [];
+      const start = findEpisodeOffset(html, season, episode, episodeHints);
+      if (start >= 0) {
+        const next = findEpisodeOffset(html.slice(start + 20), season, Number(episode) + 1, []);
+        const end = next >= 0 ? start + 20 + next : Number.MAX_SAFE_INTEGER;
+        const scoped = anchors.filter((a) => a.index >= start && a.index < end);
+        if (scoped.length > 0) return scoped.map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
+      }
+      const ep = Number.parseInt(String(episode || ""), 10) || 1;
+      const perEpisode = Math.max(1, Math.round(anchors.length / Math.max(ep, 1)));
+      return anchors.slice((ep - 1) * perEpisode, ep * perEpisode).map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
+    }
+    function normalizeHostUrl(url) {
+      if (!url) return null;
+      return decodeEntitiesBasic(String(url)).trim();
+    }
+    function resolveShortlink(url) {
+      return __async(this, null, function* () {
+        var _a;
+        console.log(`[EuroStreaming] Tentativo di risoluzione link breve: ${url}`);
+        if (url.includes("uprot.net/msf/")) {
+          url = url.replace("/msf/", "/mse/");
+        }
+        let currentUrl = url;
+        let hops = 0;
+        while (hops < 3 && (currentUrl.includes("uprot.net") || currentUrl.includes("clicka.cc") || currentUrl.includes("safego.cc"))) {
+          hops++;
+          try {
+            const html = yield fetchHtml(currentUrl);
+            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*(?:captcha|secure)[^"']*)["']/i);
+            const formMatch = html.match(/<form[^>]*method=["']POST["'][^>]*>([\s\S]*?)<\/form>/i);
+            if (captchaMatch && formMatch) {
+              console.log(`[EuroStreaming] Captcha numerico rilevato per ${currentUrl}. Risoluzione in corso...`);
+              let captchaUrl = captchaMatch[1];
+              if (captchaUrl.startsWith("/")) {
+                const urlObj = new URL(currentUrl);
+                captchaUrl = `${urlObj.protocol}//${urlObj.host}${captchaUrl}`;
+              }
+              const imgData = yield smartFetch(captchaUrl, BASE_URL, {
+                provider: PROVIDER,
+                responseType: "arraybuffer"
+              });
+              const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
+              const captchaCode = yield solveNumericCaptcha(base64);
+              if (captchaCode) {
+                console.log(`[EuroStreaming] Captcha risolto: ${captchaCode}. Sblocco link...`);
+                const inputs = {};
+                const inputRegex = /<input[^>]+name=["']([^"']+)["'][^>]+value=["']([^"']*)["']/gi;
+                let inputMatch;
+                while ((inputMatch = inputRegex.exec(formMatch[1])) !== null) {
+                  inputs[inputMatch[1]] = inputMatch[2];
+                }
+                const captchaFieldName = ((_a = formMatch[1].match(/name=["']([^"']*(?:captcha|code|response)[^"']*)["']/i)) == null ? void 0 : _a[1]) || "captcha";
+                inputs[captchaFieldName] = captchaCode;
+                const postBody = new URLSearchParams(inputs).toString();
+                const postHtml = yield smartFetch(currentUrl, BASE_URL, {
+                  method: "POST",
+                  provider: PROVIDER,
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Referer": currentUrl
+                  },
+                  body: postBody
+                });
+                const finalMatch = postHtml.match(/https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[a-z]+\/(?:msf|mse|v|e|embed|embed-[a-z0-9]+|mix|delta|safe\.php)\/[a-zA-Z0-9\/=_+-]+/i);
+                if (finalMatch) {
+                  currentUrl = finalMatch[0];
+                  if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+                  continue;
+                }
+              }
+            }
+            const linkMatch = html.match(new RegExp(`href=["'](https?:\\/\\/(?:maxstream|stayonline|uprot|deltabit|mixdrop|m1xdrop|safego|clicka)\\.[a-z]+\\/(?:msf|mse|v|e|embed|mix|delta|safe\\.php)\\/[^"']+(?<!\\.ico|\\.png|\\.jpg|\\.jpeg|\\.gif))["']`, "i"));
+            if (linkMatch) {
+              currentUrl = linkMatch[1];
+              if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+              continue;
+            }
+            const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
+            if (deltabitMatch) {
+              currentUrl = deltabitMatch[0];
+              break;
+            }
+            const refreshMatch = html.match(new RegExp(`url=(https?:\\/\\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\\.[^"']+(?<!\\.ico|\\.png|\\.jpg))`, "i"));
+            if (refreshMatch) {
+              currentUrl = refreshMatch[1];
+              if (!currentUrl.includes("safego") && !currentUrl.includes("clicka")) break;
+              continue;
+            }
+            break;
+          } catch (e) {
+            console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+            break;
+          }
+        }
+        return currentUrl;
+      });
+    }
+    function extractStreamFromHost(link, displayName) {
+      return __async(this, null, function* () {
+        let hostUrl = normalizeHostUrl(link && link.url ? link.url : link);
+        if (!hostUrl) return [];
+        try {
+          hostUrl = yield resolveShortlink(hostUrl);
+          let extracted = null;
+          const lower = hostUrl.toLowerCase();
+          if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) {
+            extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
+          } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
+            extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
+          } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+            extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
+          }
+          const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
+          const streams = [];
+          for (const item of items) {
+            const streamUrl = typeof item === "string" ? item : item.url;
+            if (!streamUrl) continue;
+            const headers = typeof item === "object" ? item.headers : null;
+            let quality = "720p";
+            if (streamUrl.includes(".m3u8")) {
+              const detected = yield checkQualityFromPlaylist(streamUrl, headers || {});
+              if (detected) quality = detected;
+            }
+            streams.push(formatStream({
+              url: streamUrl,
+              easyProxySourceUrl: hostUrl,
+              headers,
+              name: "EuroStreaming",
+              title: displayName,
+              quality,
+              type: "direct",
+              behaviorHints: item && item.behaviorHints
+            }, "EuroStreaming"));
+          }
+          return streams;
+        } catch (e) {
+          console.error(`[EuroStreaming] Extraction error for ${hostUrl}:`, e.message);
+          return [];
+        }
+      });
+    }
+    function getStreams2(id, type, season, episode, providerContext = null) {
+      return __async(this, null, function* () {
+        const benchStart = Date.now();
+        const bench = [];
+        const mark = (step, meta = {}) => {
+          if (STEP_BENCH_ENABLED) bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
+        };
+        try {
+          const requestedType = String(type || "").toLowerCase();
+          if (requestedType === "movie") return [];
+          const normalizedType = "tv";
+          const mappedRequest = yield resolveMappedRequest(id, normalizedType, season, episode, providerContext);
+          mark("mapping_done", {
+            tmdb: mappedRequest.tmdbId,
+            season: mappedRequest.season,
+            episode: mappedRequest.episode,
+            mode: mappedRequest.episodeMode || null
+          });
+          const tmdbId = yield resolveTmdbId(id, normalizedType, providerContext, mappedRequest);
+          if (!tmdbId) return [];
+          const info = yield getTmdbInfo(tmdbId, normalizedType);
+          mark("tmdb_done", { ok: Boolean(info) });
+          if (!info || !info.title) return [];
+          info.titleHints = mappedRequest.titleHints || [];
+          if (mappedRequest.seasonName) info.titleHints.push(mappedRequest.seasonName);
+          const candidates = yield searchProvider(info);
+          mark("search_done", { results: candidates.length });
+          if (candidates.length === 0) return [];
+          const picked = yield pickCandidate(candidates, info);
+          mark("candidate_done", { ok: Boolean(picked), score: picked && picked.score });
+          if (!picked) {
+            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_candidate" })}`);
+            return [];
+          }
+          const effectiveSeason = Number.parseInt(String(mappedRequest.season || season || ""), 10) || 1;
+          const effectiveEpisode = Number.parseInt(String(mappedRequest.episode || episode || ""), 10) || 1;
+          const episodeHints = normalizedType === "tv" ? yield getEpisodeGroupHints(tmdbId, effectiveSeason, effectiveEpisode) : [];
+          const links = extractEpisodeLinks(picked.html, effectiveSeason, effectiveEpisode, episodeHints);
+          mark("links_done", { links: links.length });
+          if (links.length === 0) {
+            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_links" })}`);
+            return [];
+          }
+          const displayName = `${info.title} ${effectiveSeason}x${effectiveEpisode}`;
+          let streams = [];
+          if (providerContext && providerContext.format === "links") {
+            const resolvedLinks = yield Promise.all(links.map((l) => __async(null, null, function* () {
+              return {
+                host: l.host,
+                url: yield resolveShortlink(l.url)
+              };
+            })));
+            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), totalMs: Date.now() - benchStart, msg: "returning_links" })}`);
+            return { links: resolvedLinks };
+          }
+          const isStremioAddon = providerContext && providerContext.__requestContext === true;
+          if (isStremioAddon) {
+            streams = links.map((l) => formatStream({
+              url: l.url,
+              host: l.host,
+              name: `EuroStreaming - ${l.host}`,
+              title: displayName,
+              originalTitle: displayName,
+              providerName: "EuroStreaming"
+            }, "EuroStreaming")).filter(Boolean);
+          } else {
+            const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values());
+            const nested = yield Promise.all(uniqueLinks.slice(0, 5).map((link) => extractStreamFromHost(link, displayName)));
+            streams = nested.flat().filter(Boolean);
+          }
+          mark("extract_done", { streams: streams.length });
+          if (STEP_BENCH_ENABLED) {
+            console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
+          }
+          return streams;
+        } catch (e) {
+          if (STEP_BENCH_ENABLED) {
+            console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e.message })}`);
+          }
+          console.error("[EuroStreaming] Error:", e);
+          return [];
+        }
+      });
+    }
+    module2.exports = { getStreams: getStreams2 };
+  }
+});
+
 // src/index.js
 var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
@@ -12413,6 +13396,7 @@ var animeunity = require_animeunity();
 var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
+var eurostreaming = require_eurostreaming();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -12546,15 +13530,15 @@ function getStreams(id, type, season, episode) {
         selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity");
       }
     } else if (normalizedType === "anime") {
-      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
+      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "eurostreaming");
     } else if (normalizedType === "tv" || normalizedType === "series") {
       if (likelyAnime) {
-        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
+        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "eurostreaming");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "eurostreaming", "cinemacity");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "animeunity", "animeworld", "animesaturn");
+          selectedProviders.push("streamingcommunity", "guardoserie", "eurostreaming", "animeunity", "animeworld", "animesaturn");
         }
       }
     } else {
@@ -12594,6 +13578,12 @@ function getStreams(id, type, season, episode) {
       if (providerName === "guardoserie") {
         promises.push(
           guardoserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardoserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardoserie", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "eurostreaming") {
+        promises.push(
+          eurostreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "EuroStreaming", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "EuroStreaming", error: e, status: "rejected" }))
         );
         continue;
       }

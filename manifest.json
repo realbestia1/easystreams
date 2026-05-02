@@ -83,7 +83,7 @@
     {
       "id": "easystreams-cinemacity",
       "name": "CinemaCity",
-      "version": "1.0.25",
+      "version": "1.0.26",
       "description": "Movies and Series from CinemaCity",
       "resources": ["stream"],
       "contentLanguage": ["it"],

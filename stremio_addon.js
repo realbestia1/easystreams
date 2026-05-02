@@ -1,5 +1,7 @@
+const { solveNumericCaptcha } = require('./src/utils/ocr');
+const { spawn } = require('child_process');
 
-// Polyfill fetch and related Web APIs for Node.js environments (Must be at the top)
+// Polyfill fetch and related Web APIs
 if (typeof global.Blob === 'undefined') {
     global.Blob = require('node:buffer').Blob;
 }
@@ -84,6 +86,7 @@ const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
 const express = require('express');
 const app = express();
 const path = require('path');
+let isWarmingUp = true;
 const DISABLE_MIXDROP_ENV =
     typeof process !== 'undefined' &&
         process &&
@@ -92,6 +95,14 @@ const DISABLE_MIXDROP_ENV =
         ? process.env.DISABLE_MIXDROP.trim().toLowerCase()
         : '';
 const DISABLE_MIXDROP_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_MIXDROP_ENV);
+// Warmup middleware: reject requests during initialization
+app.use((req, res, next) => {
+    if (isWarmingUp && !req.path.startsWith('/ocr')) {
+        return res.status(503).set('Retry-After', '20').send('Server warming up... please wait 20 seconds.');
+    }
+    next();
+});
+
 const DISABLE_UQLOAD_ENV =
     typeof process !== 'undefined' &&
         process &&
@@ -163,7 +174,7 @@ const ENABLE_TMDB_ANIME_DETECTION = true;
 const TMDB_ANIME_DETECTION_TIMEOUT = 1200;
 const TMDB_ANIME_CACHE_TTL = 21600000;
 const ADDON_CACHE_ENABLED = true;
-const STREAM_CACHE_TTL = 10000;
+const STREAM_CACHE_TTL = 60000;
 const STREAM_CACHE_MAX_SIZE = 50000;
 const STREAM_CACHE_MAX_BYTES = 100 * 1024 * 1024;
 const PROVIDER_BENCHMARK_LOGS =
@@ -411,21 +422,29 @@ function buildEasyProxyManifestUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
     return `${proxyBaseUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
-function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl) {
+function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, streamUrl, extension = 'm3u8') {
     const proxyBaseUrl = normalizeEasyProxyUrl(easyProxyUrl);
     const proxyPassword = String(easyProxyPassword || '').trim();
     const normalizedHost = String(host || '').trim();
     const normalizedStreamUrl = String(streamUrl || '').trim();
     if (!proxyBaseUrl || !normalizedHost || !normalizedStreamUrl) return normalizedStreamUrl;
     const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(proxyPassword)}` : '';
-    return `${proxyBaseUrl}/extractor/video.m3u8?host=${encodeURIComponent(normalizedHost)}&url=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
+    return `${proxyBaseUrl}/extractor/video.${extension}?host=${encodeURIComponent(normalizedHost)}&d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
 }
 
 function isMixdropStreamUrl(streamUrl) {
-    const normalizedStreamUrl = String(streamUrl || '').trim().toLowerCase();
-    return normalizedStreamUrl.includes('mixdrop')
-        || normalizedStreamUrl.includes('m1xdrop')
-        || normalizedStreamUrl.includes('mxcontent');
+    const lower = String(streamUrl || '').toLowerCase();
+    return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent') || lower.includes('clicka.cc/mix');
+}
+
+function isMaxstreamStreamUrl(streamUrl) {
+    const lower = String(streamUrl || '').toLowerCase();
+    return lower.includes('maxstream') || lower.includes('uprot.net') || lower.includes('stayonline.pro');
+}
+
+function isDeltabitStreamUrl(streamUrl) {
+    const lower = String(streamUrl || '').toLowerCase();
+    return lower.includes('deltabit') || lower.includes('clicka.cc/delta');
 }
 
 function isStreamHgStream(stream) {
@@ -1187,6 +1206,7 @@ const providers = {
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
     cinemacity: require('./src/cinemacity/index.js'),
+    eurostreaming: require('./src/eurostreaming/index.js'),
 };
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
@@ -1256,16 +1276,16 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
             plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
-        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
+        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
     } else {
         if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
-                : ['streamingcommunity', 'guardoserie', 'cinemacity'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming']
+                : ['streamingcommunity', 'guardoserie', 'cinemacity', 'eurostreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'cinemacity', 'eurostreaming'];
         }
     }
 
@@ -1519,18 +1539,37 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStreamUrl(s.url)) {
-                            finalStreamUrl = buildEasyProxyStreamUrl(
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
+                                'mixdrop',
+                                s.easyProxySourceUrl || s.url,
+                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (isMaxstreamStreamUrl(s.url)) {
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
+                                easyProxyUrl,
+                                easyProxyPassword,
+                                'maxstream',
                                 s.easyProxySourceUrl || s.url
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (isDeltabitStreamUrl(s.url)) {
+                            finalStreamUrl = buildEasyProxyExtractorUrl(
+                                easyProxyUrl,
+                                easyProxyPassword,
+                                'deltabit',
+                                s.easyProxySourceUrl || s.url,
+                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
 
                         // For Stremio, we reconstruct the legacy multiline format using metadata
-                        const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : s.providerName;
-
-                        let titleUI = `📁 ${s.originalTitle}\n${s.providerName}`;
+                        const nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : (s.providerName || s.name || 'EasyStreams');
+                        const displayTitle = s.originalTitle || s.title || 'Stream';
+                        let titleUI = `📁 ${displayTitle}\n${s.providerName || s.name || 'EasyStreams'}`;
                         if (s.description) titleUI += ` | ${s.description}`;
                         if (s.language) {
                             titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
@@ -1673,6 +1712,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
             };
 
             const getScore = (str) => {
+                if (!str) return 0;
                 for (const [k, v] of Object.entries(qualityOrder)) {
                     if (str.includes(k)) return v;
                 }
@@ -2127,9 +2167,25 @@ app.get('/', (req, res) => {
 app.use('/', addonRouter);
 
 // API per Nuvio / Client-side
+
+// API OCR per Nuvio (risoluzione captcha numerici)
+app.post('/ocr', express.text({ limit: '1mb' }), async (req, res) => {
+    const imgBase64 = req.body;
+    if (!imgBase64) return res.status(400).json({ error: 'Missing image data' });
+    console.log('[OCR] Richiesta risoluzione captcha...');
+    try {
+        const solved = await solveNumericCaptcha(imgBase64);
+        console.log('[OCR] Risultato:', solved);
+        res.json({ result: solved });
+    } catch (e) {
+        console.error('[OCR] Errore critico:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/resolve/:provider', async (req, res) => {
     const { provider: providerName } = req.params;
-    const { id, type, s, ep } = req.query;
+    const { id, type, s, ep, format } = req.query;
 
     if (!id || !type) {
         return res.status(400).json({ error: 'Missing parameters (id, type)' });
@@ -2140,18 +2196,23 @@ app.get('/resolve/:provider', async (req, res) => {
         return res.status(404).json({ error: `Provider '${providerName}' not found` });
     }
 
-    console.log(`[API] Richiesta remota ${providerName}: ${type} ${id} ${s}x${ep}`);
+    console.log(`[API] Richiesta remota ${providerName}: ${type} ${id} ${s}x${ep} [format=${format || "streams"}]`);
 
     try {
         const season = parseInt(s) || 1;
         const episode = parseInt(ep) || 1;
 
-        // Risolviamo il contesto (necessario per TMDB/Kitsu mapping)
         const requestContext = await resolveProviderRequestContext(type, id, season, episode, 'it');
         const providerContext = buildProviderRequestContext(requestContext);
+        if (providerContext) providerContext.format = format || "streams";
 
-        const streams = await provider.getStreams(id, type, season, episode, providerContext);
-        res.json({ streams });
+        const result = await provider.getStreams(id, type, season, episode, providerContext);
+
+        if (format === 'links') {
+            res.json({ links: result.links || [] });
+        } else {
+            res.json({ streams: Array.isArray(result) ? result : (result.streams || []) });
+        }
     } catch (e) {
         console.error(`[API] Errore risoluzione remota ${providerName}:`, e.message);
         res.status(500).json({ error: e.message });
@@ -2163,8 +2224,8 @@ const PORT = process.env.PORT || 7000;
 async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
     const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.garden/wp-admin/admin-ajax.php' },
-        { name: 'Cinemacity', url: 'https://cinemacity.cc/index.php?do=search' }
+        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php' },
+        { name: 'EuroStreaming', url: 'https://eurostreamings.work/?s=warmup' }
     ];
 
     for (const target of targets) {
@@ -2172,10 +2233,15 @@ async function warmupProviders() {
             console.log(`[Warmup] Riscaldamento ${target.name}...`);
             await getClearance(target.url, target.name.toLowerCase());
             console.log(`[Warmup] ${target.name} pronto!`);
+            // Piccola pausa per lasciare respirare FlareSolverr
+            await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (e) {
-            console.error(`[Warmup] Errore riscaldamento ${target.name}:`, e.message);
+            console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
         }
     }
+
+    isWarmingUp = false;
+    console.log('[Warmup] Riscaldamento completato. Server pronto ad accettare richieste.');
 }
 
 let server;
