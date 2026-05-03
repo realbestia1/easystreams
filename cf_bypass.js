@@ -38,11 +38,18 @@ async function getClearance(url, provider = 'default', options = {}) {
                 await axios.post(FLARE_URL, { cmd: 'sessions.create', session: provider }, { timeout: 5000 }).catch(() => {});
             } catch (e) {}
 
+            const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0
+                ? options.maxTimeout
+                : 35000;
+            const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout
+                ? options.requestTimeout
+                : maxTimeout + 5000;
+
             const payload = {
                 cmd: options.method === 'POST' ? 'request.post' : 'request.get',
                 url: url,
                 session: provider,
-                maxTimeout: 35000 // Ridotto per rientrare nei 40s del provider
+                maxTimeout
             };
 
             if (options.method === 'POST' && options.body) {
@@ -51,7 +58,7 @@ async function getClearance(url, provider = 'default', options = {}) {
 
             try {
                 const response = await axios.post(FLARE_URL, payload, { 
-                    timeout: 40000, // Leggermente più alto di maxTimeout (35s)
+                    timeout: requestTimeout,
                     headers: { 'Content-Type': 'application/json' }
                 });
 

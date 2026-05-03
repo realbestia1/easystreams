@@ -2399,7 +2399,7 @@ async function warmupProviders() {
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
     const targets = [
         { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
-        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'] },
+        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: 12000, requestTimeout: 17000 },
         { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'] }
     ];
 
@@ -2411,7 +2411,10 @@ async function warmupProviders() {
                 continue;
             }
             console.log(`[Warmup] Riscaldamento ${target.name}...`);
-            await getClearance(target.url, target.name.toLowerCase());
+            await getClearance(target.url, target.name.toLowerCase(), {
+                maxTimeout: target.maxTimeout,
+                requestTimeout: target.requestTimeout
+            });
             console.log(`[Warmup] ${target.name} pronto!`);
             // Piccola pausa per lasciare respirare FlareSolverr
             await new Promise(resolve => setTimeout(resolve, 3000));
