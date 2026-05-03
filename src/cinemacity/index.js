@@ -132,8 +132,21 @@ function decodeHtmlEntities(str) {
 }
 
 function getHttpStatusFromError(error) {
+    const responseStatus = Number.parseInt(String(error?.response?.status || ""), 10);
+    if (Number.isInteger(responseStatus)) return responseStatus;
+
     const match = String(error && error.message ? error.message : error).match(/HTTP\s+(\d+)/i);
     return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function isCloudflareBlockedError(error) {
+    const message = [
+        error?.message,
+        error?.response?.data?.message,
+        error?.response?.data
+    ].filter(Boolean).join(" ");
+
+    return /Cloudflare has blocked this request|Error solving the challenge/i.test(message);
 }
 
 function normalizeTitle(value) {
@@ -311,7 +324,10 @@ async function searchByImdb(imdbId, options = {}) {
                 "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            }, options);
+            }, {
+                ...options,
+                skipBypassOnFailure: true
+            });
 
             // DLE search result markers
             const resultMatch = html.match(/Found\s+(\d+)\s+responses/i) ||
@@ -376,7 +392,7 @@ async function searchByImdb(imdbId, options = {}) {
             }
         } catch (e) {
             const status = getHttpStatusFromError(e);
-            if (status !== 403 && status !== 404) {
+            if (status !== 403 && status !== 404 && !isCloudflareBlockedError(e)) {
                 console.error(`[CinemaCity] Search error for ${query}:`, e);
             }
         }

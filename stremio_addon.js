@@ -39,6 +39,7 @@ const QUIET_PROVIDER_LOGS = true;
 const PROVIDER_LOG_PREFIXES = [
     '[GuardaHD]',
     '[Guardoserie]',
+    '[CinemaCity]',
     '[AnimeUnity]',
     '[AnimeWorld]',
     '[AnimeSaturn]',
@@ -1251,6 +1252,7 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
+    cinemacity: require('./src/cinemacity/index.js'),
     eurostreaming: require('./src/eurostreaming/index.js'),
 };
 
@@ -1314,11 +1316,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie'];
+                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie'];
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
@@ -1326,11 +1328,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming']
-                : ['streamingcommunity', 'guardoserie', 'eurostreaming'];
+                : ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming'];
+            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
         }
     }
 
@@ -2397,6 +2399,7 @@ async function warmupProviders() {
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
     const targets = [
         { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
+        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'] },
         { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'] }
     ];
 

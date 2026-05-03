@@ -525,6 +525,9 @@ var require_cf_handler = __commonJS({
           return res.data;
         } catch (err) {
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (options.skipBypassOnFailure) {
+              throw err;
+            }
             if (fs.existsSync(sessionFile)) {
               try {
                 fs.unlinkSync(sessionFile);
@@ -666,8 +669,20 @@ function decodeHtmlEntities(str) {
   return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
 }
 function getHttpStatusFromError(error) {
+  var _a;
+  const responseStatus = Number.parseInt(String(((_a = error == null ? void 0 : error.response) == null ? void 0 : _a.status) || ""), 10);
+  if (Number.isInteger(responseStatus)) return responseStatus;
   const match = String(error && error.message ? error.message : error).match(/HTTP\s+(\d+)/i);
   return match ? Number.parseInt(match[1], 10) : null;
+}
+function isCloudflareBlockedError(error) {
+  var _a, _b, _c;
+  const message = [
+    error == null ? void 0 : error.message,
+    (_b = (_a = error == null ? void 0 : error.response) == null ? void 0 : _a.data) == null ? void 0 : _b.message,
+    (_c = error == null ? void 0 : error.response) == null ? void 0 : _c.data
+  ].filter(Boolean).join(" ");
+  return /Cloudflare has blocked this request|Error solving the challenge/i.test(message);
 }
 function normalizeTitle(value) {
   return decodeHtmlEntities(String(value || "")).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "").trim();
@@ -817,7 +832,9 @@ function searchByImdb(_0) {
           "User-Agent": USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-        }, options);
+        }, __spreadProps(__spreadValues({}, options), {
+          skipBypassOnFailure: true
+        }));
         const resultMatch = html.match(/Found\s+(\d+)\s+responses/i) || html.match(/Trovat[io]\s+(\d+)\s+risultat[io]/i) || html.match(/Query results\s*\d+\s*-\s*(\d+)/i);
         if (!resultMatch || parseInt(resultMatch[1]) === 0) {
           if (!html.includes(query)) return null;
@@ -858,7 +875,7 @@ function searchByImdb(_0) {
         }
       } catch (e) {
         const status = getHttpStatusFromError(e);
-        if (status !== 403 && status !== 404) {
+        if (status !== 403 && status !== 404 && !isCloudflareBlockedError(e)) {
           console.error(`[CinemaCity] Search error for ${query}:`, e);
         }
       }

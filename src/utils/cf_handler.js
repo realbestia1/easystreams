@@ -150,6 +150,10 @@ async function smartFetch(url, domain, options = {}) {
         return res.data;
     } catch (err) {
         if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (options.skipBypassOnFailure) {
+                throw err;
+            }
+
             // Usiamo direttamente getClearance che ha già il suo sistema di lock interno
             if (fs.existsSync(sessionFile)) {
                 try { fs.unlinkSync(sessionFile); } catch (e) {}
