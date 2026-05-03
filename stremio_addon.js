@@ -160,7 +160,7 @@ app.use((req, res, next) => {
 });
 
 // Global timeout configuration
-const FETCH_TIMEOUT = 10000;
+const FETCH_TIMEOUT = 15000;
 const STREAM_RESPONSE_TIMEOUT = 45000;
 const DEFAULT_PROVIDER_TIMEOUT = 40000;
 const PROVIDER_TIMEOUT = 40000;
@@ -404,6 +404,12 @@ function resolveEasyProxyPasswordFromConfig(config = null) {
     return String(config?.easyProxyPassword || '').trim();
 }
 
+function resolveDisabledProvidersFromConfig(config = null) {
+    const raw = String(config?.disabledProviders || '').trim();
+    if (!raw) return new Set();
+    return new Set(raw.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean));
+}
+
 function getMappingLanguageToken(mappingLanguage) {
     return String(mappingLanguage || '').trim().toLowerCase() === 'it' ? 'it' : 'default';
 }
@@ -411,6 +417,11 @@ function getMappingLanguageToken(mappingLanguage) {
 function getEasyProxyToken(easyProxyUrl, easyProxyPassword = '') {
     if (!easyProxyUrl) return 'default';
     return `${easyProxyUrl}:pwd:${easyProxyPassword || ''}`;
+}
+
+function getDisabledProvidersToken(disabledProviders) {
+    const values = Array.from(disabledProviders || []).sort();
+    return values.length > 0 ? values.join(',') : 'none';
 }
 
 function buildEasyProxyManifestUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
@@ -1359,6 +1370,11 @@ const builder = new addonBuilder({
             key: 'easyProxyPassword',
             type: 'text',
             title: 'EasyProxy API password'
+        },
+        {
+            key: 'disabledProviders',
+            type: 'text',
+            title: 'Disabled providers (comma-separated)'
         }
     ]
 });
@@ -1367,8 +1383,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
     const easyProxyUrl = resolveEasyProxyUrlFromConfig(config);
     const easyProxyPassword = resolveEasyProxyPasswordFromConfig(config);
+    const disabledProviders = resolveDisabledProvidersFromConfig(config);
     global.DISABLE_MIXDROP = DISABLE_MIXDROP_IN_ADDON && !easyProxyUrl;
-    const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}`;
+    const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);
     const providerId = parsedRequest.providerId;
     const season = parsedRequest.season;
@@ -1404,7 +1421,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
         : season;
     const baseCanonicalCacheKey = await resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext, mappingLanguage);
     const canonicalCacheKey = baseCanonicalCacheKey
-        ? `${baseCanonicalCacheKey}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}`
+        ? `${baseCanonicalCacheKey}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`
         : null;
 
     if (cacheEnabledForRequest && canonicalCacheKey && canonicalCacheKey !== requestKey) {
@@ -1467,7 +1484,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
         if (animeRoutingFlag && type !== 'anime') {
             logVerbose(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
         }
-        const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag);
+        const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag)
+            .filter((name) => !disabledProviders.has(String(name).toLowerCase()));
         if (selectedProviders.length === 0) {
             console.warn('[Stremio] No provider selected for request.');
             return { streams: [] };
@@ -1808,6 +1826,11 @@ app.get('/', (req, res) => {
     const manifest = addonInterface.manifest;
     const providerNames = Object.keys(providers);
     const providersHtml = providerNames.map(p => `<div class="provider-tag">${p}</div>`).join('');
+    const providerSettingsHtml = providerNames.map((p) => `
+                    <label class="provider-option">
+                        <input type="checkbox" class="provider-checkbox" value="${p}" checked>
+                        <span>${p}</span>
+                    </label>`).join('');
 
     // Standard Stremio Landing Page Style
     const landingHtml = `
@@ -1996,6 +2019,50 @@ app.get('/', (req, res) => {
             .config-input::placeholder {
                 color: #7a7a7a;
             }
+            .settings-btn {
+                width: 100%;
+                margin-bottom: 14px;
+                padding: 12px 14px;
+                border-radius: 8px;
+                border: 1px solid #3a3a3a;
+                background: #171717;
+                color: #f2f2f2;
+                font-size: 14px;
+                font-weight: 700;
+                cursor: pointer;
+                text-align: left;
+            }
+            .settings-btn:hover {
+                border-color: #555;
+            }
+            .settings-panel {
+                display: none;
+            }
+            .settings-panel.open {
+                display: block;
+            }
+            .provider-options {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .provider-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 9px 10px;
+                border: 1px solid #333;
+                border-radius: 8px;
+                background: #191919;
+                color: #ddd;
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+            .provider-option input {
+                margin: 0;
+            }
             .install-btn {
                 background-color: var(--purple);
                 color: white;
@@ -2094,6 +2161,25 @@ app.get('/', (req, res) => {
                     </label>
                 </div>
 
+                <div class="config-panel">
+                    <div class="config-panel-title">Catalogs</div>
+                    <label class="config-toggle" for="easyCatalogsLangIt">
+                        <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
+                        <div>
+                            <strong>EasyCatalogs mode</strong>
+                            <span>Adds Italian language mapping hints for EasyCatalogs installs.</span>
+                        </div>
+                    </label>
+                </div>
+
+                <button id="settingsToggle" type="button" class="settings-btn">Settings: providers</button>
+                <div id="settingsPanel" class="config-panel settings-panel">
+                    <div class="config-panel-title">Providers</div>
+                    <div class="provider-options">
+                        ${providerSettingsHtml}
+                    </div>
+                </div>
+
                 <a id="installLink" href="#" class="install-btn">INSTALL ADDON</a>
                 <button id="copyLink" type="button" class="copy-btn">📋 Copy Link</button>
             </div>
@@ -2112,6 +2198,9 @@ app.get('/', (req, res) => {
             const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
             const easyProxyUrlInput = document.getElementById('easyProxyUrl');
             const easyProxyPasswordInput = document.getElementById('easyProxyPassword');
+            const settingsToggle = document.getElementById('settingsToggle');
+            const settingsPanel = document.getElementById('settingsPanel');
+            const providerCheckboxes = Array.from(document.querySelectorAll('.provider-checkbox'));
             let manifestUrl = '';
             let stremioUrl = '';
 
@@ -2135,6 +2224,12 @@ app.get('/', (req, res) => {
                         config.easyProxyPassword = normalizedEasyProxyPassword;
                     }
                 }
+                const disabledProviders = providerCheckboxes
+                    .filter((input) => !input.checked)
+                    .map((input) => input.value);
+                if (disabledProviders.length > 0) {
+                    config.disabledProviders = disabledProviders.join(',');
+                }
                 if (Object.keys(config).length === 0) return '';
                 const encodedConfig = encodeURIComponent(JSON.stringify(config));
                 return \`/\${encodedConfig}\`;
@@ -2155,6 +2250,14 @@ app.get('/', (req, res) => {
             if (easyProxyPasswordInput) {
                 easyProxyPasswordInput.addEventListener('input', updateInstallLinks);
             }
+            if (settingsToggle && settingsPanel) {
+                settingsToggle.addEventListener('click', () => {
+                    settingsPanel.classList.toggle('open');
+                });
+            }
+            providerCheckboxes.forEach((input) => {
+                input.addEventListener('change', updateInstallLinks);
+            });
             updateInstallLinks();
             // Copy Link Logic
             copyBtn.addEventListener('click', async () => {
@@ -2260,15 +2363,51 @@ app.get('/resolve/:provider', async (req, res) => {
 
 const PORT = process.env.PORT || 7000;
 
+function loadValidCfSession(provider, maxAgeMs = 2 * 60 * 60 * 1000) {
+    try {
+        const sessionPath = path.join(process.cwd(), `cf-session-${provider}.json`);
+        if (!fs.existsSync(sessionPath)) return null;
+        const stat = fs.statSync(sessionPath);
+        const data = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+        if (!data || !data.userAgent) return null;
+        const timestamp = Number(data.timestamp || 0) || stat.mtimeMs;
+        const ageMs = Date.now() - timestamp;
+        if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) return null;
+        return { data, ageMs, sessionPath };
+    } catch {
+        return null;
+    }
+}
+
+function hasAnyValidCfSession(providersToCheck) {
+    return providersToCheck.some((provider) => loadValidCfSession(provider));
+}
+
+function describeValidCfSession(providersToCheck) {
+    for (const provider of providersToCheck) {
+        const session = loadValidCfSession(provider);
+        if (session) {
+            return `${provider} (${Math.round(session.ageMs / 60000)} min)`;
+        }
+    }
+    return null;
+}
+
 async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
+    const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
     const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php' },
-        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/' }
+        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
+        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'] }
     ];
 
     for (const target of targets) {
         try {
+            const validSession = describeValidCfSession(target.sessions || [target.name.toLowerCase()]);
+            if (!forceWarmup && validSession) {
+                console.log(`[Warmup] ${target.name} saltato: sessione CF valida gia presente (${validSession}).`);
+                continue;
+            }
             console.log(`[Warmup] Riscaldamento ${target.name}...`);
             await getClearance(target.url, target.name.toLowerCase());
             console.log(`[Warmup] ${target.name} pronto!`);
@@ -2285,7 +2424,10 @@ async function warmupProviders() {
         .filter((url) => /^https?:\/\//i.test(url));
 
     const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
-    if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
+    const redirectorSessionsReady = hasAnyValidCfSession(['clicka']) && hasAnyValidCfSession(['safego']);
+    if (!forceWarmup && redirectorSessionsReady) {
+        console.log('[Warmup] Redirector EuroStreaming saltati: sessioni CF clicka/safego valide gia presenti.');
+    } else if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
         try {
             console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);
             redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, 5);
@@ -2295,7 +2437,7 @@ async function warmupProviders() {
         }
     }
 
-    if (redirectorWarmupUrls.length > 0 && providers.eurostreaming && typeof providers.eurostreaming.warmupRedirectors === 'function') {
+    if ((!redirectorSessionsReady || forceWarmup) && redirectorWarmupUrls.length > 0 && providers.eurostreaming && typeof providers.eurostreaming.warmupRedirectors === 'function') {
         console.log(`[Warmup] Risoluzione redirector EuroStreaming (${redirectorWarmupUrls.length})...`);
         try {
             const results = await providers.eurostreaming.warmupRedirectors(redirectorWarmupUrls);
