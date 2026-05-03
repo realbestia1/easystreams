@@ -41,11 +41,21 @@ async function extractMaxStream(url, refererBase = 'https://uprot.net/') {
     });
     if (!html) return null;
 
+    let canonicalUrl = null;
+    const fileCodeMatch =
+      html.match(/[?&]file_code=([a-z0-9]+)/i) ||
+      html.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i) ||
+      html.match(/\$\.cookie\(['"]file_id['"],\s*['"]([a-z0-9]+)['"]/i);
+    if (fileCodeMatch) {
+      canonicalUrl = `https://maxstream.video/emhuih/${fileCodeMatch[1]}`;
+    }
+
     // Direct sources check
     const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
     if (directMatch) {
       return {
         url: directMatch[1],
+        sourceUrl: canonicalUrl || targetUrl,
         headers: {
           'User-Agent': USER_AGENT,
           'Referer': targetUrl
@@ -70,6 +80,7 @@ async function extractMaxStream(url, refererBase = 'https://uprot.net/') {
         if (srcMatch) {
             return {
                 url: srcMatch[1],
+                sourceUrl: canonicalUrl || targetUrl,
                 headers: {
                     'User-Agent': USER_AGENT,
                     'Referer': targetUrl
@@ -108,6 +119,7 @@ async function extractMaxStream(url, refererBase = 'https://uprot.net/') {
                 
                 return {
                     url: finalUrl,
+                    sourceUrl: canonicalUrl || targetUrl,
                     headers: {
                         'User-Agent': USER_AGENT,
                         'Referer': targetUrl
