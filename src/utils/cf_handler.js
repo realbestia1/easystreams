@@ -152,6 +152,10 @@ async function smartFetch(url, domain, options = {}) {
             if (!newSession) {
                 throw new Error(`Bypass fallito per ${provider}`);
             }
+
+            if (options.meta && newSession.url) {
+                options.meta.finalUrl = newSession.url;
+            }
             
             // Se FlareSolverr ha già restituito il contenuto della pagina, usiamolo
             if (newSession.response) {
@@ -168,6 +172,7 @@ async function smartFetch(url, domain, options = {}) {
                         oldUrlObj.hostname = newUrlObj.hostname;
                         oldUrlObj.protocol = newUrlObj.protocol;
                         finalUrl = oldUrlObj.toString();
+                        if (options.meta) options.meta.finalUrl = finalUrl;
                     }
                 } catch (e) {}
             }

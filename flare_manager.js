@@ -22,6 +22,34 @@ class FlareSolverrManager {
         }
     }
 
+    async cleanupWindowsDriverLocks() {
+        if (process.platform !== 'win32') return;
+
+        const appData = process.env.APPDATA || '';
+        const ucDir = appData ? path.join(appData, 'undetected_chromedriver') : '';
+        const escapedRoot = __dirname.replace(/'/g, "''").toLowerCase();
+        const escapedUcDir = ucDir.replace(/'/g, "''").toLowerCase();
+
+        try {
+            await execAsync(`powershell -NoProfile -Command "$targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chromedriver.exe','flaresolverr.exe')) -and ($p.StartsWith('${escapedRoot}') -or $p.StartsWith('${escapedUcDir}')) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`);
+        } catch (e) {
+            console.error('[FlareSolverr] Pulizia processi driver non riuscita:', e.message);
+        }
+
+        if (!ucDir || !fs.existsSync(ucDir)) return;
+
+        for (const file of ['chromedriver.exe', 'undetected_chromedriver.exe']) {
+            const filePath = path.join(ucDir, file);
+            if (!fs.existsSync(filePath)) continue;
+            try {
+                fs.unlinkSync(filePath);
+                console.log(`[FlareSolverr] Rimosso driver cache bloccabile: ${filePath}`);
+            } catch (e) {
+                console.error(`[FlareSolverr] Impossibile rimuovere ${filePath}: ${e.message}`);
+            }
+        }
+    }
+
     async start() {
         if (this.process) return;
         if (this.isStarting) return;
@@ -30,6 +58,10 @@ class FlareSolverrManager {
         const isWin = process.platform === 'win32';
 
         try {
+            if (isWin) {
+                await this.cleanupWindowsDriverLocks();
+            }
+
             if (!fs.existsSync(this.fsDir) && process.env.IN_DOCKER !== 'true') {
                 console.log('[FlareSolverr] Installazione automatica in corso...');
                 let downloadUrl;

@@ -7578,6 +7578,9 @@ var require_cf_handler = __commonJS({
             if (!newSession) {
               throw new Error(`Bypass fallito per ${provider}`);
             }
+            if (options.meta && newSession.url) {
+              options.meta.finalUrl = newSession.url;
+            }
             if (newSession.response) {
               return newSession.response;
             }
@@ -7590,6 +7593,7 @@ var require_cf_handler = __commonJS({
                   oldUrlObj.hostname = newUrlObj.hostname;
                   oldUrlObj.protocol = newUrlObj.protocol;
                   finalUrl = oldUrlObj.toString();
+                  if (options.meta) options.meta.finalUrl = finalUrl;
                 }
               } catch (e) {
               }
@@ -7644,10 +7648,16 @@ var require_maxstream = __commonJS({
             }
           });
           if (!html) return null;
+          let canonicalUrl = null;
+          const fileCodeMatch = html.match(/[?&]file_code=([a-z0-9]+)/i) || html.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i) || html.match(/\$\.cookie\(['"]file_id['"],\s*['"]([a-z0-9]+)['"]/i);
+          if (fileCodeMatch) {
+            canonicalUrl = `https://maxstream.video/emhuih/${fileCodeMatch[1]}`;
+          }
           const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
           if (directMatch) {
             return {
               url: directMatch[1],
+              sourceUrl: canonicalUrl || targetUrl,
               headers: {
                 "User-Agent": USER_AGENT,
                 "Referer": targetUrl
@@ -7666,6 +7676,7 @@ var require_maxstream = __commonJS({
             if (srcMatch) {
               return {
                 url: srcMatch[1],
+                sourceUrl: canonicalUrl || targetUrl,
                 headers: {
                   "User-Agent": USER_AGENT,
                   "Referer": targetUrl
@@ -7698,6 +7709,7 @@ var require_maxstream = __commonJS({
                 }
                 return {
                   url: finalUrl,
+                  sourceUrl: canonicalUrl || targetUrl,
                   headers: {
                     "User-Agent": USER_AGENT,
                     "Referer": targetUrl

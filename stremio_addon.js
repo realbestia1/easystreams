@@ -437,14 +437,50 @@ function isMixdropStreamUrl(streamUrl) {
     return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent') || lower.includes('clicka.cc/mix');
 }
 
+function isMixdropStream(stream) {
+    const text = [
+        stream?.url,
+        stream?.easyProxySourceUrl,
+        stream?.name,
+        stream?.title,
+        stream?.providerName
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent') || text.includes('clicka.cc/mix');
+}
+
 function isMaxstreamStreamUrl(streamUrl) {
     const lower = String(streamUrl || '').toLowerCase();
     return lower.includes('maxstream') || lower.includes('uprot.net') || lower.includes('stayonline.pro');
 }
 
+function isMaxstreamStream(stream) {
+    const text = [
+        stream?.url,
+        stream?.easyProxySourceUrl,
+        stream?.name,
+        stream?.title,
+        stream?.providerName
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return text.includes('maxstream') || text.includes('uprot.net') || text.includes('stayonline.pro');
+}
+
 function isDeltabitStreamUrl(streamUrl) {
     const lower = String(streamUrl || '').toLowerCase();
     return lower.includes('deltabit') || lower.includes('clicka.cc/delta');
+}
+
+function isDeltabitStream(stream) {
+    const text = [
+        stream?.url,
+        stream?.easyProxySourceUrl,
+        stream?.name,
+        stream?.title,
+        stream?.providerName
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return text.includes('deltabit') || text.includes('clicka.cc/delta');
 }
 
 function isStreamHgStream(stream) {
@@ -1541,7 +1577,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 s.easyProxySourceUrl || s.url
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isMixdropStreamUrl(s.url)) {
+                        } else if (isMixdropStream(s)) {
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
@@ -1550,7 +1586,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 name === 'eurostreaming' ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isMaxstreamStreamUrl(s.url)) {
+                        } else if (isMaxstreamStream(s)) {
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
@@ -1558,7 +1594,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 s.easyProxySourceUrl || s.url
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isDeltabitStreamUrl(s.url)) {
+                        } else if (isDeltabitStream(s)) {
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
@@ -2228,7 +2264,7 @@ async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
     const targets = [
         { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php' },
-        { name: 'EuroStreaming', url: 'https://eurostreamings.work/?s=warmup' }
+        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/' }
     ];
 
     for (const target of targets) {
@@ -2240,6 +2276,38 @@ async function warmupProviders() {
             await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (e) {
             console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
+        }
+    }
+
+    let redirectorWarmupUrls = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_URLS || '')
+        .split(',')
+        .map((url) => url.trim())
+        .filter((url) => /^https?:\/\//i.test(url));
+
+    const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
+    if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
+        try {
+            console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);
+            redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, 5);
+            console.log(`[Warmup] Link redirector trovati: ${redirectorWarmupUrls.length}`);
+        } catch (e) {
+            console.error(`[Warmup] Errore ricerca redirector EuroStreaming: ${e.message}`);
+        }
+    }
+
+    if (redirectorWarmupUrls.length > 0 && providers.eurostreaming && typeof providers.eurostreaming.warmupRedirectors === 'function') {
+        console.log(`[Warmup] Risoluzione redirector EuroStreaming (${redirectorWarmupUrls.length})...`);
+        try {
+            const results = await providers.eurostreaming.warmupRedirectors(redirectorWarmupUrls);
+            for (const result of results) {
+                if (result.ok) {
+                    console.log(`[Warmup] Redirector pronto: ${result.url} -> ${result.resolvedUrl}`);
+                } else {
+                    console.error(`[Warmup] Redirector non risolto: ${result.url}${result.error ? ` (${result.error})` : ''}`);
+                }
+            }
+        } catch (e) {
+            console.error(`[Warmup] Errore redirector EuroStreaming: ${e.message}`);
         }
     }
 
