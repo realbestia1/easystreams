@@ -286,11 +286,302 @@ var require_quality_helper = __commonJS({
   }
 });
 
+// cf_bypass.js
+var require_cf_bypass = __commonJS({
+  "cf_bypass.js"(exports2, module2) {
+    var fs = require("fs");
+    var path = require("path");
+    var axios = require("axios");
+    var activeBypasses = /* @__PURE__ */ new Map();
+    var MAX_GLOBAL_CONCURRENT = 4;
+    var activeGlobalRequests = 0;
+    function getClearance(_0) {
+      return __async(this, arguments, function* (url, provider = "default", options = {}) {
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        if (activeBypasses.has(provider)) {
+          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
+          return activeBypasses.get(provider);
+        }
+        const bypassPromise = (() => __async(null, null, function* () {
+          var _a, _b;
+          while (activeGlobalRequests >= MAX_GLOBAL_CONCURRENT) {
+            yield new Promise((resolve) => setTimeout(resolve, 1e3));
+          }
+          activeGlobalRequests++;
+          try {
+            const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
+            console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}]: ${url}`);
+            try {
+              yield axios.post(FLARE_URL, { cmd: "sessions.create", session: provider }, { timeout: 5e3 }).catch(() => {
+              });
+            } catch (e) {
+            }
+            const payload = {
+              cmd: options.method === "POST" ? "request.post" : "request.get",
+              url,
+              session: provider,
+              maxTimeout: 35e3
+              // Ridotto per rientrare nei 40s del provider
+            };
+            if (options.method === "POST" && options.body) {
+              payload.postData = options.body;
+            }
+            try {
+              const response = yield axios.post(FLARE_URL, payload, {
+                timeout: 4e4,
+                // Leggermente più alto di maxTimeout (35s)
+                headers: { "Content-Type": "application/json" }
+              });
+              if (response.data && response.data.status === "ok") {
+                const solution = response.data.solution;
+                const cookiesCount = (solution.cookies || []).length;
+                const cookies = (solution.cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
+                const cf_clearance = (_a = (solution.cookies || []).find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
+                console.log(`[CF] FlareSolverr ha restituito ${cookiesCount} cookie.`);
+                if (!cookies && !solution.response) {
+                  throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
+                }
+                const data = {
+                  userAgent: solution.userAgent,
+                  cookies: cookies || "",
+                  cf_clearance: cf_clearance || null,
+                  url: solution.url,
+                  response: solution.response,
+                  timestamp: Date.now()
+                };
+                fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
+                if (solution.cookies && solution.cookies.length > 0) {
+                  const domains = [...new Set(solution.cookies.map((c) => c.domain.replace(/^\./, "")))];
+                  for (const d of domains) {
+                    const domainProvider = d.replace("www.", "").split(".")[0];
+                    if (domainProvider && domainProvider !== provider) {
+                      const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
+                      const domainCookies = solution.cookies.filter((c) => c.domain.includes(d)).map((c) => `${c.name}=${c.value}`).join("; ");
+                      if (domainCookies) {
+                        const domainData = {
+                          userAgent: solution.userAgent,
+                          cookies: domainCookies,
+                          cf_clearance: ((_b = solution.cookies.find((c) => c.domain.includes(d) && c.name === "cf_clearance")) == null ? void 0 : _b.value) || null,
+                          url: solution.url,
+                          timestamp: Date.now()
+                        };
+                        fs.writeFileSync(domainSessionFile, JSON.stringify(domainData, null, 2));
+                        console.log(`[CF] Salvata sessione extra per dominio: ${d} -> ${domainProvider}`);
+                      }
+                    }
+                  }
+                }
+                console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+                return data;
+              } else {
+                const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
+                throw new Error(errorMsg);
+              }
+            } catch (error) {
+              console.error(`[CF] Errore FlareSolverr: ${error.message}`);
+              if (error.code === "ECONNREFUSED") {
+                console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
+              }
+              throw error;
+            }
+          } finally {
+            activeGlobalRequests--;
+            activeBypasses.delete(provider);
+          }
+        }))();
+        activeBypasses.set(provider, bypassPromise);
+        return bypassPromise;
+      });
+    }
+    module2.exports = { getClearance };
+  }
+});
+
+// src/utils/cf_handler.js
+var require_cf_handler = __commonJS({
+  "src/utils/cf_handler.js"(exports2, module2) {
+    var axios = require("axios");
+    var fs = require("fs");
+    var path = require("path");
+    var { getClearance } = require_cf_bypass();
+    var https = require("https");
+    var http = require("http");
+    var agentOptions = {
+      keepAlive: true,
+      maxSockets: 250,
+      maxFreeSockets: 100,
+      timeout: 3e4,
+      keepAliveMsecs: 3e4
+    };
+    var httpsAgent = new https.Agent(agentOptions);
+    var httpAgent = new http.Agent(agentOptions);
+    function smartFetch2(_0, _1) {
+      return __async(this, arguments, function* (url, domain, options = {}) {
+        const getHost = (u) => {
+          try {
+            return new URL(u).hostname.replace("www.", "");
+          } catch (e) {
+            return u;
+          }
+        };
+        const urlHost = getHost(url);
+        const domainHost = getHost(domain);
+        const provider = urlHost !== domainHost ? urlHost.split(".")[0] : options.provider || domainHost.split(".")[0];
+        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
+        const loadSession = () => {
+          if (fs.existsSync(sessionFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+              if (data && data.userAgent) {
+                const ageMs = Date.now() - (data.timestamp || 0);
+                const twoHours = 2 * 60 * 60 * 1e3;
+                if (ageMs > twoHours) {
+                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
+                  try {
+                    fs.unlinkSync(sessionFile);
+                  } catch (e) {
+                  }
+                  return {};
+                }
+                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                return data;
+              }
+            } catch (e) {
+              return {};
+            }
+          }
+          return {};
+        };
+        let session = loadSession();
+        let currentUrl = url;
+        if (session.url) {
+          try {
+            const currentUrlObj = new URL(currentUrl);
+            const sessionUrl = new URL(session.url);
+            const currentHost = currentUrlObj.hostname.toLowerCase();
+            const sessionHost = sessionUrl.hostname.toLowerCase();
+            if (sessionHost !== currentHost) {
+              const sessionParts = sessionHost.split(".");
+              const currentParts = currentHost.split(".");
+              const sessionRoot = sessionParts.slice(-2).join(".");
+              const currentRoot = currentParts.slice(-2).join(".");
+              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
+                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
+                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
+              }
+            }
+          } catch (e) {
+          }
+        }
+        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
+          const mergedHeaders = __spreadValues({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+          }, options.headers);
+          if (sess.userAgent) {
+            mergedHeaders["User-Agent"] = sess.userAgent;
+          } else if (!mergedHeaders["User-Agent"]) {
+            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+          }
+          if (sess.cookies) {
+            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
+            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+          }
+          const response = yield axios(__spreadValues({
+            url: targetUrl,
+            method: options.method || "GET",
+            data: options.body,
+            headers: mergedHeaders,
+            httpsAgent,
+            httpAgent,
+            timeout: options.timeout || 2e4,
+            validateStatus: false,
+            responseType: options.responseType || "text"
+          }, options.axiosConfig));
+          const data = response.data;
+          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            const err = new Error(`HTTP ${response.status}`);
+            err.response = { status: response.status, data };
+            throw err;
+          }
+          return { data, status: response.status, headers: response.headers };
+        });
+        const isUsefulHtml = (value) => {
+          const text = typeof value === "string" ? value.trim() : "";
+          if (text.length < 200) return false;
+          if (/Just a moment|cf-browser-verification|challenge-platform|turnstile|cf-challenge/i.test(text)) return false;
+          return true;
+        };
+        try {
+          const res = yield doRequest(session);
+          if (res.status === 403 || res.status === 503) {
+            throw { response: res };
+          }
+          if (session.cookies) {
+            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+          }
+          return res.data;
+        } catch (err) {
+          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (options.skipBypassOnFailure) {
+              throw err;
+            }
+            if (fs.existsSync(sessionFile)) {
+              try {
+                fs.unlinkSync(sessionFile);
+              } catch (e) {
+              }
+            }
+            const newSession = yield getClearance(url, provider, options);
+            if (!newSession) {
+              throw new Error(`Bypass fallito per ${provider}`);
+            }
+            if (options.meta && newSession.url) {
+              options.meta.finalUrl = newSession.url;
+            }
+            if (isUsefulHtml(newSession.response)) {
+              return newSession.response;
+            }
+            let finalUrl = currentUrl;
+            if (newSession.url) {
+              try {
+                const oldUrlObj = new URL(url);
+                const newUrlObj = new URL(newSession.url);
+                if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                  oldUrlObj.hostname = newUrlObj.hostname;
+                  oldUrlObj.protocol = newUrlObj.protocol;
+                  finalUrl = oldUrlObj.toString();
+                  if (options.meta) options.meta.finalUrl = finalUrl;
+                }
+              } catch (e) {
+              }
+            }
+            const res = yield doRequest(newSession, finalUrl);
+            return res.data;
+          }
+          throw err;
+        }
+      });
+    }
+    module2.exports = { smartFetch: smartFetch2 };
+  }
+});
+
 // src/cinemacity/index.js
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { fetchWithTimeout } = require_fetch_helper();
 var IS_SERVER = typeof process !== "undefined" && !!(process.versions && process.versions.node);
+var smartFetch = null;
+if (IS_SERVER) {
+  try {
+    ({ smartFetch } = require_cf_handler());
+  } catch (_) {
+    smartFetch = null;
+  }
+}
 var BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 function base64Decode(str) {
   try {
@@ -349,6 +640,17 @@ function getSessionCookies() {
 }
 function fetchHtml(_0) {
   return __async(this, arguments, function* (url, headers = {}, options = {}) {
+    if (IS_SERVER && typeof smartFetch === "function") {
+      return yield smartFetch(url, BASE_URL, __spreadProps(__spreadValues({}, options), {
+        timeout: options.timeout || FETCH_TIMEOUT,
+        provider: "cinemacity",
+        headers: __spreadValues({
+          "User-Agent": USER_AGENT,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+        }, headers)
+      }));
+    }
     const response = yield fetchWithTimeout(url, {
       timeout: FETCH_TIMEOUT,
       headers: __spreadValues({
@@ -367,8 +669,20 @@ function decodeHtmlEntities(str) {
   return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
 }
 function getHttpStatusFromError(error) {
+  var _a;
+  const responseStatus = Number.parseInt(String(((_a = error == null ? void 0 : error.response) == null ? void 0 : _a.status) || ""), 10);
+  if (Number.isInteger(responseStatus)) return responseStatus;
   const match = String(error && error.message ? error.message : error).match(/HTTP\s+(\d+)/i);
   return match ? Number.parseInt(match[1], 10) : null;
+}
+function isCloudflareBlockedError(error) {
+  var _a, _b, _c;
+  const message = [
+    error == null ? void 0 : error.message,
+    (_b = (_a = error == null ? void 0 : error.response) == null ? void 0 : _a.data) == null ? void 0 : _b.message,
+    (_c = error == null ? void 0 : error.response) == null ? void 0 : _c.data
+  ].filter(Boolean).join(" ");
+  return /Cloudflare has blocked this request|Error solving the challenge/i.test(message);
 }
 function normalizeTitle(value) {
   return decodeHtmlEntities(String(value || "")).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "").trim();
@@ -518,7 +832,9 @@ function searchByImdb(_0) {
           "User-Agent": USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-        }, options);
+        }, __spreadProps(__spreadValues({}, options), {
+          skipBypassOnFailure: true
+        }));
         const resultMatch = html.match(/Found\s+(\d+)\s+responses/i) || html.match(/Trovat[io]\s+(\d+)\s+risultat[io]/i) || html.match(/Query results\s*\d+\s*-\s*(\d+)/i);
         if (!resultMatch || parseInt(resultMatch[1]) === 0) {
           if (!html.includes(query)) return null;
@@ -559,7 +875,7 @@ function searchByImdb(_0) {
         }
       } catch (e) {
         const status = getHttpStatusFromError(e);
-        if (status !== 403 && status !== 404) {
+        if (status !== 403 && status !== 404 && !isCloudflareBlockedError(e)) {
           console.error(`[CinemaCity] Search error for ${query}:`, e);
         }
       }

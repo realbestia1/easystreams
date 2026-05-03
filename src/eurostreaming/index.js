@@ -72,6 +72,16 @@ if (IS_SERVER) {
     }
 }
 const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
+const TRACE_REDIRECTS_ENABLED = String(process.env.TRACE_EURO_REDIRECTS || '').trim().toLowerCase() === '1';
+
+function traceRedirect(step, data = {}) {
+    if (!TRACE_REDIRECTS_ENABLED) return;
+    try {
+        console.log(`[EuroStreamingTrace] ${step}: ${JSON.stringify(data)}`);
+    } catch {
+        console.log(`[EuroStreamingTrace] ${step}`);
+    }
+}
 
 function getMappingApiBase() {
     return 'https://animemapping.realbestia.com';
@@ -568,9 +578,11 @@ function makeEuroStreamingStream(link, displayName) {
 
 async function resolveShortlink(url) {
     console.log(`[EuroStreaming] Tentativo di risoluzione link breve: ${url}`);
+    traceRedirect('start', { url });
 
     // Normalizzazione rapida per MaxStream/uprot
     if (url.includes('uprot.net/msf/')) {
+        traceRedirect('normalize_uprot_msf', { from: url, to: url.replace('/msf/', '/mse/') });
         url = url.replace('/msf/', '/mse/');
     }
 
@@ -579,9 +591,11 @@ async function resolveShortlink(url) {
 
     while (hops < 4 && isRedirectorUrl(currentUrl)) {
         hops++;
+        traceRedirect('hop_start', { hop: hops, currentUrl });
         try {
             const decodedSafeGoUrl = decodeSafeGoUrl(currentUrl);
             if (decodedSafeGoUrl) {
+                traceRedirect('decoded_safego_url', { hop: hops, from: currentUrl, to: decodedSafeGoUrl });
                 currentUrl = decodedSafeGoUrl;
                 if (!isRedirectorUrl(currentUrl)) break;
                 continue;
@@ -589,11 +603,19 @@ async function resolveShortlink(url) {
 
             const fetchMeta = {};
             const html = await fetchHtml(currentUrl, { meta: fetchMeta });
+            traceRedirect('fetch_done', {
+                hop: hops,
+                currentUrl,
+                finalUrl: fetchMeta.finalUrl || null,
+                htmlLength: typeof html === 'string' ? html.length : null
+            });
             if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && !isRedirectorUrl(fetchMeta.finalUrl)) {
+                traceRedirect('final_url_non_redirector', { hop: hops, finalUrl: fetchMeta.finalUrl });
                 currentUrl = fetchMeta.finalUrl;
                 break;
             }
             if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && isRedirectorUrl(fetchMeta.finalUrl)) {
+                traceRedirect('final_url_redirector', { hop: hops, finalUrl: fetchMeta.finalUrl });
                 currentUrl = fetchMeta.finalUrl;
                 continue;
             }
@@ -604,6 +626,11 @@ async function resolveShortlink(url) {
 
             if (captchaMatch && formMatch) {
                 console.log(`[EuroStreaming] Captcha numerico rilevato per ${currentUrl}. Risoluzione in corso...`);
+                traceRedirect('captcha_detected', {
+                    hop: hops,
+                    currentUrl,
+                    inlineImage: /^data:image\//i.test(captchaMatch[1] || '')
+                });
                 let base64 = '';
                 if (/^data:image\/[^;]+;base64,/i.test(captchaMatch[1])) {
                     base64 = captchaMatch[1].split(',')[1] || '';
@@ -623,6 +650,7 @@ async function resolveShortlink(url) {
 
                 if (captchaCode) {
                     console.log(`[EuroStreaming] Captcha risolto: ${captchaCode}. Sblocco link...`);
+                    traceRedirect('captcha_solved', { hop: hops, currentUrl, codeLength: String(captchaCode).length });
                     const inputs = {};
                     const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
                     let inputMatch;
@@ -639,6 +667,11 @@ async function resolveShortlink(url) {
                     const postUrl = new URL(action, currentUrl).toString();
                     const postBody = new URLSearchParams(inputs).toString();
                     const postMeta = {};
+                    traceRedirect('captcha_post_start', {
+                        hop: hops,
+                        postUrl,
+                        fieldNames: Object.keys(inputs)
+                    });
                     const postHtml = await smartFetch(postUrl, BASE_URL, {
                         method: 'POST',
                         provider: PROVIDER,
@@ -650,8 +683,15 @@ async function resolveShortlink(url) {
                         },
                         body: postBody
                     });
+                    traceRedirect('captcha_post_done', {
+                        hop: hops,
+                        postUrl,
+                        finalUrl: postMeta.finalUrl || null,
+                        htmlLength: typeof postHtml === 'string' ? postHtml.length : null
+                    });
 
                     if (postMeta.finalUrl && postMeta.finalUrl !== currentUrl) {
+                        traceRedirect('captcha_post_final_url', { hop: hops, finalUrl: postMeta.finalUrl });
                         currentUrl = postMeta.finalUrl;
                         if (!isRedirectorUrl(currentUrl)) break;
                         continue;
@@ -659,16 +699,21 @@ async function resolveShortlink(url) {
 
                     const finalUrl = findRedirectorOrHostUrl(postHtml);
                     if (finalUrl) {
+                        traceRedirect('captcha_post_found_url', { hop: hops, finalUrl });
                         currentUrl = finalUrl;
                         if (!isRedirectorUrl(currentUrl)) break; // Found final host
                         continue;
                     }
+                    traceRedirect('captcha_post_no_url', { hop: hops, currentUrl });
+                } else {
+                    traceRedirect('captcha_ocr_empty', { hop: hops, currentUrl });
                 }
             }
 
             // 2. Fallback: cerca link in bottoni/ancore o redirect standard
             const linkUrl = findRedirectorOrHostUrl(html);
             if (linkUrl) {
+                traceRedirect('fallback_found_url', { hop: hops, linkUrl });
                 currentUrl = new URL(linkUrl, currentUrl).toString();
                 if (!isRedirectorUrl(currentUrl)) break;
                 continue;
@@ -676,24 +721,29 @@ async function resolveShortlink(url) {
 
             const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
             if (deltabitMatch) {
+                traceRedirect('fallback_deltabit_match', { hop: hops, url: deltabitMatch[0] });
                 currentUrl = deltabitMatch[0];
                 break;
             }
 
             const refreshMatch = html.match(/url=(https?:\/\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[^"']+(?<!\.ico|\.png|\.jpg))/i);
             if (refreshMatch) {
+                traceRedirect('fallback_refresh_match', { hop: hops, url: refreshMatch[1] });
                 currentUrl = decodeEntitiesBasic(refreshMatch[1]);
                 if (!isRedirectorUrl(currentUrl)) break;
                 continue;
             }
 
             // Se non abbiamo trovato nulla di nuovo, fermiamoci
+            traceRedirect('stop_no_candidate_url', { hop: hops, currentUrl });
             break;
         } catch (e) {
+            traceRedirect('error', { hop: hops, currentUrl, message: e.message });
             console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
             break;
         }
     }
+    traceRedirect('end', { url, currentUrl, stillRedirector: isRedirectorUrl(currentUrl), hops });
     return currentUrl;
 }
 
@@ -703,7 +753,10 @@ async function extractStreamFromHost(link, displayName) {
     try {
         hostUrl = await resolveShortlink(hostUrl);
         const host = detectHost(hostUrl) || link && link.host;
-        if (!host) return [];
+        if (!host) {
+            traceRedirect('extract_stop_no_host', { hostUrl, originalHost: link && link.host || null });
+            return [];
+        }
 
         let extracted = null;
         const lower = hostUrl.toLowerCase();
@@ -714,6 +767,12 @@ async function extractStreamFromHost(link, displayName) {
         } else if (host === 'deltabit' || lower.includes('deltabit') || lower.includes('clicka.cc/delta')) {
             extracted = await extractDeltaBit(hostUrl, `${BASE_URL}/`);
         }
+        traceRedirect('extractor_done', {
+            host,
+            hostUrl,
+            hasResult: Boolean(extracted),
+            resultCount: Array.isArray(extracted) ? extracted.length : (extracted ? 1 : 0)
+        });
 
         const items = Array.isArray(extracted) ? extracted : (extracted ? [extracted] : []);
         let quality = '720p';
@@ -741,6 +800,7 @@ async function extractStreamFromHost(link, displayName) {
         }
 
         if (isRedirectorUrl(proxySourceUrl)) {
+            traceRedirect('extract_stop_still_redirector', { host, proxySourceUrl, hostUrl });
             console.error(`[EuroStreaming] Redirector non risolto per ${host}: ${proxySourceUrl}`);
             return [];
         }
