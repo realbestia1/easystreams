@@ -850,7 +850,7 @@ async function warmupRedirectors(urls = []) {
         if (!url || !isRedirectorUrl(url)) continue;
         try {
             const resolvedUrl = await resolveShortlink(url);
-            results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url) });
+            results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl)) });
         } catch (e) {
             results.push({ url, error: e.message, ok: false });
         }

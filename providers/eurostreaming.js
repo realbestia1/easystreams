@@ -7849,10 +7849,15 @@ var require_ocr = __commonJS({
     function solveNumericCaptcha2(imgBase64) {
       return __async(this, null, function* () {
         const { spawn } = require("child_process");
-        return new Promise((resolve, reject) => {
+        const candidates = [
+          process.env.PYTHON_BIN,
+          process.platform === "win32" ? "python" : "python3",
+          process.platform === "win32" ? "py" : "python"
+        ].filter(Boolean);
+        const trySolve = (pythonBin, allowFallback) => new Promise((resolve, reject) => {
           try {
             const cleanBase64 = imgBase64.includes(",") ? imgBase64.split(",")[1] : imgBase64;
-            const python = spawn("python", ["ocr_helper.py"]);
+            const python = spawn(pythonBin, ["ocr_helper.py"]);
             let result = "";
             let error = "";
             python.stdin.write(cleanBase64);
@@ -7865,20 +7870,30 @@ var require_ocr = __commonJS({
             });
             python.on("close", (code) => {
               if (code !== 0) {
-                console.error("[OCR] Errore processo Python:", error);
+                console.error(`[OCR] Errore processo Python (${pythonBin}):`, error);
                 return reject(new Error("OCR engine error"));
               }
               const solved = result.trim();
               resolve(solved);
             });
             python.on("error", (err) => {
-              console.error("[OCR] Errore avvio Python:", err.message);
+              if (!allowFallback) console.error(`[OCR] Errore avvio Python (${pythonBin}):`, err.message);
               reject(err);
             });
           } catch (e) {
             reject(e);
           }
         });
+        let lastError = null;
+        for (let i = 0; i < candidates.length; i++) {
+          try {
+            return yield trySolve(candidates[i], i < candidates.length - 1);
+          } catch (e) {
+            lastError = e;
+            if (e && e.code && e.code !== "ENOENT") break;
+          }
+        }
+        throw lastError || new Error("OCR engine error");
       });
     }
     module2.exports = { solveNumericCaptcha: solveNumericCaptcha2 };
@@ -8774,7 +8789,7 @@ function warmupRedirectors() {
       if (!url || !isRedirectorUrl(url)) continue;
       try {
         const resolvedUrl = yield resolveShortlink(url);
-        results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url) });
+        results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl)) });
       } catch (e) {
         results.push({ url, error: e.message, ok: false });
       }
