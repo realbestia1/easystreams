@@ -5,8 +5,6 @@ const animeunity = require('./animeunity/index');
 const animeworld = require('./animeworld/index');
 const animesaturn = require('./animesaturn/index');
 const cinemacity = require('./cinemacity/index');
-const eurostreaming = require('./eurostreaming/index');
-const cb01 = require('./cb01/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
 
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
@@ -186,22 +184,22 @@ async function getStreams(id, type, season, episode) {
         if (likelyAnime || isKitsuRequest) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
         } else {
-            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01');
+            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
-        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming');
+        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
     } else if (normalizedType === 'tv' || normalizedType === 'series') {
         if (likelyAnime) {
-            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming');
+            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity', 'cb01');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'cinemacity');
             } else {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'eurostreaming', 'animeunity', 'animeworld', 'animesaturn', 'cb01');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'cinemacity');
             }
         }
     } else {
-        selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01');
+        selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
     }
 
     for (const providerName of [...new Set(selectedProviders)]) {
@@ -253,14 +251,6 @@ async function getStreams(id, type, season, episode) {
             );
             continue;
         }
-        if (providerName === 'eurostreaming') {
-            promises.push(
-                eurostreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'EuroStreaming', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'EuroStreaming', error: e, status: 'rejected' }))
-            );
-            continue;
-        }
         if (providerName === 'cinemacity') {
             promises.push(
                 cinemacity.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
@@ -268,13 +258,6 @@ async function getStreams(id, type, season, episode) {
                     .catch(e => ({ provider: 'CinemaCity', error: e, status: 'rejected' }))
             );
             continue;
-        }
-        if (providerName === 'cb01') {
-            promises.push(
-                cb01.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'CB01', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'CB01', error: e, status: 'rejected' }))
-            );
         }
     }
 

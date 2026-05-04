@@ -7377,6 +7377,389 @@ var require_streamhg = __commonJS({
   }
 });
 
+// src/extractors/index.js
+var require_extractors = __commonJS({
+  "src/extractors/index.js"(exports2, module2) {
+    var { extractMixDrop } = require_mixdrop();
+    var { extractDropLoad } = require_dropload();
+    var { extractSuperVideo } = require_supervideo();
+    var { extractStreamTape } = require_streamtape();
+    var { extractUqload } = require_uqload();
+    var { extractUpstream } = require_upstream();
+    var { extractVidoza } = require_vidoza();
+    var { extractVixCloud } = require_vixcloud();
+    var { extractLoadm } = require_loadm();
+    var { extractStreamHG } = require_streamhg();
+    var { USER_AGENT, unPack } = require_common();
+    module2.exports = {
+      extractMixDrop,
+      extractDropLoad,
+      extractSuperVideo,
+      extractStreamTape,
+      extractUqload,
+      extractUpstream,
+      extractVidoza,
+      extractVixCloud,
+      extractLoadm,
+      extractStreamHG,
+      USER_AGENT,
+      unPack
+    };
+  }
+});
+
+// src/formatter.js
+var require_formatter = __commonJS({
+  "src/formatter.js"(exports2, module2) {
+    function normalizePlaybackHeaders(headers) {
+      if (!headers || typeof headers !== "object") return headers;
+      const normalized = {};
+      for (const [key, value] of Object.entries(headers)) {
+        if (value == null) continue;
+        const lowerKey = String(key).toLowerCase();
+        if (lowerKey === "user-agent") normalized["User-Agent"] = value;
+        else if (lowerKey === "referer" || lowerKey === "referrer") normalized["Referer"] = value;
+        else if (lowerKey === "origin") normalized["Origin"] = value;
+        else if (lowerKey === "accept") normalized["Accept"] = value;
+        else if (lowerKey === "accept-language") normalized["Accept-Language"] = value;
+        else normalized[key] = value;
+      }
+      return normalized;
+    }
+    function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behaviorHints) {
+      const text = [
+        stream == null ? void 0 : stream.url,
+        stream == null ? void 0 : stream.name,
+        stream == null ? void 0 : stream.title,
+        stream == null ? void 0 : stream.server,
+        providerName
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (text.includes("mixdrop") || text.includes("m1xdrop") || text.includes("mxcontent")) {
+        return true;
+      }
+      if (text.includes("loadm") || text.includes("loadm.cam")) {
+        return true;
+      }
+      return false;
+    }
+    function formatStream(stream, providerName) {
+      let quality = stream.quality || "";
+      if (quality === "2160p") quality = "\u{1F525}4K UHD";
+      else if (quality === "1440p") quality = "\u2728 QHD";
+      else if (quality === "1080p") quality = "\u{1F680} FHD";
+      else if (quality === "720p") quality = "\u{1F4BF} HD";
+      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
+      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
+      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
+      let language = stream.language;
+      if (!language) {
+        if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+        else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+        else language = "\u{1F1EE}\u{1F1F9}";
+      }
+      let details = [];
+      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
+      const desc = details.join(" | ");
+      let pName = stream.name || stream.server || providerName;
+      if (pName) {
+        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
+      }
+      if (pName === providerName) {
+        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
+      }
+      if (pName) {
+        pName = `\u{1F4E1} ${pName}`;
+      }
+      const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === "object" ? __spreadValues({}, stream.behaviorHints) : {};
+      let finalHeaders = stream.headers;
+      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
+        finalHeaders = behaviorHints.proxyHeaders.request;
+      } else if (behaviorHints.headers) {
+        finalHeaders = behaviorHints.headers;
+      }
+      finalHeaders = normalizePlaybackHeaders(finalHeaders);
+      const isStreamingCommunityProvider = String(providerName || "").toLowerCase() === "streamingcommunity" || String((stream == null ? void 0 : stream.name) || "").toLowerCase().includes("streamingcommunity");
+      if (isStreamingCommunityProvider && !finalHeaders) {
+        delete behaviorHints.proxyHeaders;
+        delete behaviorHints.headers;
+        delete behaviorHints.notWebReady;
+      }
+      if (finalHeaders) {
+        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
+        behaviorHints.proxyHeaders.request = finalHeaders;
+        behaviorHints.headers = finalHeaders;
+      }
+      const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
+      if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
+        behaviorHints.notWebReady = true;
+      } else {
+        delete behaviorHints.notWebReady;
+      }
+      const finalName = pName;
+      let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
+      if (desc) finalTitle += ` | ${desc}`;
+      if (language) finalTitle += ` | ${language}`;
+      return __spreadProps(__spreadValues({}, stream), {
+        // Keep original properties
+        name: finalName,
+        title: finalTitle,
+        // Metadata for Stremio UI reconstruction (safer names for RN)
+        providerName: pName,
+        qualityTag: quality,
+        description: desc,
+        originalTitle: stream.title || "Stream",
+        // Ensure language is set for Stremio/Nuvio sorting
+        language,
+        // Mark as formatted
+        _nuvio_formatted: true,
+        behaviorHints,
+        // Explicitly ensure root headers are preserved for Nuvio
+        headers: finalHeaders
+      });
+    }
+    module2.exports = { formatStream };
+  }
+});
+
+// src/guardahd/index.js
+var require_guardahd = __commonJS({
+  "src/guardahd/index.js"(exports2, module2) {
+    var __async2 = (__this, __arguments, generator) => {
+      return new Promise((resolve, reject) => {
+        var fulfilled = (value) => {
+          try {
+            step(generator.next(value));
+          } catch (e) {
+            reject(e);
+          }
+        };
+        var rejected = (value) => {
+          try {
+            step(generator.throw(value));
+          } catch (e) {
+            reject(e);
+          }
+        };
+        var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+        step((generator = generator.apply(__this, __arguments)).next());
+      });
+    };
+    function getGuardaHdBaseUrl() {
+      return "https://guardahd.stream";
+    }
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamHG } = require_extractors();
+    require_fetch_helper();
+    var { formatStream } = require_formatter();
+    var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();
+    function getQualityFromName(qualityStr) {
+      if (!qualityStr) return "Unknown";
+      const quality = qualityStr.toUpperCase();
+      if (quality === "ORG" || quality === "ORIGINAL") return "Original";
+      if (quality === "4K" || quality === "2160P") return "4K";
+      if (quality === "1440P" || quality === "2K") return "1440p";
+      if (quality === "1080P" || quality === "FHD") return "1080p";
+      if (quality === "720P" || quality === "HD") return "720p";
+      if (quality === "480P" || quality === "SD") return "480p";
+      if (quality === "360P") return "360p";
+      if (quality === "240P") return "240p";
+      const match = qualityStr.match(/(\d{3,4})[pP]?/);
+      if (match) {
+        const resolution = parseInt(match[1]);
+        if (resolution >= 2160) return "4K";
+        if (resolution >= 1440) return "1440p";
+        if (resolution >= 1080) return "1080p";
+        if (resolution >= 720) return "720p";
+        if (resolution >= 480) return "480p";
+        if (resolution >= 360) return "360p";
+        return "240p";
+      }
+      return "Unknown";
+    }
+    function getImdbId(tmdbId, type) {
+      return __async2(this, null, function* () {
+        try {
+          const normalizedType = String(type).toLowerCase();
+          const endpoint = normalizedType === "movie" ? "movie" : "tv";
+          const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          if (data.imdb_id) {
+            console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
+            return data.imdb_id;
+          }
+          const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
+          const extResponse = yield fetch(externalUrl);
+          if (extResponse.ok) {
+            const extData = yield extResponse.json();
+            if (extData.imdb_id) {
+              console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
+              return extData.imdb_id;
+            }
+          }
+          console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
+          return null;
+        } catch (e) {
+          console.error("[GuardaHD] Conversion error:", e);
+          return null;
+        }
+      });
+    }
+    function getMetadata(id, type) {
+      return __async2(this, null, function* () {
+        try {
+          const normalizedType = String(type).toLowerCase();
+          let queryId = id;
+          let url;
+          if (String(queryId).startsWith("tt")) {
+            url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=it-IT`;
+          } else {
+            const endpoint = normalizedType === "movie" ? "movie" : "tv";
+            url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY2}&language=it-IT`;
+          }
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          if (String(queryId).startsWith("tt")) {
+            const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
+            if (results && results.length > 0) return results[0];
+          } else {
+            return data;
+          }
+          return null;
+        } catch (e) {
+          console.error("[GuardaHD] Metadata error:", e);
+          return null;
+        }
+      });
+    }
+    function getStreams2(id, type, season, episode) {
+      if (["series", "tv"].includes(String(type).toLowerCase())) return [];
+      return __async2(this, null, function* () {
+        const normalizedType = String(type).toLowerCase();
+        let cleanId = id.toString();
+        if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
+        let imdbId = cleanId;
+        if (!cleanId.startsWith("tt")) {
+          const convertedId = yield getImdbId(cleanId, type);
+          if (convertedId) imdbId = convertedId;
+          else return [];
+        }
+        let metadata = null;
+        try {
+          metadata = yield getMetadata(cleanId, type);
+        } catch (e) {
+          console.error("[GuardaHD] Error fetching metadata:", e);
+        }
+        const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
+        const baseUrl = getGuardaHdBaseUrl();
+        let url;
+        if (normalizedType === "movie") {
+          url = `${baseUrl}/set-movie-a/${imdbId}`;
+        } else if (normalizedType === "tv") {
+          url = `${baseUrl}/set-tv-a/${imdbId}/${season}/${episode}`;
+        } else {
+          return [];
+        }
+        try {
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": baseUrl
+            }
+          });
+          if (!response.ok) return [];
+          const html = yield response.text();
+          const linksSet = /* @__PURE__ */ new Set();
+          const iframeRegex = /<iframe\b[^>]+src=["']([^"']+)["']/gi;
+          let iframeMatch;
+          while ((iframeMatch = iframeRegex.exec(html)) !== null) {
+            linksSet.add(iframeMatch[1]);
+          }
+          const linkRegex = /data-link=["']([^"']+)["']/g;
+          let match;
+          while ((match = linkRegex.exec(html)) !== null) {
+            linksSet.add(match[1]);
+          }
+          const directRegex = /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|streamtape|dhcplay|vibuxer)[^"'<\s]+/ig;
+          const directMatches = html.match(directRegex) || [];
+          for (const raw of directMatches) {
+            linksSet.add(raw);
+          }
+          const streams = [];
+          const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
+          const processUrl = (streamUrl) => __async(null, null, function* () {
+            if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+            try {
+              if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
+                console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
+                const extracted = yield extractMixDrop(streamUrl);
+                if (extracted && extracted.url) {
+                  let quality = "HD";
+                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  if (playlistQuality) quality = playlistQuality;
+                  const normalizedQuality = getQualityFromName(quality);
+                  streams.push({
+                    name: `GuardaHD - MixDrop`,
+                    title: displayName,
+                    url: extracted.url,
+                    easyProxySourceUrl: streamUrl,
+                    headers: extracted.headers,
+                    quality: normalizedQuality,
+                    type: "direct"
+                  });
+                }
+              } else if (streamUrl.includes("dhcplay") || streamUrl.includes("vibuxer")) {
+                console.log(`[GuardaHD] Attempting StreamHG extraction for ${streamUrl}`);
+                const extracted = yield extractStreamHG(streamUrl);
+                if (extracted && extracted.url) {
+                  let quality = getQualityFromUrl(extracted.url) || "HD";
+                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                  if (playlistQuality) quality = playlistQuality;
+                  const normalizedQuality = getQualityFromName(quality);
+                  streams.push({
+                    name: `GuardaHD - StreamHG`,
+                    title: displayName,
+                    url: extracted.url,
+                    // EasyProxy must receive embed URL, not extracted master playlist URL.
+                    easyProxySourceUrl: streamUrl,
+                    headers: extracted.headers,
+                    quality: normalizedQuality,
+                    type: "direct"
+                  });
+                }
+              } else if (streamUrl.includes("dropload") || streamUrl.includes("dr0pstream")) {
+                console.log(`[GuardaHD] DropLoad temporarily disabled: ${streamUrl}`);
+              } else if (streamUrl.includes("supervideo")) {
+                console.log(`[GuardaHD] SuperVideo temporarily disabled: ${streamUrl}`);
+              }
+            } catch (e) {
+              console.error("[GuardaHD] Process URL error:", e);
+            }
+          });
+          const uniqueLinks = Array.from(linksSet);
+          yield Promise.all(uniqueLinks.map((link) => processUrl(link)));
+          const uniqueStreams = [];
+          const seenUrls = /* @__PURE__ */ new Set();
+          for (const s of streams) {
+            if (!seenUrls.has(s.url)) {
+              seenUrls.add(s.url);
+              uniqueStreams.push(s);
+            }
+          }
+          return uniqueStreams.map((s) => formatStream(s, "GuardaHD")).filter((s) => s !== null);
+        } catch (error) {
+          console.error("[GuardaHD] Error:", error);
+          return [];
+        }
+      });
+    }
+    module2.exports = { getStreams: getStreams2 };
+  }
+});
+
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
@@ -8152,946 +8535,6 @@ var require_cf_handler = __commonJS({
       });
     }
     module2.exports = { smartFetch };
-  }
-});
-
-// src/utils/ocr.js
-var require_ocr = __commonJS({
-  "src/utils/ocr.js"(exports2, module2) {
-    function solveNumericCaptcha(imgBase64) {
-      return __async(this, null, function* () {
-        const { spawn } = require("child_process");
-        const candidates = [
-          process.env.PYTHON_BIN,
-          process.platform === "win32" ? "python" : "python3",
-          process.platform === "win32" ? "py" : "python"
-        ].filter(Boolean);
-        const trySolve = (pythonBin, allowFallback) => new Promise((resolve, reject) => {
-          try {
-            const cleanBase64 = imgBase64.includes(",") ? imgBase64.split(",")[1] : imgBase64;
-            const python = spawn(pythonBin, ["ocr_helper.py"]);
-            let result = "";
-            let error = "";
-            python.stdin.write(cleanBase64);
-            python.stdin.end();
-            python.stdout.on("data", (data) => {
-              result += data.toString();
-            });
-            python.stderr.on("data", (data) => {
-              error += data.toString();
-            });
-            python.on("close", (code) => {
-              if (code !== 0) {
-                console.error(`[OCR] Errore processo Python (${pythonBin}):`, error);
-                return reject(new Error("OCR engine error"));
-              }
-              const solved = result.trim();
-              resolve(solved);
-            });
-            python.on("error", (err) => {
-              if (!allowFallback) console.error(`[OCR] Errore avvio Python (${pythonBin}):`, err.message);
-              reject(err);
-            });
-          } catch (e) {
-            reject(e);
-          }
-        });
-        let lastError = null;
-        for (let i = 0; i < candidates.length; i++) {
-          try {
-            return yield trySolve(candidates[i], i < candidates.length - 1);
-          } catch (e) {
-            lastError = e;
-            if (e && e.code && e.code !== "ENOENT") break;
-          }
-        }
-        throw lastError || new Error("OCR engine error");
-      });
-    }
-    module2.exports = { solveNumericCaptcha };
-  }
-});
-
-// src/extractors/maxstream.js
-var require_maxstream = __commonJS({
-  "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT, unPack, isFlareSolverrBlockedError } = require_common();
-    var { smartFetch } = require_cf_handler();
-    var axios = require("axios");
-    var solveNumericCaptcha = null;
-    try {
-      solveNumericCaptcha = require_ocr().solveNumericCaptcha;
-    } catch (e) {
-    }
-    function readBoolEnv(name, defaultValue = false) {
-      try {
-        const value = process && process.env && process.env[name];
-        if (value == null || value === "") return defaultValue;
-        return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
-      } catch (e) {
-        return defaultValue;
-      }
-    }
-    function readPositiveIntEnv(name, defaultValue) {
-      try {
-        const value = parseInt(process && process.env && process.env[name], 10);
-        return Number.isFinite(value) && value > 0 ? value : defaultValue;
-      } catch (e) {
-        return defaultValue;
-      }
-    }
-    var UPROT_DIRECT_ATTEMPTS = readPositiveIntEnv("UPROT_DIRECT_ATTEMPTS", 1);
-    var UPROT_DIRECT_TIMEOUT_MS = readPositiveIntEnv("UPROT_DIRECT_TIMEOUT_MS", 6e3);
-    var UPROT_ENABLE_FLARE_FALLBACK = readBoolEnv("UPROT_ENABLE_FLARE_FALLBACK", true);
-    var UPROT_FLARE_MAX_TIMEOUT_MS = readPositiveIntEnv("UPROT_FLARE_MAX_TIMEOUT_MS", 12e3);
-    var UPROT_FLARE_REQUEST_TIMEOUT_MS = readPositiveIntEnv("UPROT_FLARE_REQUEST_TIMEOUT_MS", UPROT_FLARE_MAX_TIMEOUT_MS + 3e3);
-    function normalizeUrl(url, baseUrl) {
-      try {
-        return new URL(String(url || ""), baseUrl).toString();
-      } catch (e) {
-        return null;
-      }
-    }
-    function getCookieHeader(setCookie) {
-      if (!Array.isArray(setCookie)) return "";
-      return setCookie.map((cookie) => String(cookie).split(";")[0]).filter(Boolean).join("; ");
-    }
-    function extractUprotRedirect(html) {
-      const text = String(html || "");
-      const anchorRegex = /<a\b[^>]+href=["']([^"']*(?:stayonline\.pro|maxstream\.video)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let anchorMatch;
-      while ((anchorMatch = anchorRegex.exec(text)) !== null) {
-        const label = String(anchorMatch[2] || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        if (/(?:C0NTINUE|CONTINUE)/i.test(label)) return anchorMatch[1].replace(/\\/g, "");
-      }
-      const redirectMatch = text.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/i);
-      if (redirectMatch) return redirectMatch[0].replace(/\\/g, "");
-      const jsMatch = text.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i);
-      if (jsMatch) return jsMatch[1].replace(/\\/g, "");
-      const btnMatch = text.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
-      return btnMatch ? btnMatch[1].replace(/\\/g, "") : null;
-    }
-    function extractInputFields(html) {
-      var _a, _b;
-      const fields = {};
-      const inputRegex = /<input\b[^>]*>/gi;
-      let match;
-      while ((match = inputRegex.exec(String(html || ""))) !== null) {
-        const inputHtml = match[0] || "";
-        const name = (_a = inputHtml.match(/\bname=["']([^"']+)["']/i)) == null ? void 0 : _a[1];
-        if (!name) continue;
-        const value = ((_b = inputHtml.match(/\bvalue=["']([^"']*)["']/i)) == null ? void 0 : _b[1]) || "";
-        fields[name] = value.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&");
-      }
-      return fields;
-    }
-    function findCaptchaFieldName(html, fields) {
-      var _a, _b, _c;
-      const names = Object.keys(fields || {});
-      const explicit = names.find((name) => /capt|captcha|code/i.test(name));
-      if (explicit) return explicit;
-      const inputRegex = /<input\b[^>]*>/gi;
-      let match;
-      while ((match = inputRegex.exec(String(html || ""))) !== null) {
-        const inputHtml = match[0] || "";
-        const name = (_a = inputHtml.match(/\bname=["']([^"']+)["']/i)) == null ? void 0 : _a[1];
-        if (!name) continue;
-        const type = ((_b = inputHtml.match(/\btype=["']([^"']+)["']/i)) == null ? void 0 : _b[1]) || "text";
-        const placeholder = ((_c = inputHtml.match(/\bplaceholder=["']([^"']+)["']/i)) == null ? void 0 : _c[1]) || "";
-        if (!/hidden|submit|button/i.test(type) && /number|capt|code|insert/i.test(placeholder)) {
-          return name;
-        }
-      }
-      return "captcha";
-    }
-    function hasUprotCaptcha(html) {
-      const text = String(html || "");
-      return /data:image\/[^;]+;base64,/i.test(text) && /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
-    }
-    function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
-      return __async(this, null, function* () {
-        const directRedirect = extractUprotRedirect(html);
-        if (directRedirect && !hasUprotCaptcha(html)) return directRedirect;
-        const captchaMatch = String(html || "").match(/<img[^>]+src=["']data:image\/[^;]+;base64,([^"']+)["'][^>]*>/i);
-        if (!captchaMatch || !solveNumericCaptcha) return directRedirect || null;
-        const captchaCode = yield solveNumericCaptcha(captchaMatch[1]);
-        if (!/^\d{3,6}$/.test(String(captchaCode || ""))) return directRedirect || null;
-        const formFields = extractInputFields(html);
-        const captchaFieldName = findCaptchaFieldName(html, formFields);
-        formFields[captchaFieldName] = captchaCode;
-        const postResult = yield postRequest(new URLSearchParams(formFields).toString());
-        const postRedirect = postResult && postResult.location ? normalizeUrl(postResult.location, targetUrl) : extractUprotRedirect(postResult && postResult.data);
-        return postRedirect || directRedirect || null;
-      });
-    }
-    function extractEmbedUrl(html, targetUrl) {
-      const targetEmbed = String(targetUrl || "").match(/^https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)/i);
-      if (targetEmbed) return `https://maxstream.video/emhuih/${targetEmbed[1]}`;
-      const text = String(html || "");
-      const iframeMatch = text.match(/src=["'](https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)[^"']*)["']/i) || text.match(/src=["'](\/emhuih\/([a-z0-9]+)[^"']*)["']/i);
-      if (iframeMatch) return normalizeUrl(iframeMatch[1], targetUrl || "https://maxstream.video/");
-      const fileCodeMatch = text.match(/[?&]file_code=([a-z0-9]+)/i) || text.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i);
-      return fileCodeMatch ? `https://maxstream.video/emhuih/${fileCodeMatch[1]}` : null;
-    }
-    function parseMaxStreamHtml(html, targetUrl, sourceUrl = null) {
-      const canonicalUrl = sourceUrl || extractEmbedUrl(html, targetUrl);
-      const directMatch = String(html || "").match(/sources:\s*\[\{src:\s*"([^"]+)"/);
-      if (directMatch) {
-        return {
-          url: directMatch[1],
-          sourceUrl: canonicalUrl || targetUrl,
-          headers: {
-            "User-Agent": USER_AGENT,
-            "Referer": targetUrl
-          }
-        };
-      }
-      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-      const match = packedRegex.exec(String(html || ""));
-      if (match) {
-        const p = match[1];
-        const a = parseInt(match[2]);
-        const c = parseInt(match[3]);
-        const k = match[4].split("|");
-        const unpacked = unPack(p, a, c, k, null, {});
-        const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
-        if (srcMatch) {
-          return {
-            url: srcMatch[1],
-            sourceUrl: canonicalUrl || targetUrl,
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": targetUrl
-            }
-          };
-        }
-        try {
-          const urlsetIdx = k.indexOf("urlset");
-          const hlsIdx = k.indexOf("hls");
-          const sourcesIdx = k.indexOf("sources");
-          if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
-            const result = k.slice(urlsetIdx + 1, hlsIdx);
-            const reversedElements = result.reverse();
-            const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
-            const reversedFirstPart = firstPartTerms.reverse();
-            let firstUrlPart = "";
-            for (const fp of reversedFirstPart) {
-              if (fp.includes("0")) {
-                firstUrlPart += fp;
-              } else {
-                firstUrlPart += `${fp}-`;
-              }
-            }
-            const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
-            const finalUrl = reversedElements.length === 1 ? `${baseUrl},${reversedElements[0]}.urlset/master.m3u8` : `${baseUrl}${reversedElements.join(",")}.urlset/master.m3u8`;
-            return {
-              url: finalUrl,
-              sourceUrl: canonicalUrl || targetUrl,
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": targetUrl
-              }
-            };
-          }
-        } catch (e) {
-          console.error("[Extractors] MaxStream manual reconstruction failed:", e);
-        }
-      }
-      return canonicalUrl ? { canonicalUrl } : null;
-    }
-    function resolveUprotProtectedUrl(targetUrl, refererBase) {
-      return __async(this, null, function* () {
-        const headers = {
-          "User-Agent": USER_AGENT,
-          "Referer": refererBase,
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        };
-        let lastDirectRedirect = null;
-        for (let attempt = 0; attempt < UPROT_DIRECT_ATTEMPTS; attempt++) {
-          try {
-            const response = yield axios({
-              url: targetUrl,
-              method: "GET",
-              headers,
-              maxRedirects: 0,
-              timeout: UPROT_DIRECT_TIMEOUT_MS,
-              validateStatus: false
-            });
-            const html = String(response.data || "");
-            const directRedirect = extractUprotRedirect(html);
-            if (directRedirect) lastDirectRedirect = directRedirect;
-            const cookieHeader = getCookieHeader(response.headers && response.headers["set-cookie"]);
-            const postRedirect = yield solveUprotCaptchaRedirect(html, targetUrl, (body) => __async(null, null, function* () {
-              const postHeaders = __spreadProps(__spreadValues({}, headers), {
-                "Referer": targetUrl,
-                "Origin": new URL(targetUrl).origin,
-                "Content-Type": "application/x-www-form-urlencoded"
-              });
-              if (cookieHeader) postHeaders.Cookie = cookieHeader;
-              const postResponse = yield axios({
-                url: targetUrl,
-                method: "POST",
-                data: body,
-                headers: postHeaders,
-                maxRedirects: 0,
-                timeout: UPROT_DIRECT_TIMEOUT_MS,
-                validateStatus: false
-              });
-              return {
-                location: postResponse.headers && postResponse.headers.location,
-                data: postResponse.data
-              };
-            }));
-            if (postRedirect) return postRedirect;
-          } catch (e) {
-            if (attempt === 2) console.error("[Extractors] Uprot captcha resolution failed:", e.message);
-          }
-        }
-        if (!UPROT_ENABLE_FLARE_FALLBACK) {
-          return lastDirectRedirect || null;
-        }
-        try {
-          const html = yield smartFetch(targetUrl, "uprot", {
-            provider: "uprot",
-            maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
-            requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
-            headers
-          });
-          const smartRedirect = yield solveUprotCaptchaRedirect(html, targetUrl, (body) => __async(null, null, function* () {
-            const postHtml = yield smartFetch(targetUrl, "uprot", {
-              provider: "uprot",
-              method: "POST",
-              maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
-              requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
-              body,
-              headers: __spreadProps(__spreadValues({}, headers), {
-                "Referer": targetUrl,
-                "Origin": new URL(targetUrl).origin,
-                "Content-Type": "application/x-www-form-urlencoded"
-              })
-            });
-            return { data: postHtml };
-          }));
-          if (smartRedirect) return smartRedirect;
-        } catch (e) {
-          if (isFlareSolverrBlockedError(e)) {
-            console.warn("[Extractors] Uprot smart captcha resolution skipped:", e.message);
-          } else {
-            console.error("[Extractors] Uprot smart captcha resolution failed:", e.message);
-          }
-        }
-        return lastDirectRedirect || null;
-      });
-    }
-    function extractMaxStream(url, refererBase = "https://uprot.net/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = `https:${targetUrl}`;
-          if (targetUrl.includes("uprot.net")) {
-            targetUrl = targetUrl.replace("/msf/", "/mse/");
-            const isProtectedUprot = /\/(?:msd|msei|msfi|mseild|msefd)\//i.test(targetUrl);
-            const protectedRedirect = yield resolveUprotProtectedUrl(targetUrl, refererBase);
-            if (protectedRedirect) {
-              targetUrl = protectedRedirect;
-            } else if (isProtectedUprot) {
-              return null;
-            } else {
-              let html2;
-              try {
-                html2 = yield smartFetch(targetUrl, "uprot", {
-                  headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
-                });
-              } catch (e) {
-                if (isFlareSolverrBlockedError(e)) {
-                  console.warn("[Extractors] Uprot redirect fetch skipped:", e.message);
-                  return null;
-                }
-                throw e;
-              }
-              if (!html2) return null;
-              const redirectUrl = extractUprotRedirect(html2);
-              if (!redirectUrl) return null;
-              targetUrl = redirectUrl;
-            }
-          }
-          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
-          const html = yield smartFetch(targetUrl, provider, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": "https://uprot.net/",
-              "Accept-Language": "en-US,en;q=0.5"
-            }
-          });
-          if (!html) return null;
-          const parsed = parseMaxStreamHtml(html, targetUrl);
-          if (parsed && parsed.url) return parsed;
-          if (parsed && parsed.canonicalUrl && parsed.canonicalUrl !== targetUrl) {
-            const embedHtml = yield smartFetch(parsed.canonicalUrl, "maxstream", {
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": targetUrl,
-                "Accept-Language": "en-US,en;q=0.5"
-              }
-            });
-            const embedParsed = parseMaxStreamHtml(embedHtml, parsed.canonicalUrl, parsed.canonicalUrl);
-            if (embedParsed && embedParsed.url) return embedParsed;
-          }
-          return null;
-        } catch (e) {
-          console.error("[Extractors] MaxStream extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractMaxStream };
-  }
-});
-
-// src/extractors/deltabit.js
-var require_deltabit = __commonJS({
-  "src/extractors/deltabit.js"(exports2, module2) {
-    var { USER_AGENT, isFlareSolverrBlockedError } = require_common();
-    var { smartFetch } = require_cf_handler();
-    var { solveNumericCaptcha } = require_ocr();
-    function isDeadDeltaBitRedirectUrl(url) {
-      try {
-        const parsed = new URL(url);
-        return parsed.hostname.toLowerCase().includes("deltabit.") && /^\/a?delta\//i.test(parsed.pathname);
-      } catch (e) {
-        return false;
-      }
-    }
-    function extractDeltaBit(url, refererBase = "https://eurostreamings.help/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
-          let redirectLoopCount = 0;
-          while (redirectLoopCount < 3 && (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc"))) {
-            redirectLoopCount++;
-            const fetchMeta = {};
-            const html2 = yield smartFetch(targetUrl, "clicka", {
-              meta: fetchMeta,
-              quietHttpErrors: [404],
-              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
-            });
-            if (!html2) break;
-            if (fetchMeta.finalUrl && fetchMeta.finalUrl !== targetUrl) {
-              targetUrl = fetchMeta.finalUrl;
-              if (isDeadDeltaBitRedirectUrl(targetUrl)) {
-                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
-                return null;
-              }
-              if (targetUrl.includes("deltabit.")) break;
-              if (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc")) continue;
-            }
-            const nextMatch = html2.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
-            if (nextMatch) {
-              targetUrl = nextMatch[0].replace(/&amp;/g, "&");
-              if (isDeadDeltaBitRedirectUrl(targetUrl)) {
-                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
-                return null;
-              }
-              if (targetUrl.includes("deltabit.")) break;
-            } else {
-              const refreshMatch = html2.match(/url=(https?:\/\/[^"']+)/i);
-              if (refreshMatch) {
-                targetUrl = refreshMatch[1].replace(/&amp;/g, "&");
-              } else {
-                break;
-              }
-            }
-          }
-          if (isDeadDeltaBitRedirectUrl(targetUrl)) {
-            console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
-            return null;
-          }
-          const html = yield smartFetch(targetUrl, "deltabit", {
-            quietHttpErrors: [404],
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": refererBase
-            }
-          });
-          if (!html) return null;
-          const directMatch = html.match(/sources:\s*\["([^"]+)"/);
-          if (directMatch) {
-            return {
-              url: directMatch[1],
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": targetUrl
-              }
-            };
-          }
-          const opMatch = html.match(/name="op" value="([^"]+)"/);
-          const idMatch = html.match(/name="id" value="([^"]+)"/);
-          if (opMatch && idMatch) {
-            const op = opMatch[1];
-            const id = idMatch[1];
-            const formData = new URLSearchParams();
-            const hiddenRegex = /<input type="hidden" name="([^"]+)" value="([^"]*)"/g;
-            let match;
-            const allFields = {};
-            while ((match = hiddenRegex.exec(html)) !== null) {
-              allFields[match[1]] = match[2];
-            }
-            allFields["op"] = allFields["op"] || op;
-            allFields["id"] = allFields["id"] || id;
-            allFields["imhuman"] = "";
-            allFields["referer"] = targetUrl;
-            for (const key in allFields) {
-              formData.append(key, allFields[key]);
-            }
-            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*captcha[^"']*)["']/i);
-            if (captchaMatch) {
-              let captchaUrl = captchaMatch[1];
-              if (captchaUrl.startsWith("/")) {
-                const urlObj = new URL(targetUrl);
-                captchaUrl = `${urlObj.origin}${captchaUrl}`;
-              }
-              try {
-                const imgData = yield smartFetch(captchaUrl, "deltabit", {
-                  headers: { "Referer": targetUrl },
-                  responseType: "arraybuffer"
-                });
-                const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
-                const captchaCode = yield solveNumericCaptcha(base64);
-                if (captchaCode) {
-                  console.log(`[DeltaBit] Captcha risolto (locale): ${captchaCode}`);
-                  formData.set("code", captchaCode);
-                }
-              } catch (ocrErr) {
-                console.error("[DeltaBit] Errore OCR locale:", ocrErr.message);
-              }
-            }
-            yield new Promise((resolve) => setTimeout(resolve, 3500));
-            const postHtml = yield smartFetch(targetUrl, "deltabit", {
-              method: "POST",
-              quietHttpErrors: [404],
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": targetUrl,
-                "Content-Type": "application/x-www-form-urlencoded"
-              },
-              body: formData.toString()
-            });
-            if (!postHtml) return null;
-            const finalMatch = postHtml.match(/sources:\s*\["([^"]+)"/);
-            if (finalMatch) {
-              return {
-                url: finalMatch[1],
-                headers: {
-                  "User-Agent": USER_AGENT,
-                  "Referer": targetUrl
-                }
-              };
-            }
-          }
-          return null;
-        } catch (e) {
-          if (e && e.response && e.response.status === 404) {
-            console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
-            return null;
-          }
-          if (isFlareSolverrBlockedError(e)) {
-            console.warn("[Extractors] DeltaBit extraction skipped:", e && e.message ? e.message : e);
-            return null;
-          }
-          console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractDeltaBit };
-  }
-});
-
-// src/extractors/index.js
-var require_extractors = __commonJS({
-  "src/extractors/index.js"(exports2, module2) {
-    var { extractMixDrop } = require_mixdrop();
-    var { extractDropLoad } = require_dropload();
-    var { extractSuperVideo } = require_supervideo();
-    var { extractStreamTape } = require_streamtape();
-    var { extractUqload } = require_uqload();
-    var { extractUpstream } = require_upstream();
-    var { extractVidoza } = require_vidoza();
-    var { extractVixCloud } = require_vixcloud();
-    var { extractLoadm } = require_loadm();
-    var { extractStreamHG } = require_streamhg();
-    var { extractMaxStream } = require_maxstream();
-    var { extractDeltaBit } = require_deltabit();
-    var { USER_AGENT, unPack } = require_common();
-    module2.exports = {
-      extractMixDrop,
-      extractDropLoad,
-      extractSuperVideo,
-      extractStreamTape,
-      extractUqload,
-      extractUpstream,
-      extractVidoza,
-      extractVixCloud,
-      extractLoadm,
-      extractStreamHG,
-      extractMaxStream,
-      extractDeltaBit,
-      USER_AGENT,
-      unPack
-    };
-  }
-});
-
-// src/formatter.js
-var require_formatter = __commonJS({
-  "src/formatter.js"(exports2, module2) {
-    function normalizePlaybackHeaders(headers) {
-      if (!headers || typeof headers !== "object") return headers;
-      const normalized = {};
-      for (const [key, value] of Object.entries(headers)) {
-        if (value == null) continue;
-        const lowerKey = String(key).toLowerCase();
-        if (lowerKey === "user-agent") normalized["User-Agent"] = value;
-        else if (lowerKey === "referer" || lowerKey === "referrer") normalized["Referer"] = value;
-        else if (lowerKey === "origin") normalized["Origin"] = value;
-        else if (lowerKey === "accept") normalized["Accept"] = value;
-        else if (lowerKey === "accept-language") normalized["Accept-Language"] = value;
-        else normalized[key] = value;
-      }
-      return normalized;
-    }
-    function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behaviorHints) {
-      const text = [
-        stream == null ? void 0 : stream.url,
-        stream == null ? void 0 : stream.name,
-        stream == null ? void 0 : stream.title,
-        stream == null ? void 0 : stream.server,
-        providerName
-      ].filter(Boolean).join(" ").toLowerCase();
-      if (text.includes("mixdrop") || text.includes("m1xdrop") || text.includes("mxcontent")) {
-        return true;
-      }
-      if (text.includes("loadm") || text.includes("loadm.cam")) {
-        return true;
-      }
-      return false;
-    }
-    function formatStream(stream, providerName) {
-      let quality = stream.quality || "";
-      if (quality === "2160p") quality = "\u{1F525}4K UHD";
-      else if (quality === "1440p") quality = "\u2728 QHD";
-      else if (quality === "1080p") quality = "\u{1F680} FHD";
-      else if (quality === "720p") quality = "\u{1F4BF} HD";
-      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
-      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
-      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
-      let language = stream.language;
-      if (!language) {
-        if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else language = "\u{1F1EE}\u{1F1F9}";
-      }
-      let details = [];
-      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
-      const desc = details.join(" | ");
-      let pName = stream.name || stream.server || providerName;
-      if (pName) {
-        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
-      }
-      if (pName === providerName) {
-        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
-      }
-      if (pName) {
-        pName = `\u{1F4E1} ${pName}`;
-      }
-      const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === "object" ? __spreadValues({}, stream.behaviorHints) : {};
-      let finalHeaders = stream.headers;
-      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
-        finalHeaders = behaviorHints.proxyHeaders.request;
-      } else if (behaviorHints.headers) {
-        finalHeaders = behaviorHints.headers;
-      }
-      finalHeaders = normalizePlaybackHeaders(finalHeaders);
-      const isStreamingCommunityProvider = String(providerName || "").toLowerCase() === "streamingcommunity" || String((stream == null ? void 0 : stream.name) || "").toLowerCase().includes("streamingcommunity");
-      if (isStreamingCommunityProvider && !finalHeaders) {
-        delete behaviorHints.proxyHeaders;
-        delete behaviorHints.headers;
-        delete behaviorHints.notWebReady;
-      }
-      if (finalHeaders) {
-        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
-        behaviorHints.proxyHeaders.request = finalHeaders;
-        behaviorHints.headers = finalHeaders;
-      }
-      const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
-      if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
-        behaviorHints.notWebReady = true;
-      } else {
-        delete behaviorHints.notWebReady;
-      }
-      const finalName = pName;
-      let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
-      if (desc) finalTitle += ` | ${desc}`;
-      if (language) finalTitle += ` | ${language}`;
-      return __spreadProps(__spreadValues({}, stream), {
-        // Keep original properties
-        name: finalName,
-        title: finalTitle,
-        // Metadata for Stremio UI reconstruction (safer names for RN)
-        providerName: pName,
-        qualityTag: quality,
-        description: desc,
-        originalTitle: stream.title || "Stream",
-        // Ensure language is set for Stremio/Nuvio sorting
-        language,
-        // Mark as formatted
-        _nuvio_formatted: true,
-        behaviorHints,
-        // Explicitly ensure root headers are preserved for Nuvio
-        headers: finalHeaders
-      });
-    }
-    module2.exports = { formatStream };
-  }
-});
-
-// src/guardahd/index.js
-var require_guardahd = __commonJS({
-  "src/guardahd/index.js"(exports2, module2) {
-    var __async2 = (__this, __arguments, generator) => {
-      return new Promise((resolve, reject) => {
-        var fulfilled = (value) => {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        };
-        var rejected = (value) => {
-          try {
-            step(generator.throw(value));
-          } catch (e) {
-            reject(e);
-          }
-        };
-        var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
-        step((generator = generator.apply(__this, __arguments)).next());
-      });
-    };
-    function getGuardaHdBaseUrl() {
-      return "https://guardahd.stream";
-    }
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-    var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamHG } = require_extractors();
-    require_fetch_helper();
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();
-    function getQualityFromName(qualityStr) {
-      if (!qualityStr) return "Unknown";
-      const quality = qualityStr.toUpperCase();
-      if (quality === "ORG" || quality === "ORIGINAL") return "Original";
-      if (quality === "4K" || quality === "2160P") return "4K";
-      if (quality === "1440P" || quality === "2K") return "1440p";
-      if (quality === "1080P" || quality === "FHD") return "1080p";
-      if (quality === "720P" || quality === "HD") return "720p";
-      if (quality === "480P" || quality === "SD") return "480p";
-      if (quality === "360P") return "360p";
-      if (quality === "240P") return "240p";
-      const match = qualityStr.match(/(\d{3,4})[pP]?/);
-      if (match) {
-        const resolution = parseInt(match[1]);
-        if (resolution >= 2160) return "4K";
-        if (resolution >= 1440) return "1440p";
-        if (resolution >= 1080) return "1080p";
-        if (resolution >= 720) return "720p";
-        if (resolution >= 480) return "480p";
-        if (resolution >= 360) return "360p";
-        return "240p";
-      }
-      return "Unknown";
-    }
-    function getImdbId(tmdbId, type) {
-      return __async2(this, null, function* () {
-        try {
-          const normalizedType = String(type).toLowerCase();
-          const endpoint = normalizedType === "movie" ? "movie" : "tv";
-          const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}`;
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          const data = yield response.json();
-          if (data.imdb_id) {
-            console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
-            return data.imdb_id;
-          }
-          const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
-          const extResponse = yield fetch(externalUrl);
-          if (extResponse.ok) {
-            const extData = yield extResponse.json();
-            if (extData.imdb_id) {
-              console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
-              return extData.imdb_id;
-            }
-          }
-          console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
-          return null;
-        } catch (e) {
-          console.error("[GuardaHD] Conversion error:", e);
-          return null;
-        }
-      });
-    }
-    function getMetadata(id, type) {
-      return __async2(this, null, function* () {
-        try {
-          const normalizedType = String(type).toLowerCase();
-          let queryId = id;
-          let url;
-          if (String(queryId).startsWith("tt")) {
-            url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=it-IT`;
-          } else {
-            const endpoint = normalizedType === "movie" ? "movie" : "tv";
-            url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY2}&language=it-IT`;
-          }
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          const data = yield response.json();
-          if (String(queryId).startsWith("tt")) {
-            const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
-            if (results && results.length > 0) return results[0];
-          } else {
-            return data;
-          }
-          return null;
-        } catch (e) {
-          console.error("[GuardaHD] Metadata error:", e);
-          return null;
-        }
-      });
-    }
-    function getStreams2(id, type, season, episode) {
-      if (["series", "tv"].includes(String(type).toLowerCase())) return [];
-      return __async2(this, null, function* () {
-        const normalizedType = String(type).toLowerCase();
-        let cleanId = id.toString();
-        if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
-        let imdbId = cleanId;
-        if (!cleanId.startsWith("tt")) {
-          const convertedId = yield getImdbId(cleanId, type);
-          if (convertedId) imdbId = convertedId;
-          else return [];
-        }
-        let metadata = null;
-        try {
-          metadata = yield getMetadata(cleanId, type);
-        } catch (e) {
-          console.error("[GuardaHD] Error fetching metadata:", e);
-        }
-        const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
-        const baseUrl = getGuardaHdBaseUrl();
-        let url;
-        if (normalizedType === "movie") {
-          url = `${baseUrl}/set-movie-a/${imdbId}`;
-        } else if (normalizedType === "tv") {
-          url = `${baseUrl}/set-tv-a/${imdbId}/${season}/${episode}`;
-        } else {
-          return [];
-        }
-        try {
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": baseUrl
-            }
-          });
-          if (!response.ok) return [];
-          const html = yield response.text();
-          const linksSet = /* @__PURE__ */ new Set();
-          const iframeRegex = /<iframe\b[^>]+src=["']([^"']+)["']/gi;
-          let iframeMatch;
-          while ((iframeMatch = iframeRegex.exec(html)) !== null) {
-            linksSet.add(iframeMatch[1]);
-          }
-          const linkRegex = /data-link=["']([^"']+)["']/g;
-          let match;
-          while ((match = linkRegex.exec(html)) !== null) {
-            linksSet.add(match[1]);
-          }
-          const directRegex = /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|streamtape|dhcplay|vibuxer)[^"'<\s]+/ig;
-          const directMatches = html.match(directRegex) || [];
-          for (const raw of directMatches) {
-            linksSet.add(raw);
-          }
-          const streams = [];
-          const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
-          const processUrl = (streamUrl) => __async(null, null, function* () {
-            if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-            try {
-              if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
-                console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
-                const extracted = yield extractMixDrop(streamUrl);
-                if (extracted && extracted.url) {
-                  let quality = "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                  if (playlistQuality) quality = playlistQuality;
-                  const normalizedQuality = getQualityFromName(quality);
-                  streams.push({
-                    name: `GuardaHD - MixDrop`,
-                    title: displayName,
-                    url: extracted.url,
-                    easyProxySourceUrl: streamUrl,
-                    headers: extracted.headers,
-                    quality: normalizedQuality,
-                    type: "direct"
-                  });
-                }
-              } else if (streamUrl.includes("dhcplay") || streamUrl.includes("vibuxer")) {
-                console.log(`[GuardaHD] Attempting StreamHG extraction for ${streamUrl}`);
-                const extracted = yield extractStreamHG(streamUrl);
-                if (extracted && extracted.url) {
-                  let quality = getQualityFromUrl(extracted.url) || "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
-                  if (playlistQuality) quality = playlistQuality;
-                  const normalizedQuality = getQualityFromName(quality);
-                  streams.push({
-                    name: `GuardaHD - StreamHG`,
-                    title: displayName,
-                    url: extracted.url,
-                    // EasyProxy must receive embed URL, not extracted master playlist URL.
-                    easyProxySourceUrl: streamUrl,
-                    headers: extracted.headers,
-                    quality: normalizedQuality,
-                    type: "direct"
-                  });
-                }
-              } else if (streamUrl.includes("dropload") || streamUrl.includes("dr0pstream")) {
-                console.log(`[GuardaHD] DropLoad temporarily disabled: ${streamUrl}`);
-              } else if (streamUrl.includes("supervideo")) {
-                console.log(`[GuardaHD] SuperVideo temporarily disabled: ${streamUrl}`);
-              }
-            } catch (e) {
-              console.error("[GuardaHD] Process URL error:", e);
-            }
-          });
-          const uniqueLinks = Array.from(linksSet);
-          yield Promise.all(uniqueLinks.map((link) => processUrl(link)));
-          const uniqueStreams = [];
-          const seenUrls = /* @__PURE__ */ new Set();
-          for (const s of streams) {
-            if (!seenUrls.has(s.url)) {
-              seenUrls.add(s.url);
-              uniqueStreams.push(s);
-            }
-          }
-          return uniqueStreams.map((s) => formatStream(s, "GuardaHD")).filter((s) => s !== null);
-        } catch (error) {
-          console.error("[GuardaHD] Error:", error);
-          return [];
-        }
-      });
-    }
-    module2.exports = { getStreams: getStreams2 };
   }
 });
 
@@ -13591,1921 +13034,6 @@ var require_cinemacity = __commonJS({
   }
 });
 
-// src/eurostreaming/index.js
-var require_eurostreaming = __commonJS({
-  "src/eurostreaming/index.js"(exports2, module2) {
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
-    var { smartFetch } = require_cf_handler();
-    var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
-    var { isFlareSolverrBlockedError } = require_common();
-    var fs = require("fs");
-    var path = require("path");
-    var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
-    if (!IS_SERVER) {
-      module2.exports = {
-        getStreams: (id, type, season, episode) => __async(null, null, function* () {
-          try {
-            const apiUrl = `https://easystreams.realbestia.com/resolve/eurostreaming?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}&s=${season || 1}&ep=${episode || 1}&format=links`;
-            const response = yield fetch(apiUrl);
-            const data = yield response.json();
-            const rawLinks = data.links || [];
-            console.log(`[EuroStreaming-Client] Trovati ${rawLinks.length} link dal server.`);
-            const streams = [];
-            for (const link of rawLinks) {
-              try {
-                console.log(`[EuroStreaming-Client] Estrazione da: ${link.host} (${link.url})`);
-                let extracted = null;
-                const lower = link.url.toLowerCase();
-                if (lower.includes("maxstream") || lower.includes("uprot.net")) {
-                  extracted = yield extractMaxStream(link.url, "https://eurostreamings.work/");
-                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
-                  extracted = yield extractDeltaBit(link.url, "https://eurostreamings.work/");
-                } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
-                  console.log(`[EuroStreaming-Client] MixDrop aggiunto direttamente.`);
-                  streams.push({ name: `[EuroStreaming] MixDrop`, url: link.url, quality: "HD" });
-                }
-                if (extracted) {
-                  console.log(`[EuroStreaming-Client] Estrazione riuscita per ${link.host}`);
-                  const items = Array.isArray(extracted) ? extracted : [extracted];
-                  for (const item of items) {
-                    streams.push({
-                      name: `[EuroStreaming] ${link.host}`,
-                      url: item.url,
-                      quality: item.quality || "HD",
-                      headers: item.headers || {}
-                    });
-                  }
-                } else if (!lower.includes("mixdrop")) {
-                  console.warn(`[EuroStreaming-Client] Estrazione fallita o non supportata per ${link.host}`);
-                }
-              } catch (err) {
-                console.error(`[EuroStreaming-Client] Errore estrazione ${link.host}:`, err.message);
-              }
-            }
-            console.log(`[EuroStreaming-Client] Totale stream pronti: ${streams.length}`);
-            return streams;
-          } catch (e) {
-            console.error("[EuroStreaming-Client] API Error:", e.message);
-            return [];
-          }
-        })
-      };
-      return;
-    }
-    var BASE_URL = "https://eurostreamings.work";
-    var PROVIDER = "eurostreaming";
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var solveNumericCaptcha = null;
-    if (IS_SERVER) {
-      try {
-        solveNumericCaptcha = require_ocr().solveNumericCaptcha;
-      } catch (e) {
-        console.error("[EuroStreaming] Errore caricamento modulo OCR:", e.message);
-      }
-    }
-    var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
-    var TRACE_REDIRECTS_ENABLED = String(process.env.TRACE_EURO_REDIRECTS || "").trim().toLowerCase() === "1";
-    function traceRedirect(step, data = {}) {
-      if (!TRACE_REDIRECTS_ENABLED) return;
-      try {
-        console.log(`[EuroStreamingTrace] ${step}: ${JSON.stringify(data)}`);
-      } catch (e) {
-        console.log(`[EuroStreamingTrace] ${step}`);
-      }
-    }
-    function getMappingApiBase() {
-      return "https://animemapping.realbestia.com";
-    }
-    function decodeEntitiesBasic(str) {
-      return String(str || "").replace(/&#(\d+);/g, (m, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#215;|&times;/g, "x").replace(/&#8211;|&#8212;/g, "-").replace(/&#8217;|&#039;/g, "'");
-    }
-    function stripTags(str) {
-      return decodeEntitiesBasic(String(str || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-    }
-    function normalizeTitle(str) {
-      return decodeEntitiesBasic(str).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "");
-    }
-    function resolveUrl(href) {
-      try {
-        return new URL(decodeEntitiesBasic(href), BASE_URL).toString();
-      } catch (e) {
-        return null;
-      }
-    }
-    function fetchHtml(_0) {
-      return __async(this, arguments, function* (url, options = {}) {
-        return yield smartFetch(url, BASE_URL, __spreadValues({
-          provider: PROVIDER,
-          timeout: 25e3,
-          headers: __spreadValues({
-            "Referer": `${BASE_URL}/`
-          }, options.headers)
-        }, options));
-      });
-    }
-    function fetchTmdbJson(path2) {
-      return __async(this, null, function* () {
-        try {
-          const sep = path2.includes("?") ? "&" : "?";
-          const url = `https://api.themoviedb.org/3${path2}${sep}api_key=${TMDB_API_KEY2}&language=it-IT`;
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          return yield response.json();
-        } catch (e) {
-          return null;
-        }
-      });
-    }
-    function normalizeConfigBoolean(value) {
-      if (value === true) return true;
-      const normalized = String(value || "").trim().toLowerCase();
-      return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-    }
-    function getMappingLanguage(providerContext = null) {
-      const explicit = String(providerContext && providerContext.mappingLanguage || "").trim().toLowerCase();
-      if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext && providerContext.easyCatalogsLangIt) ? "it" : null;
-    }
-    function fetchMapping(provider, value, season, episode, providerContext = null) {
-      return __async(this, null, function* () {
-        try {
-          const normalizedProvider = String(provider || "").trim().toLowerCase();
-          const mappingApiBase = getMappingApiBase();
-          if (!mappingApiBase || !normalizedProvider || !value) return null;
-          if (!["imdb", "tmdb", "kitsu"].includes(normalizedProvider)) return null;
-          const params = new URLSearchParams();
-          const parsedSeason = Number.parseInt(String(season || ""), 10);
-          const parsedEpisode = Number.parseInt(String(episode || ""), 10);
-          if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
-          if (Number.isInteger(parsedEpisode) && parsedEpisode > 0) params.set("ep", String(parsedEpisode));
-          const mappingLanguage = normalizedProvider === "kitsu" ? "it" : getMappingLanguage(providerContext);
-          if (mappingLanguage === "it") params.set("lang", "it");
-          const query = params.toString();
-          const url = `${mappingApiBase}/${normalizedProvider}/${encodeURIComponent(String(value).trim())}${query ? `?${query}` : ""}`;
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          return yield response.json();
-        } catch (e) {
-          return null;
-        }
-      });
-    }
-    function getNested(obj, paths) {
-      for (const path2 of paths) {
-        const parts = path2.split(".");
-        let current = obj;
-        for (const part of parts) {
-          current = current && current[part];
-        }
-        if (current !== void 0 && current !== null && current !== "") return current;
-      }
-      return null;
-    }
-    function normalizeMappingPayload(payload) {
-      if (!payload || typeof payload !== "object") return null;
-      const ids = payload.ids || payload.mappings && payload.mappings.ids || {};
-      const tmdbId = getNested(payload, ["tmdbId", "tmdb_id", "tmdb", "mappings.tmdbId", "mappings.tmdb_id"]) || ids.tmdb;
-      const imdbId = getNested(payload, ["imdbId", "imdb_id", "imdb", "mappings.imdbId", "mappings.imdb_id"]) || ids.imdb;
-      const season = getNested(payload, ["season", "mappedSeason", "mappings.season", "mappings.mappedSeason"]);
-      const episode = getNested(payload, ["episode", "mappedEpisode", "mappings.episode", "mappings.mappedEpisode"]);
-      const tmdbEpisode = payload.tmdb_episode || payload.tmdbEpisode || payload.mappings && (payload.mappings.tmdb_episode || payload.mappings.tmdbEpisode) || null;
-      const mappedSeason = Number.parseInt(String(season || tmdbEpisode && (tmdbEpisode.season || tmdbEpisode.season_number) || ""), 10);
-      const mappedEpisode = Number.parseInt(String(episode || tmdbEpisode && (tmdbEpisode.episode || tmdbEpisode.episode_number) || ""), 10);
-      const rawEpisodeNumber = Number.parseInt(String(tmdbEpisode && (tmdbEpisode.rawEpisodeNumber || tmdbEpisode.raw_episode_number || tmdbEpisode.rawEpisode) || payload.rawEpisodeNumber || ""), 10);
-      return {
-        tmdbId: /^\d+$/.test(String(tmdbId || "").trim()) ? String(tmdbId).trim() : null,
-        imdbId: /^tt\d+$/i.test(String(imdbId || "").trim()) ? String(imdbId).trim() : null,
-        mappedSeason: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : null,
-        mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
-        rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null,
-        seasonName: payload.seasonName || payload.mappedSeasonName || null,
-        titleHints: Array.isArray(payload.titleHints) ? payload.titleHints.filter(Boolean) : [],
-        longSeries: payload.longSeries === true,
-        episodeMode: String(payload.episodeMode || "").trim().toLowerCase() || null
-      };
-    }
-    function resolveMappedRequest(id, normalizedType, season, episode, providerContext) {
-      return __async(this, null, function* () {
-        const mapped = {
-          tmdbId: providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null,
-          imdbId: providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null,
-          season: Number.parseInt(String(providerContext && (providerContext.mappedSeason || providerContext.season) || season || ""), 10),
-          episode: Number.parseInt(String(episode || ""), 10) || 1,
-          titleHints: [
-            ...Array.isArray(providerContext && providerContext.titleHints) ? providerContext.titleHints : [],
-            ...Array.isArray(providerContext && providerContext.mappedTitleHints) ? providerContext.mappedTitleHints : []
-          ].filter(Boolean),
-          seasonName: providerContext && (providerContext.seasonName || providerContext.mappedSeasonName) || null,
-          longSeries: providerContext && providerContext.longSeries === true,
-          episodeMode: String(providerContext && providerContext.episodeMode || "").trim().toLowerCase() || null
-        };
-        if (!Number.isInteger(mapped.season) || mapped.season < 0) mapped.season = Number.parseInt(String(season || ""), 10) || 1;
-        const raw = String(id || "").trim();
-        let provider = null;
-        let value = null;
-        if (/^kitsu:\d+$/i.test(raw)) {
-          provider = "kitsu";
-          value = raw.replace(/^kitsu:/i, "");
-        } else if (/^tt\d+$/i.test(raw)) {
-          provider = "imdb";
-          value = raw;
-        } else if (/^tmdb:\d+$/i.test(raw)) {
-          provider = "tmdb";
-          value = raw.replace(/^tmdb:/i, "");
-        } else if (/^\d+$/.test(raw)) {
-          provider = "tmdb";
-          value = raw;
-        } else if (mapped.tmdbId) {
-          provider = "tmdb";
-          value = mapped.tmdbId;
-        }
-        const shouldMap = provider === "kitsu" || normalizedType !== "movie" || normalizedType === "anime" || provider && (providerContext && (providerContext.mappingLanguage || providerContext.easyCatalogsLangIt || providerContext.longSeries));
-        if (shouldMap && provider && value) {
-          const payload = yield fetchMapping(provider, value, season, episode, providerContext);
-          const normalized = normalizeMappingPayload(payload);
-          if (normalized) {
-            if (normalized.tmdbId) mapped.tmdbId = normalized.tmdbId;
-            if (normalized.imdbId) mapped.imdbId = normalized.imdbId;
-            if (normalized.mappedSeason !== null) mapped.season = normalized.mappedSeason;
-            if (normalized.mappedEpisode) mapped.episode = normalized.mappedEpisode;
-            if (normalized.rawEpisodeNumber && (normalized.longSeries || normalized.episodeMode === "absolute")) {
-              mapped.episode = normalized.rawEpisodeNumber;
-            }
-            if (normalized.seasonName) mapped.seasonName = normalized.seasonName;
-            mapped.titleHints.push(...normalized.titleHints);
-            if (normalized.longSeries) mapped.longSeries = true;
-            if (normalized.episodeMode) mapped.episodeMode = normalized.episodeMode;
-          }
-        }
-        if (mapped.longSeries && mapped.episodeMode === "absolute") {
-          const requestedEpisode = Number.parseInt(String(episode || ""), 10);
-          if (Number.isInteger(requestedEpisode) && requestedEpisode > 0 && mapped.episode === requestedEpisode) {
-            mapped.season = 1;
-          }
-        }
-        mapped.titleHints = [...new Set(mapped.titleHints.map((x) => String(x).trim()).filter(Boolean))];
-        return mapped;
-      });
-    }
-    function resolveTmdbId(id, normalizedType, providerContext, mappedRequest = null) {
-      return __async(this, null, function* () {
-        if (mappedRequest && mappedRequest.tmdbId) return mappedRequest.tmdbId;
-        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
-        if (contextTmdbId) return contextTmdbId;
-        const raw = String(id || "").trim();
-        if (/^tmdb:\d+$/i.test(raw)) return raw.replace(/^tmdb:/i, "");
-        if (/^\d+$/.test(raw)) return raw;
-        if (/^tt\d+$/i.test(raw)) {
-          const data = yield fetchTmdbJson(`/find/${encodeURIComponent(raw)}?external_source=imdb_id`);
-          if (!data) return null;
-          if (normalizedType === "movie" && data.movie_results && data.movie_results[0]) return String(data.movie_results[0].id);
-          if (data.tv_results && data.tv_results[0]) return String(data.tv_results[0].id);
-        }
-        return null;
-      });
-    }
-    function getTmdbInfo(tmdbId, normalizedType) {
-      return __async(this, null, function* () {
-        const endpoint = normalizedType === "movie" ? "movie" : "tv";
-        const info = yield fetchTmdbJson(`/${endpoint}/${encodeURIComponent(tmdbId)}`);
-        if (!info) return null;
-        let external = null;
-        if (normalizedType !== "movie") {
-          external = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/external_ids`);
-        }
-        return {
-          id: tmdbId,
-          type: normalizedType === "movie" ? "movie" : "tv",
-          title: info.title || info.name || "",
-          originalTitle: info.original_title || info.original_name || "",
-          year: String((info.release_date || info.first_air_date || "").split("-")[0] || ""),
-          overview: info.overview || "",
-          numberOfEpisodes: info.number_of_episodes || null,
-          numberOfSeasons: info.number_of_seasons || null,
-          imdbId: info.imdb_id || external && external.imdb_id || null
-        };
-      });
-    }
-    function getEpisodeGroupHints(tmdbId, season, episode) {
-      return __async(this, null, function* () {
-        const hints = [];
-        const groups = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/episode_groups`);
-        if (!groups || !Array.isArray(groups.results)) return hints;
-        const groupIds = groups.results.filter((g) => [1, 3, 4, 6].includes(Number(g.type)) || /absolute|dvd|arc|saga|season/i.test(String(g.name || ""))).slice(0, 8).map((g) => g.id).filter(Boolean);
-        const details = yield Promise.all(groupIds.map((id) => fetchTmdbJson(`/tv/episode_group/${encodeURIComponent(id)}`).catch(() => null)));
-        for (const detail of details.filter(Boolean)) {
-          for (const group of detail.groups || []) {
-            const order = Number.parseInt(String(group.order || group.season_number || ""), 10);
-            if (Number.isInteger(order) && order > 0 && order !== Number(season)) continue;
-            const episodes = Array.isArray(group.episodes) ? group.episodes : [];
-            const ep = episodes.find((item) => Number(item.order) === Number(episode) || Number(item.episode_number) === Number(episode));
-            if (ep && ep.name) hints.push(ep.name);
-          }
-        }
-        return [...new Set(hints.filter(Boolean))];
-      });
-    }
-    function extractSearchResults(html) {
-      const results = [];
-      const linkRegex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let match;
-      while ((match = linkRegex.exec(html)) !== null) {
-        const href = resolveUrl(match[1]);
-        const title = stripTags(match[2]);
-        if (!href || !title) continue;
-        if (!href.startsWith(`${BASE_URL}/`)) continue;
-        if (/\/(?:category|tag|author|page|wp-|nuovi-ep|film\/?$|elenco|richieste|istruzioni)/i.test(href)) continue;
-        results.push({ url: href, title });
-      }
-      return Array.from(new Map(results.map((item) => [item.url, item])).values());
-    }
-    function searchProvider(info) {
-      return __async(this, null, function* () {
-        const queries = [...new Set(
-          [info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && q.length > 1).map((q) => q.replace(/[^\x00-\x7F]/g, "").trim()).filter((q) => q.length > 1)
-        )].slice(0, 3);
-        const pages = yield Promise.all(queries.map((q) => fetchHtml(`${BASE_URL}/?s=${encodeURIComponent(q)}`).catch(() => "")));
-        return pages.flatMap(extractSearchResults);
-      });
-    }
-    function pageText(html) {
-      return stripTags(
-        String(html || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>|<\/h\d>/gi, "\n")
-      );
-    }
-    function scoreCandidate(candidate, html, info) {
-      const titleScore = normalizeTitle(candidate.title);
-      const wanted = normalizeTitle(info.title);
-      const wantedOrig = normalizeTitle(info.originalTitle);
-      const text = pageText(html);
-      const lowText = text.toLowerCase();
-      let score = 0;
-      const titleClean = decodeEntitiesBasic(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
-      const wantedClean = info.title.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
-      const wantedOrigClean = (info.originalTitle || "").toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
-      if (titleScore && (titleScore === wanted || wantedOrig && titleScore === wantedOrig)) {
-        score += 60;
-      } else if (titleScore && wanted && (titleScore.includes(wanted) || wanted.includes(titleScore))) {
-        score += 40;
-      } else if (titleScore && wantedOrig && (titleScore.includes(wantedOrig) || wantedOrig.includes(titleScore))) {
-        score += 40;
-      } else {
-        const w1 = wantedClean.split(/\s+/).filter((w) => w.length > 3);
-        const w2 = titleClean.split(/\s+/).filter((w) => w.length > 3);
-        const intersection = w1.filter((w) => w2.includes(w));
-        if (intersection.length > 0) score += 25 * intersection.length;
-      }
-      if (info.year && new RegExp(`\\b${info.year}\\b`).test(text)) score += 30;
-      if (info.type === "tv") {
-        if (/serie tv|prima stagione|stagione|episodi|1\s*[x×]\s*0?1/i.test(lowText)) score += 30;
-        if (/streaming film|film in streaming/i.test(lowText)) score -= 40;
-      } else {
-        if (/streaming film|film in streaming/i.test(lowText)) score += 30;
-        if (/prima stagione|stagione/i.test(lowText)) score -= 40;
-      }
-      return score;
-      if (info.overview) {
-        const words = info.overview.toLowerCase().replace(/[^a-z0-9à-ÿ ]/gi, " ").split(/\s+/).filter((w) => w.length > 5).slice(0, 15);
-        const hits = words.filter((w) => lowText.includes(w)).length;
-        if (hits >= 2) score += Math.min(20, hits * 4);
-      }
-      return score;
-    }
-    function pickCandidate(candidates, info) {
-      return __async(this, null, function* () {
-        const unique = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, 8);
-        const checked = yield Promise.all(unique.map((candidate) => __async(null, null, function* () {
-          try {
-            const html = yield fetchHtml(candidate.url);
-            return __spreadProps(__spreadValues({}, candidate), { html, score: scoreCandidate(candidate, html, info) });
-          } catch (e) {
-            return null;
-          }
-        })));
-        const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
-        if (info.year) {
-          const wanted = normalizeTitle(info.title);
-          const wantedOrig = normalizeTitle(info.originalTitle);
-          const yearMatch = ranked.find((candidate) => {
-            const haystack = `${candidate.title || ""} ${candidate.url || ""}`.toLowerCase();
-            const normalizedCandidate = normalizeTitle(candidate.title || candidate.url || "");
-            return haystack.includes(String(info.year)) && (normalizedCandidate.includes(wanted) || wantedOrig && normalizedCandidate.includes(wantedOrig) || wanted && wanted.includes(normalizedCandidate.replace(String(info.year), "")));
-          });
-          if (yearMatch && yearMatch.score >= 40) return yearMatch;
-        }
-        const best = ranked[0];
-        const second = ranked[1];
-        if (!best || best.score < 50) return null;
-        if (second && best.score - second.score < 15 && best.score < 95) return null;
-        return best;
-      });
-    }
-    function extractAnchors(html) {
-      const anchors = [];
-      const regex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        const href = resolveUrl(match[1]);
-        const text = stripTags(match[2]);
-        if (href) anchors.push({ text, href, index: match.index, raw: match[0] || "" });
-      }
-      return anchors;
-    }
-    function isHostLink(anchor) {
-      const value = `${anchor.text} ${anchor.href}`.toLowerCase();
-      return /(maxstream|stayonline|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
-    }
-    function detectHost(anchorOrUrl) {
-      const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
-      const lower = String(value || "").toLowerCase();
-      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) return "deltabit";
-      if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
-      if (lower.includes("maxstream") || lower.includes("stayonline.pro") || lower.includes("uprot.net")) return "maxstream";
-      return null;
-    }
-    function isRedirectorUrl(url) {
-      const lower = String(url || "").toLowerCase();
-      return lower.includes("uprot.net") || lower.includes("clicka.cc") || lower.includes("safego.cc");
-    }
-    function getUrlHost(url) {
-      try {
-        return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-      } catch (e) {
-        return "";
-      }
-    }
-    function getRootDomain(host) {
-      const parts = String(host || "").toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
-      return parts.length >= 2 ? parts.slice(-2).join(".") : parts.join(".");
-    }
-    function domainMatchesHost(domain, host) {
-      const cookieDomain = String(domain || "").toLowerCase().replace(/^\./, "").replace(/^www\./, "");
-      const targetHost = String(host || "").toLowerCase().replace(/^www\./, "");
-      if (!cookieDomain || !targetHost) return false;
-      return targetHost === cookieDomain || targetHost.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${targetHost}`);
-    }
-    function getWarmupFinalHostProvider(url) {
-      const lower = String(url || "").toLowerCase();
-      if (lower.includes("maxstream.video")) return "maxstream";
-      if (lower.includes("stayonline.pro")) return "stayonline";
-      return null;
-    }
-    function warmupFinalHostSession(url) {
-      return __async(this, null, function* () {
-        const normalizedUrl = normalizeHostUrl(url);
-        const provider = getWarmupFinalHostProvider(normalizedUrl);
-        if (!normalizedUrl || !provider) {
-          return { attempted: false, ok: true, provider: null };
-        }
-        try {
-          yield smartFetch(normalizedUrl, provider, {
-            provider,
-            timeout: 3e4,
-            headers: {
-              "Referer": `${BASE_URL}/`,
-              "Accept-Language": "en-US,en;q=0.5"
-            }
-          });
-          return { attempted: true, ok: true, provider };
-        } catch (e) {
-          return { attempted: true, ok: false, provider, error: e.message };
-        }
-      });
-    }
-    function findRedirectorOrHostUrl(text) {
-      const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[a-z]+\/[^"'<>\\\s]+/ig;
-      let match;
-      while ((match = regex.exec(String(text || ""))) !== null) {
-        const candidate = decodeEntitiesBasic(match[0]).replace(/[),.;]+$/, "");
-        if (!/\.(?:ico|png|jpe?g|gif|svg|webp|css|js)(?:$|[?#])/i.test(candidate)) return candidate;
-      }
-      return null;
-    }
-    function decodeSafeGoUrl(url) {
-      try {
-        const parsed = new URL(url);
-        if (!parsed.hostname.toLowerCase().includes("safego.cc")) return null;
-        const encoded = parsed.searchParams.get("url");
-        if (!encoded) return null;
-        const decoded = Buffer.from(encoded, "base64").toString("utf8").trim();
-        if (/^https?:\/\//i.test(decoded)) return decoded;
-      } catch (e) {
-      }
-      return null;
-    }
-    function findEpisodeOffset(html, season, episode, episodeHints = []) {
-      const candidates = [
-        new RegExp(`${season}\\s*[x\xD7]\\s*0?${episode}\\b`, "i"),
-        new RegExp(`stagione\\s*${season}[^\\n<]{0,80}episodio\\s*0?${episode}\\b`, "i")
-      ];
-      for (const hint of episodeHints) {
-        const clean = String(hint || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        if (clean.length > 2) candidates.push(new RegExp(clean, "i"));
-      }
-      for (const regex of candidates) {
-        const match = regex.exec(decodeEntitiesBasic(html));
-        if (match) return match.index;
-      }
-      return -1;
-    }
-    function extractEpisodeLinks(html, season, episode, episodeHints = []) {
-      const anchors = extractAnchors(html).filter(isHostLink);
-      if (anchors.length === 0) return [];
-      const start = findEpisodeOffset(html, season, episode, episodeHints);
-      if (start >= 0) {
-        const next = findEpisodeOffset(html.slice(start + 20), season, Number(episode) + 1, []);
-        const end = next >= 0 ? start + 20 + next : Number.MAX_SAFE_INTEGER;
-        const scoped = anchors.filter((a) => a.index >= start && a.index < end);
-        if (scoped.length > 0) return scoped.map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
-      }
-      const ep = Number.parseInt(String(episode || ""), 10) || 1;
-      const perEpisode = Math.max(1, Math.round(anchors.length / Math.max(ep, 1)));
-      return anchors.slice((ep - 1) * perEpisode, ep * perEpisode).map((a) => ({ url: a.href, host: detectHost(a) })).filter((x) => x.host);
-    }
-    function normalizeHostUrl(url) {
-      if (!url) return null;
-      return decodeEntitiesBasic(String(url)).trim();
-    }
-    function resolveShortlink(url) {
-      return __async(this, null, function* () {
-        var _a, _b, _c, _d;
-        console.log(`[EuroStreaming] Tentativo di risoluzione link breve: ${url}`);
-        traceRedirect("start", { url });
-        if (url.includes("uprot.net/msf/")) {
-          traceRedirect("normalize_uprot_msf", { from: url, to: url.replace("/msf/", "/mse/") });
-          url = url.replace("/msf/", "/mse/");
-        }
-        let currentUrl = url;
-        let hops = 0;
-        while (hops < 4 && isRedirectorUrl(currentUrl)) {
-          hops++;
-          traceRedirect("hop_start", { hop: hops, currentUrl });
-          try {
-            const decodedSafeGoUrl = decodeSafeGoUrl(currentUrl);
-            if (decodedSafeGoUrl) {
-              traceRedirect("decoded_safego_url", { hop: hops, from: currentUrl, to: decodedSafeGoUrl });
-              currentUrl = decodedSafeGoUrl;
-              if (!isRedirectorUrl(currentUrl)) break;
-              continue;
-            }
-            const fetchMeta = {};
-            const html = yield fetchHtml(currentUrl, { meta: fetchMeta });
-            traceRedirect("fetch_done", {
-              hop: hops,
-              currentUrl,
-              finalUrl: fetchMeta.finalUrl || null,
-              htmlLength: typeof html === "string" ? html.length : null
-            });
-            if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && !isRedirectorUrl(fetchMeta.finalUrl)) {
-              traceRedirect("final_url_non_redirector", { hop: hops, finalUrl: fetchMeta.finalUrl });
-              currentUrl = fetchMeta.finalUrl;
-              break;
-            }
-            if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && isRedirectorUrl(fetchMeta.finalUrl)) {
-              traceRedirect("final_url_redirector", { hop: hops, finalUrl: fetchMeta.finalUrl });
-              currentUrl = fetchMeta.finalUrl;
-              continue;
-            }
-            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*(?:captcha|secure)[^"']*|data:image\/png;base64,[^"']+)["']/i);
-            const formMatch = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>([\s\S]*?)<\/form>/i);
-            if (captchaMatch && formMatch) {
-              console.log(`[EuroStreaming] Captcha numerico rilevato per ${currentUrl}. Risoluzione in corso...`);
-              traceRedirect("captcha_detected", {
-                hop: hops,
-                currentUrl,
-                inlineImage: /^data:image\//i.test(captchaMatch[1] || "")
-              });
-              let base64 = "";
-              if (/^data:image\/[^;]+;base64,/i.test(captchaMatch[1])) {
-                base64 = captchaMatch[1].split(",")[1] || "";
-              } else {
-                const captchaUrl = new URL(captchaMatch[1], currentUrl).toString();
-                const imgData = yield smartFetch(captchaUrl, BASE_URL, {
-                  provider: PROVIDER,
-                  responseType: "arraybuffer",
-                  headers: { "Referer": currentUrl }
-                });
-                base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
-              }
-              const captchaCode = yield solveNumericCaptcha(base64);
-              if (captchaCode) {
-                console.log(`[EuroStreaming] Captcha risolto: ${captchaCode}. Sblocco link...`);
-                traceRedirect("captcha_solved", { hop: hops, currentUrl, codeLength: String(captchaCode).length });
-                const inputs = {};
-                const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
-                let inputMatch;
-                while ((inputMatch = inputRegex.exec(formMatch[1])) !== null) {
-                  const inputHtml = inputMatch[0] || "";
-                  inputs[inputMatch[1]] = decodeEntitiesBasic(((_a = inputHtml.match(/\bvalue=["']([^"']*)["']/i)) == null ? void 0 : _a[1]) || "");
-                }
-                const captchaFieldName = ((_b = formMatch[1].match(/name=["']([^"']*(?:captcha|captch|code|response)[^"']*)["']/i)) == null ? void 0 : _b[1]) || "captcha";
-                inputs[captchaFieldName] = captchaCode;
-                const formOpen = ((_c = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>/i)) == null ? void 0 : _c[0]) || "";
-                const action = ((_d = formOpen.match(/\baction=["']([^"']+)["']/i)) == null ? void 0 : _d[1]) || currentUrl;
-                const postUrl = new URL(action, currentUrl).toString();
-                const postBody = new URLSearchParams(inputs).toString();
-                const postMeta = {};
-                traceRedirect("captcha_post_start", {
-                  hop: hops,
-                  postUrl,
-                  fieldNames: Object.keys(inputs)
-                });
-                const postHtml = yield smartFetch(postUrl, BASE_URL, {
-                  method: "POST",
-                  provider: PROVIDER,
-                  meta: postMeta,
-                  headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Referer": currentUrl,
-                    "Origin": new URL(currentUrl).origin
-                  },
-                  body: postBody
-                });
-                traceRedirect("captcha_post_done", {
-                  hop: hops,
-                  postUrl,
-                  finalUrl: postMeta.finalUrl || null,
-                  htmlLength: typeof postHtml === "string" ? postHtml.length : null
-                });
-                if (postMeta.finalUrl && postMeta.finalUrl !== currentUrl) {
-                  traceRedirect("captcha_post_final_url", { hop: hops, finalUrl: postMeta.finalUrl });
-                  currentUrl = postMeta.finalUrl;
-                  if (!isRedirectorUrl(currentUrl)) break;
-                  continue;
-                }
-                const finalUrl = findRedirectorOrHostUrl(postHtml);
-                if (finalUrl) {
-                  traceRedirect("captcha_post_found_url", { hop: hops, finalUrl });
-                  currentUrl = finalUrl;
-                  if (!isRedirectorUrl(currentUrl)) break;
-                  continue;
-                }
-                traceRedirect("captcha_post_no_url", { hop: hops, currentUrl });
-              } else {
-                traceRedirect("captcha_ocr_empty", { hop: hops, currentUrl });
-              }
-            }
-            const linkUrl = findRedirectorOrHostUrl(html);
-            if (linkUrl) {
-              traceRedirect("fallback_found_url", { hop: hops, linkUrl });
-              currentUrl = new URL(linkUrl, currentUrl).toString();
-              if (!isRedirectorUrl(currentUrl)) break;
-              continue;
-            }
-            const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
-            if (deltabitMatch) {
-              traceRedirect("fallback_deltabit_match", { hop: hops, url: deltabitMatch[0] });
-              currentUrl = deltabitMatch[0];
-              break;
-            }
-            const refreshMatch = html.match(new RegExp(`url=(https?:\\/\\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\\.[^"']+(?<!\\.ico|\\.png|\\.jpg))`, "i"));
-            if (refreshMatch) {
-              traceRedirect("fallback_refresh_match", { hop: hops, url: refreshMatch[1] });
-              currentUrl = decodeEntitiesBasic(refreshMatch[1]);
-              if (!isRedirectorUrl(currentUrl)) break;
-              continue;
-            }
-            traceRedirect("stop_no_candidate_url", { hop: hops, currentUrl });
-            break;
-          } catch (e) {
-            traceRedirect("error", { hop: hops, currentUrl, message: e.message });
-            if (isFlareSolverrBlockedError(e)) {
-              console.warn(`[EuroStreaming] Risoluzione shortlink saltata per cooldown/blocco bypass ${currentUrl}:`, e.message);
-            } else {
-              console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
-            }
-            break;
-          }
-        }
-        traceRedirect("end", { url, currentUrl, stillRedirector: isRedirectorUrl(currentUrl), hops });
-        return currentUrl;
-      });
-    }
-    function extractStreamFromHost(link, displayName) {
-      return __async(this, null, function* () {
-        let hostUrl = normalizeHostUrl(link && link.url ? link.url : link);
-        if (!hostUrl) return [];
-        try {
-          hostUrl = yield resolveShortlink(hostUrl);
-          const host = detectHost(hostUrl) || link && link.host;
-          if (!host) {
-            traceRedirect("extract_stop_no_host", { hostUrl, originalHost: link && link.host || null });
-            return [];
-          }
-          let extracted = null;
-          const lower = hostUrl.toLowerCase();
-          if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) {
-            extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
-          } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
-            extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
-          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
-            extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
-          }
-          traceRedirect("extractor_done", {
-            host,
-            hostUrl,
-            hasResult: Boolean(extracted),
-            resultCount: Array.isArray(extracted) ? extracted.length : extracted ? 1 : 0
-          });
-          const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
-          let quality = "720p";
-          let proxySourceUrl = hostUrl;
-          let playbackUrl = hostUrl;
-          let directStreamHeaders = null;
-          for (const item of items) {
-            const streamUrl = typeof item === "string" ? item : item.url;
-            if (!streamUrl) continue;
-            const headers = typeof item === "object" ? item.headers : null;
-            const referer = headers && (headers.Referer || headers.referer || headers.Referrer || headers.referrer);
-            playbackUrl = streamUrl;
-            directStreamHeaders = headers || null;
-            if (host === "maxstream" && item && typeof item === "object" && item.sourceUrl) {
-              proxySourceUrl = item.sourceUrl;
-            }
-            if (host === "deltabit" && referer && String(referer).toLowerCase().includes("deltabit")) {
-              proxySourceUrl = referer;
-            }
-            if (streamUrl.includes(".m3u8")) {
-              const detected = yield checkQualityFromPlaylist(streamUrl, headers || {});
-              if (detected) {
-                quality = detected;
-                break;
-              }
-            }
-          }
-          if (isRedirectorUrl(proxySourceUrl)) {
-            traceRedirect("extract_stop_still_redirector", { host, proxySourceUrl, hostUrl });
-            console.warn(`[EuroStreaming] Redirector saltato per ${host}: ${proxySourceUrl}`);
-            return [];
-          }
-          return [formatStream({
-            url: playbackUrl,
-            easyProxySourceUrl: proxySourceUrl,
-            host,
-            headers: directStreamHeaders,
-            name: `EuroStreaming - ${host}`,
-            title: displayName,
-            quality,
-            type: "direct"
-          }, "EuroStreaming")];
-        } catch (e) {
-          console.error(`[EuroStreaming] Extraction error for ${hostUrl}:`, e.message);
-          return [];
-        }
-      });
-    }
-    function getStreams2(id, type, season, episode, providerContext = null) {
-      return __async(this, null, function* () {
-        const benchStart = Date.now();
-        const bench = [];
-        const mark = (step, meta = {}) => {
-          if (STEP_BENCH_ENABLED) bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
-        };
-        try {
-          const requestedType = String(type || "").toLowerCase();
-          if (requestedType === "movie") return [];
-          const normalizedType = "tv";
-          const mappedRequest = yield resolveMappedRequest(id, normalizedType, season, episode, providerContext);
-          mark("mapping_done", {
-            tmdb: mappedRequest.tmdbId,
-            season: mappedRequest.season,
-            episode: mappedRequest.episode,
-            mode: mappedRequest.episodeMode || null
-          });
-          const tmdbId = yield resolveTmdbId(id, normalizedType, providerContext, mappedRequest);
-          if (!tmdbId) return [];
-          const info = yield getTmdbInfo(tmdbId, normalizedType);
-          mark("tmdb_done", { ok: Boolean(info) });
-          if (!info || !info.title) return [];
-          info.titleHints = mappedRequest.titleHints || [];
-          if (mappedRequest.seasonName) info.titleHints.push(mappedRequest.seasonName);
-          const candidates = yield searchProvider(info);
-          mark("search_done", { results: candidates.length });
-          if (candidates.length === 0) return [];
-          const picked = yield pickCandidate(candidates, info);
-          mark("candidate_done", { ok: Boolean(picked), score: picked && picked.score });
-          if (!picked) {
-            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_candidate" })}`);
-            return [];
-          }
-          const effectiveSeason = Number.parseInt(String(mappedRequest.season || season || ""), 10) || 1;
-          const effectiveEpisode = Number.parseInt(String(mappedRequest.episode || episode || ""), 10) || 1;
-          const episodeHints = normalizedType === "tv" ? yield getEpisodeGroupHints(tmdbId, effectiveSeason, effectiveEpisode) : [];
-          const links = extractEpisodeLinks(picked.html, effectiveSeason, effectiveEpisode, episodeHints);
-          mark("links_done", { links: links.length });
-          if (links.length === 0) {
-            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench, msg: "no_links" })}`);
-            return [];
-          }
-          const displayName = `${info.title} ${effectiveSeason}x${effectiveEpisode}`;
-          let streams = [];
-          if (providerContext && providerContext.format === "links") {
-            const resolvedLinks = yield Promise.all(links.map((l) => __async(null, null, function* () {
-              return {
-                host: l.host,
-                url: yield resolveShortlink(l.url)
-              };
-            })));
-            if (STEP_BENCH_ENABLED) console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), totalMs: Date.now() - benchStart, msg: "returning_links" })}`);
-            return { links: resolvedLinks };
-          }
-          const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values()).slice(0, 5);
-          for (const link of uniqueLinks) {
-            const extractedStreams = yield extractStreamFromHost(link, displayName);
-            streams.push(...extractedStreams.filter(Boolean));
-          }
-          mark("extract_done", { streams: streams.length });
-          if (STEP_BENCH_ENABLED) {
-            console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
-          }
-          return streams;
-        } catch (e) {
-          if (STEP_BENCH_ENABLED) {
-            console.log(`[EuroStreamingBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e.message })}`);
-          }
-          console.error("[EuroStreaming] Error:", e);
-          return [];
-        }
-      });
-    }
-    function warmupRedirectors() {
-      return __async(this, arguments, function* (urls = []) {
-        const targets = Array.isArray(urls) ? urls : [];
-        const results = [];
-        for (const rawUrl of targets) {
-          const url = normalizeHostUrl(rawUrl);
-          if (!url) continue;
-          if (!isRedirectorUrl(url)) {
-            const hostWarmup = yield warmupFinalHostSession(url);
-            if (hostWarmup.attempted) {
-              results.push({
-                url,
-                resolvedUrl: url,
-                ok: hostWarmup.ok,
-                hostWarmupProvider: hostWarmup.provider,
-                hostWarmupOk: hostWarmup.ok,
-                error: hostWarmup.error
-              });
-            }
-            continue;
-          }
-          try {
-            const resolvedUrl = yield resolveShortlink(url);
-            const resolvedOk = Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl));
-            const hostWarmup = resolvedOk ? yield warmupFinalHostSession(resolvedUrl) : { attempted: false, ok: true, provider: null };
-            results.push({
-              url,
-              resolvedUrl,
-              ok: resolvedOk && hostWarmup.ok,
-              hostWarmupProvider: hostWarmup.provider,
-              hostWarmupOk: hostWarmup.attempted ? hostWarmup.ok : void 0,
-              error: hostWarmup.error
-            });
-          } catch (e) {
-            results.push({ url, error: e.message, ok: false });
-          }
-        }
-        return results;
-      });
-    }
-    function extractWarmupRedirectorUrlsFromHtml(html, limit = 5) {
-      const max = Math.max(1, Number.parseInt(String(limit || 5), 10) || 5);
-      const urls = [];
-      const addUrl = (rawUrl) => {
-        const url = normalizeHostUrl(rawUrl);
-        if (url && isRedirectorUrl(url) && !urls.includes(url)) urls.push(url);
-      };
-      for (const anchor of extractAnchors(html)) {
-        addUrl(anchor.href);
-      }
-      const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:uprot\.net|clicka\.cc|safego\.cc)\/[^"'<>\\\s]+/ig;
-      let match;
-      while ((match = regex.exec(String(html || ""))) !== null) {
-        addUrl(decodeEntitiesBasic(match[0]).replace(/[),.;]+$/, ""));
-      }
-      return urls.sort((a, b) => {
-        const score = (url) => {
-          const lower = String(url || "").toLowerCase();
-          if (lower.includes("uprot.net")) return 0;
-          if (lower.includes("safego.cc")) return 1;
-          return 2;
-        };
-        return score(a) - score(b);
-      }).slice(0, max);
-    }
-    function loadSavedDiscoveryHtml(providerNames, targetUrl) {
-      const targetHost = getUrlHost(targetUrl);
-      const targetRoot = getRootDomain(targetHost);
-      const maxAgeMs = 2 * 60 * 60 * 1e3;
-      for (const providerName of providerNames) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${providerName}.json`);
-        if (!fs.existsSync(sessionFile)) continue;
-        try {
-          const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-          const ageMs = Date.now() - (data.timestamp || 0);
-          if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) continue;
-          const response = typeof data.response === "string" ? data.response : "";
-          if (response.length < 500) continue;
-          if (!/(?:uprot\.net|clicka\.cc|safego\.cc)/i.test(response)) continue;
-          const sessionHost = getUrlHost(data.url);
-          const sessionRoot = getRootDomain(sessionHost);
-          const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
-          const matchesTarget = targetRoot && sessionRoot && targetRoot === sessionRoot || cookieDomains.some((domain) => domainMatchesHost(domain, targetHost));
-          if (!matchesTarget) continue;
-          console.log(`[EuroStreaming] Discovery redirector da HTML sessione salvata (${providerName}, ${Math.round(ageMs / 6e4)} min fa).`);
-          return response;
-        } catch (e) {
-        }
-      }
-      return null;
-    }
-    function discoverRedirectorWarmupUrls(pageUrl, limit = 5) {
-      return __async(this, null, function* () {
-        const normalizedPageUrl = normalizeHostUrl(pageUrl);
-        if (!normalizedPageUrl) return [];
-        const savedHtml = loadSavedDiscoveryHtml(["eurostreaming", "eurostreamings"], normalizedPageUrl);
-        const html = savedHtml || (yield fetchHtml(normalizedPageUrl));
-        return extractWarmupRedirectorUrlsFromHtml(html, limit);
-      });
-    }
-    module2.exports = { getStreams: getStreams2, warmupRedirectors, discoverRedirectorWarmupUrls };
-  }
-});
-
-// src/cb01/index.js
-var require_cb01 = __commonJS({
-  "src/cb01/index.js"(exports2, module2) {
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
-    var { fetchWithTimeout } = require_fetch_helper();
-    var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
-    var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
-    if (!IS_SERVER) {
-      module2.exports = {
-        getStreams: (id, type, season, episode) => __async(null, null, function* () {
-          try {
-            const apiUrl = `https://easystreams.realbestia.com/resolve/cb01?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}&s=${season || 1}&ep=${episode || 1}&format=links`;
-            const response = yield fetch(apiUrl);
-            const data = yield response.json();
-            const rawLinks = data.links || [];
-            console.log(`[CB01-Client] Trovati ${rawLinks.length} link dal server.`);
-            const streams = [];
-            for (const link of rawLinks) {
-              try {
-                const sourceUrl = link.url;
-                const lower = String(sourceUrl || "").toLowerCase();
-                let extracted = null;
-                if (lower.includes("maxstream") || lower.includes("uprot.net")) {
-                  extracted = yield extractMaxStream(sourceUrl, "https://cb01uno.run/");
-                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
-                  extracted = yield extractDeltaBit(sourceUrl, "https://cb01uno.run/");
-                } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
-                  streams.push(formatStream({
-                    url: sourceUrl,
-                    easyProxySourceUrl: sourceUrl,
-                    host: "mixdrop",
-                    name: "CB01 - mixdrop",
-                    title: link.title || "CB01",
-                    quality: link.quality || "720p",
-                    type: "direct"
-                  }, "CB01"));
-                  continue;
-                }
-                const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
-                for (const item of items) {
-                  const streamUrl = typeof item === "string" ? item : item.url;
-                  if (!streamUrl) continue;
-                  streams.push(formatStream({
-                    url: item.sourceUrl || sourceUrl,
-                    easyProxySourceUrl: item.sourceUrl || sourceUrl,
-                    host: link.host,
-                    headers: typeof item === "object" ? item.headers : null,
-                    name: `CB01 - ${link.host || "stream"}`,
-                    title: link.title || "CB01",
-                    quality: item.quality || link.quality || "720p",
-                    type: "direct"
-                  }, "CB01"));
-                }
-              } catch (err) {
-                console.error(`[CB01-Client] Errore estrazione:`, err.message);
-              }
-            }
-            return streams;
-          } catch (e) {
-            console.error("[CB01-Client] API Error:", e.message);
-            return [];
-          }
-        })
-      };
-      return;
-    }
-    var { smartFetch } = require_cf_handler();
-    var axios = require("axios");
-    var solveNumericCaptcha = null;
-    try {
-      solveNumericCaptcha = require_ocr().solveNumericCaptcha;
-    } catch (e) {
-      console.error("[CB01] Errore caricamento modulo OCR:", e.message);
-    }
-    var BASE_URL = "https://cb01uno.run";
-    var PROVIDER = "cb01";
-    var DISPLAY_NAME = "CB01";
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-    var FETCH_TIMEOUT = 25e3;
-    var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
-    var TRACE_REDIRECTS_ENABLED = String(process.env.TRACE_CB01_REDIRECTS || "").trim().toLowerCase() === "1";
-    function traceRedirect(step, data = {}) {
-      if (!TRACE_REDIRECTS_ENABLED) return;
-      try {
-        console.log(`[CB01Trace] ${step}: ${JSON.stringify(data)}`);
-      } catch (e) {
-        console.log(`[CB01Trace] ${step}`);
-      }
-    }
-    function decodeEntitiesBasic(str) {
-      return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&ndash;|&mdash;|&#8211;|&#8212;/g, "-").replace(/&#215;|&times;/g, "x").replace(/&#8242;/g, "'");
-    }
-    function stripTags(str) {
-      return decodeEntitiesBasic(String(str || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-    }
-    function cleanTitleForMatch(str) {
-      return decodeEntitiesBasic(str).replace(/\[[^\]]*\]/g, " ").replace(/\([^)]*\)/g, " ").replace(/\s+[-\u2013\u2014]\s+\d+\s*(?:x|\u00d7)\s*[\d/]+.*$/i, " ").replace(/\b(?:streaming|ita|sub ita|sub-ita|hd|fullhd|uhd|dvd|3d)\b/gi, " ");
-    }
-    function normalizeTitle(str) {
-      return cleanTitleForMatch(str).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
-    }
-    function extractYear(str) {
-      const match = String(str || "").match(/\b(19\d{2}|20\d{2})\b/);
-      return match ? match[1] : "";
-    }
-    function resolveUrl(href, base = BASE_URL) {
-      try {
-        return new URL(decodeEntitiesBasic(href), base).toString();
-      } catch (e) {
-        return null;
-      }
-    }
-    function fetchHtml(_0) {
-      return __async(this, arguments, function* (url, options = {}) {
-        return yield smartFetch(url, BASE_URL, __spreadValues({
-          provider: options.provider || PROVIDER,
-          timeout: options.timeout || FETCH_TIMEOUT,
-          headers: __spreadValues({
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": `${BASE_URL}/`
-          }, options.headers)
-        }, options));
-      });
-    }
-    function fetchTmdbJson(path) {
-      return __async(this, null, function* () {
-        try {
-          const sep = path.includes("?") ? "&" : "?";
-          const url = `https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY2}&language=it-IT`;
-          const response = yield fetchWithTimeout(url, { timeout: 1e4 });
-          if (!response.ok) return null;
-          return yield response.json();
-        } catch (e) {
-          return null;
-        }
-      });
-    }
-    function resolveTmdbId(id, normalizedType, providerContext = null) {
-      return __async(this, null, function* () {
-        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
-        if (contextTmdbId) return contextTmdbId;
-        const raw = String(id || "").trim();
-        if (/^tmdb:\d+$/i.test(raw)) return raw.replace(/^tmdb:/i, "");
-        if (/^\d+$/.test(raw)) return raw;
-        if (/^tt\d+$/i.test(raw)) {
-          const data = yield fetchTmdbJson(`/find/${encodeURIComponent(raw)}?external_source=imdb_id`);
-          if (!data) return null;
-          if (normalizedType === "movie" && data.movie_results && data.movie_results[0]) return String(data.movie_results[0].id);
-          if (normalizedType !== "movie" && data.tv_results && data.tv_results[0]) return String(data.tv_results[0].id);
-          if (data.movie_results && data.movie_results[0]) return String(data.movie_results[0].id);
-          if (data.tv_results && data.tv_results[0]) return String(data.tv_results[0].id);
-        }
-        return null;
-      });
-    }
-    function parseCompositeSeriesId2(rawId, season, episode) {
-      const parsed = {
-        id: String(rawId || "").trim(),
-        season: Number.isInteger(season) ? season : Number.parseInt(String(season || ""), 10) || 1,
-        episode: Number.isInteger(episode) ? episode : Number.parseInt(String(episode || ""), 10) || 1
-      };
-      const match = parsed.id.match(/^(tt\d+|\d+|tmdb:\d+|kitsu:\d+):(\d+):(\d+)$/i);
-      if (!match) return parsed;
-      parsed.id = match[1];
-      parsed.season = Number.parseInt(match[2], 10) || parsed.season;
-      parsed.episode = Number.parseInt(match[3], 10) || parsed.episode;
-      return parsed;
-    }
-    function getTmdbInfo(tmdbId, normalizedType) {
-      return __async(this, null, function* () {
-        const endpoint = normalizedType === "movie" ? "movie" : "tv";
-        const info = yield fetchTmdbJson(`/${endpoint}/${encodeURIComponent(tmdbId)}`);
-        if (!info) return null;
-        let external = null;
-        if (normalizedType !== "movie") {
-          external = yield fetchTmdbJson(`/tv/${encodeURIComponent(tmdbId)}/external_ids`);
-        }
-        return {
-          id: tmdbId,
-          type: normalizedType,
-          title: info.title || info.name || "",
-          originalTitle: info.original_title || info.original_name || "",
-          year: String((info.release_date || info.first_air_date || "").split("-")[0] || ""),
-          overview: info.overview || "",
-          imdbId: info.imdb_id || external && external.imdb_id || null
-        };
-      });
-    }
-    function getMappedRequest(season, episode, providerContext = null) {
-      const mappedSeason = Number.parseInt(String(providerContext && (providerContext.mappedSeason || providerContext.season) || season || ""), 10);
-      const mappedEpisode = Number.parseInt(String(providerContext && providerContext.mappedEpisode || episode || ""), 10);
-      const rawEpisodeNumber = Number.parseInt(String(providerContext && providerContext.rawEpisodeNumber || ""), 10);
-      const episodeMode = String(providerContext && providerContext.episodeMode || "").trim().toLowerCase();
-      return {
-        season: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : Number.parseInt(String(season || ""), 10) || 1,
-        episode: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 && episodeMode === "absolute" ? rawEpisodeNumber : Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : Number.parseInt(String(episode || ""), 10) || 1,
-        titleHints: [
-          ...Array.isArray(providerContext && providerContext.titleHints) ? providerContext.titleHints : [],
-          ...Array.isArray(providerContext && providerContext.mappedTitleHints) ? providerContext.mappedTitleHints : [],
-          providerContext && (providerContext.seasonName || providerContext.mappedSeasonName)
-        ].filter(Boolean)
-      };
-    }
-    function isCandidateUrl(url, normalizedType) {
-      try {
-        const parsed = new URL(url);
-        if (parsed.hostname.replace(/^www\./, "") !== new URL(BASE_URL).hostname) return false;
-        const parts = parsed.pathname.split("/").filter(Boolean);
-        if (normalizedType === "movie") {
-          if (parts.length !== 1) return false;
-          return !/^(category|tag|author|page|wp-|serietv|cineblog01hd|register|lostpassword|login|top-rated-film|dmca_report)$/i.test(parts[0]);
-        }
-        if (parts.length !== 2 || parts[0] !== "serietv") return false;
-        return !/^(category|tag|author|page|wp-|register|lostpassword|login|top-rated-serietv)$/i.test(parts[1]);
-      } catch (e) {
-        return false;
-      }
-    }
-    function extractSearchResults(html, normalizedType) {
-      const results = [];
-      const linkRegex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let match;
-      while ((match = linkRegex.exec(String(html || ""))) !== null) {
-        const href = resolveUrl(match[1], normalizedType === "movie" ? BASE_URL : `${BASE_URL}/serietv/`);
-        const title = stripTags(match[2]);
-        if (!href || !title) continue;
-        if (!isCandidateUrl(href, normalizedType)) continue;
-        if (/commenti|login|registrati|password|community/i.test(title)) continue;
-        results.push({ url: href, title });
-      }
-      return Array.from(new Map(results.map((item) => [item.url, item])).values());
-    }
-    function searchProvider(info, normalizedType) {
-      return __async(this, null, function* () {
-        const queries = [...new Set(
-          [info.title, info.originalTitle, ...info.titleHints || []].filter((q) => q && String(q).trim().length > 1).map((q) => String(q).replace(/[^\x00-\x7F]/g, "").trim()).filter((q) => q.length > 1)
-        )].slice(0, 4);
-        const searchBase = normalizedType === "movie" ? BASE_URL : `${BASE_URL}/serietv`;
-        const pages = yield Promise.all(queries.map((q) => fetchHtml(`${searchBase}/?s=${encodeURIComponent(q)}`).catch(() => "")));
-        return pages.flatMap((html) => extractSearchResults(html, normalizedType));
-      });
-    }
-    function pageText(html) {
-      return stripTags(
-        String(html || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>|<\/h\d>|<\/tr>/gi, "\n")
-      );
-    }
-    function scoreCandidate(candidate, html, info, normalizedType) {
-      const candidateNorm = normalizeTitle(candidate.title);
-      const wantedNorm = normalizeTitle(info.title);
-      const wantedOrigNorm = normalizeTitle(info.originalTitle);
-      const text = pageText(html);
-      const lowerText = text.toLowerCase();
-      let score = 0;
-      if (candidateNorm && (candidateNorm === wantedNorm || wantedOrigNorm && candidateNorm === wantedOrigNorm)) {
-        score += 70;
-      } else if (candidateNorm && wantedNorm && (candidateNorm.includes(wantedNorm) || wantedNorm.includes(candidateNorm))) {
-        score += 45;
-      } else if (candidateNorm && wantedOrigNorm && (candidateNorm.includes(wantedOrigNorm) || wantedOrigNorm.includes(candidateNorm))) {
-        score += 45;
-      } else {
-        const wantedWords = cleanTitleForMatch(info.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ").split(/\s+/).filter((w) => w.length > 3);
-        const candidateWords = cleanTitleForMatch(candidate.title).toLowerCase().replace(/[^a-z0-9\s]+/g, " ").split(/\s+/).filter((w) => w.length > 3);
-        const hits = wantedWords.filter((w) => candidateWords.includes(w)).length;
-        if (hits > 0) score += Math.min(35, hits * 15);
-      }
-      const candidateYear = extractYear(candidate.title);
-      if (info.year && (candidateYear === info.year || new RegExp(`\\b${info.year}\\b`).test(text))) score += normalizedType === "movie" ? 30 : 10;
-      if (normalizedType === "movie") {
-        if (/guarda il film|streaming hd|durata/i.test(lowerText)) score += 20;
-        if (/serie tv gratis|stagione/i.test(lowerText)) score -= 30;
-      } else {
-        if (/serie tv gratis|stagione|episodi|tutta la serie/i.test(lowerText)) score += 25;
-        if (/guarda il film completo/i.test(lowerText)) score -= 30;
-      }
-      return score;
-    }
-    function pickCandidate(candidates, info, normalizedType) {
-      return __async(this, null, function* () {
-        const unique = Array.from(new Map(candidates.map((c) => [c.url, c])).values()).slice(0, 10);
-        const checked = yield Promise.all(unique.map((candidate) => __async(null, null, function* () {
-          try {
-            const html = yield fetchHtml(candidate.url);
-            return __spreadProps(__spreadValues({}, candidate), { html, score: scoreCandidate(candidate, html, info, normalizedType) });
-          } catch (e) {
-            return null;
-          }
-        })));
-        const ranked = checked.filter(Boolean).sort((a, b) => b.score - a.score);
-        const best = ranked[0];
-        const second = ranked[1];
-        if (!best || best.score < 50) return null;
-        if (second && best.score - second.score < 15 && best.score < 95) return null;
-        return best;
-      });
-    }
-    function getArticleHtml(html) {
-      const match = String(html || "").match(/<article\b[^>]*class=["'][^"']*sequex-post-content[^"']*["'][^>]*>[\s\S]*?<\/article>/i);
-      return match ? match[0] : String(html || "");
-    }
-    function extractAnchors(html) {
-      const anchors = [];
-      const regex = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let match;
-      while ((match = regex.exec(String(html || ""))) !== null) {
-        const href = resolveUrl(match[1]);
-        const text = stripTags(match[2]);
-        if (href) anchors.push({ text, href, index: match.index, raw: match[0] || "" });
-      }
-      return anchors;
-    }
-    function isHostLink(anchor) {
-      const value = `${anchor && anchor.text || ""} ${anchor && anchor.href || ""} ${anchor && anchor.raw || ""}`.toLowerCase();
-      return /(stayonline\.pro|uprot\.net|maxstream|mixdrop|m1xdrop|deltabit|clicka\.cc\/(?:adelta|delta|mix)|safego\.cc)/i.test(value);
-    }
-    function detectHost(anchorOrUrl) {
-      const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
-      const lower = String(value || "").toLowerCase();
-      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) return "deltabit";
-      if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
-      if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
-      if (lower.includes("stayonline.pro") && lower.includes("mixdrop")) return "mixdrop";
-      if (lower.includes("stayonline.pro")) return "maxstream";
-      return null;
-    }
-    function getNearestSectionText(html, index) {
-      const source = String(html || "");
-      const anchorIndex = Number.isInteger(index) ? index : 0;
-      const regex = /<(?:strong|b)\b[^>]*>([\s\S]{0,160}?)<\/(?:strong|b)>/gi;
-      let match;
-      let nearest = "";
-      while ((match = regex.exec(source)) !== null) {
-        if (match.index > anchorIndex) break;
-        const text = stripTags(match[1]);
-        if (/\b(?:streaming|download)\b/i.test(text)) nearest = text;
-      }
-      return nearest;
-    }
-    function getQualityFromSectionText(text) {
-      const value = String(text || "").toLowerCase();
-      if (!value) return null;
-      if (/2160|uhd|4k/.test(value)) return "2160p";
-      if (/1080|fullhd|full hd/.test(value)) return "1080p";
-      if (/720|\bhd\b|streaming\s+hd|download\s+hd/.test(value)) return "720p";
-      if (/576/.test(value)) return "576p";
-      if (/480|dvdrip|dvd/.test(value)) return "480p";
-      if (/^streaming\s*:?\s*$/i.test(value)) return "480p";
-      return null;
-    }
-    function inferQuality(anchor, html) {
-      const sectionQuality = getQualityFromSectionText(getNearestSectionText(html, anchor && anchor.index));
-      if (sectionQuality) return sectionQuality;
-      const before = pageText(String(html || "").slice(Math.max(0, (anchor && anchor.index || 0) - 160), anchor && anchor.index || 0));
-      const around = `${anchor && anchor.text || ""} ${before}`.toLowerCase();
-      if (/2160|uhd|4k/.test(around)) return "2160p";
-      if (/1080|fullhd|full hd/.test(around)) return "1080p";
-      if (/480/.test(around)) return "480p";
-      if (/576/.test(around)) return "576p";
-      if (/720|streaming hd|\bhd\b/.test(around)) return "720p";
-      return "720p";
-    }
-    function findEpisodeOffset(html, season, episode, episodeHints = [], preferLast = false) {
-      const source = String(html || "");
-      const seasonNum = Number.parseInt(String(season || ""), 10) || 1;
-      const episodeNum = Number.parseInt(String(episode || ""), 10) || 1;
-      const episodeSeparator = "(?:x|\\u00d7|&#215;|&times;)";
-      const candidates = [
-        new RegExp(`\\b0?${seasonNum}\\s*${episodeSeparator}\\s*0?${episodeNum}\\b`, "gi"),
-        new RegExp(`stagione\\s*0?${seasonNum}[^\\n<]{0,120}episodio\\s*0?${episodeNum}\\b`, "gi"),
-        new RegExp(`episodio\\s*0?${episodeNum}\\b`, "gi")
-      ];
-      for (const hint of episodeHints) {
-        const clean = String(hint || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        if (clean.length > 2) candidates.push(new RegExp(clean, "gi"));
-      }
-      for (const regex of candidates) {
-        const matches = Array.from(source.matchAll(regex));
-        if (matches.length > 0) {
-          return preferLast ? matches[matches.length - 1].index : matches[0].index;
-        }
-      }
-      return -1;
-    }
-    function extractStreamingLinks(html, normalizedType, season, episode, episodeHints = []) {
-      const article = getArticleHtml(html);
-      const anchors = extractAnchors(article).filter(isHostLink);
-      if (anchors.length === 0) return [];
-      let scoped = anchors;
-      if (normalizedType !== "movie") {
-        const start = findEpisodeOffset(article, season, episode, episodeHints, true);
-        if (start >= 0) {
-          const next = findEpisodeOffset(article.slice(start + 20), season, Number(episode) + 1, []);
-          const end = next >= 0 ? start + 20 + next : Number.MAX_SAFE_INTEGER;
-          const episodeScoped = anchors.filter((a) => a.index >= start && a.index < end);
-          if (episodeScoped.length > 0) scoped = episodeScoped;
-        } else {
-          const folderScoped = anchors.filter((a) => isUprotFolderUrl(a.href));
-          if (folderScoped.length > 0) {
-            scoped = folderScoped;
-          } else {
-            return [];
-          }
-        }
-      }
-      const links = scoped.map((anchor) => ({
-        url: anchor.href,
-        host: detectHost(anchor),
-        quality: inferQuality(anchor, article),
-        sourceText: anchor.text
-      })).filter((link) => link.url && link.host);
-      return Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values()).slice(0, 8);
-    }
-    function normalizeHostUrl(url) {
-      if (!url) return null;
-      return decodeEntitiesBasic(String(url)).trim();
-    }
-    function isRedirectorUrl(url) {
-      const lower = String(url || "").toLowerCase();
-      return lower.includes("uprot.net") || lower.includes("clicka.cc") || lower.includes("safego.cc") || lower.includes("stayonline.pro");
-    }
-    function isUprotFolderUrl(url) {
-      try {
-        const parsed = new URL(url);
-        return parsed.hostname.toLowerCase().includes("uprot.net") && /^\/(?:msfld|msefld)\//i.test(parsed.pathname);
-      } catch (e) {
-        return false;
-      }
-    }
-    function isHardCaptchaRedirector(url) {
-      try {
-        const parsed = new URL(url);
-        if (!parsed.hostname.toLowerCase().includes("uprot.net")) return false;
-        return /^\/(?:msei|msfi|mseild|msefd)\//i.test(parsed.pathname);
-      } catch (e) {
-        return false;
-      }
-    }
-    function getSeasonEpisodeFromText(text) {
-      const value = decodeEntitiesBasic(text || "");
-      const patterns = [
-        /\bS(?:tagione)?\s*0*(\d{1,3})\s*E(?:pisodio)?\s*0*(\d{1,4})\b/i,
-        /\b0*(\d{1,3})\s*[xX\u00d7]\s*0*(\d{1,4})\b/i,
-        /\bstagione\s*0*(\d{1,3})\D{0,30}episodio\s*0*(\d{1,4})\b/i
-      ];
-      for (const pattern of patterns) {
-        const match = value.match(pattern);
-        if (match) {
-          return {
-            season: Number.parseInt(match[1], 10),
-            episode: Number.parseInt(match[2], 10)
-          };
-        }
-      }
-      return null;
-    }
-    function getQualityFromText(text, fallback = "720p") {
-      const value = String(text || "").toLowerCase();
-      if (/2160|uhd|4k/.test(value)) return "2160p";
-      if (/1080|fullhd|full hd/.test(value)) return "1080p";
-      if (/720|\.hd\.|\bhd\b/.test(value)) return "720p";
-      if (/576/.test(value)) return "576p";
-      if (/480|dvdrip|dvd/.test(value)) return "480p";
-      return fallback || "720p";
-    }
-    function extractUprotFolderEntries(html, folderUrl) {
-      const entries = [];
-      const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-      let rowMatch;
-      while ((rowMatch = rowRegex.exec(String(html || ""))) !== null) {
-        const row = rowMatch[1] || "";
-        const text = stripTags(row);
-        const parsedEpisode = getSeasonEpisodeFromText(text);
-        if (!parsedEpisode) continue;
-        const hrefs = [];
-        const hrefRegex = /href=["']([^"']+)["']/gi;
-        let hrefMatch;
-        while ((hrefMatch = hrefRegex.exec(row)) !== null) {
-          const resolved = resolveUrl(hrefMatch[1], folderUrl);
-          if (resolved) hrefs.push(resolved);
-        }
-        const watchUrl = hrefs.find((href) => /\/mse?i\//i.test(href)) || hrefs.find((href) => /\/msf/i.test(href)) || null;
-        if (!watchUrl) continue;
-        entries.push(__spreadProps(__spreadValues({}, parsedEpisode), {
-          url: watchUrl,
-          title: text.replace(/\s+ahah\s+watch\s+download\s*$/i, "").trim(),
-          quality: getQualityFromText(text)
-        }));
-      }
-      return entries;
-    }
-    function resolveUprotFolderEpisode(url, season, episode) {
-      return __async(this, null, function* () {
-        const folderUrl = normalizeHostUrl(url);
-        if (!folderUrl || !isUprotFolderUrl(folderUrl)) return null;
-        try {
-          const html = yield smartFetch(folderUrl, "uprot", {
-            provider: "uprot",
-            timeout: FETCH_TIMEOUT,
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": `${BASE_URL}/`,
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-            }
-          });
-          const entries = extractUprotFolderEntries(html, folderUrl);
-          const targetSeason = Number.parseInt(String(season || ""), 10) || 1;
-          const targetEpisode = Number.parseInt(String(episode || ""), 10) || 1;
-          const exact = entries.find((entry) => entry.season === targetSeason && entry.episode === targetEpisode);
-          if (exact) return exact;
-          const seasonEntries = entries.filter((entry) => entry.season === targetSeason);
-          const byIndex = seasonEntries[targetEpisode - 1];
-          return byIndex || null;
-        } catch (e) {
-          traceRedirect("folder_error", { url: folderUrl, season, episode, message: e.message });
-          return null;
-        }
-      });
-    }
-    function decodeSafeGoUrl(url) {
-      try {
-        const parsed = new URL(url);
-        if (!parsed.hostname.toLowerCase().includes("safego.cc")) return null;
-        const encoded = parsed.searchParams.get("url");
-        if (!encoded) return null;
-        const decoded = Buffer.from(encoded, "base64").toString("utf8").trim();
-        if (/^https?:\/\//i.test(decoded)) return decoded;
-      } catch (e) {
-      }
-      return null;
-    }
-    function resolveStayOnlineUrl(url) {
-      return __async(this, null, function* () {
-        try {
-          const parsed = new URL(url);
-          if (!parsed.hostname.toLowerCase().includes("stayonline.pro")) return null;
-          const match = parsed.pathname.match(/\/([le])\/([a-z0-9]+)\/?/i);
-          if (!match) return null;
-          const mode = match[1].toLowerCase();
-          const code = match[2];
-          const endpoint = `${parsed.origin}/ajax/${mode === "e" ? "linkEmbedView" : "linkView"}.php`;
-          const body = new URLSearchParams({ id: code }).toString();
-          const responseText = yield smartFetch(endpoint, "stayonline", {
-            provider: "stayonline",
-            method: "POST",
-            timeout: 2e4,
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Referer": url,
-              "Origin": parsed.origin,
-              "Accept": "application/json, text/javascript, */*; q=0.01",
-              "X-Requested-With": "XMLHttpRequest"
-            },
-            body
-          });
-          const parsedJson = typeof responseText === "string" ? JSON.parse(responseText) : responseText;
-          const value = parsedJson && parsedJson.data && parsedJson.data.value;
-          return /^https?:\/\//i.test(String(value || "")) ? decodeEntitiesBasic(value) : null;
-        } catch (e) {
-          traceRedirect("stayonline_error", { url, message: e.message });
-          return null;
-        }
-      });
-    }
-    function findRedirectorOrHostUrl(text) {
-      const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[a-z]+\/[^"'<>\\\s]+/ig;
-      let match;
-      while ((match = regex.exec(String(text || ""))) !== null) {
-        const candidate = decodeEntitiesBasic(match[0]).replace(/[),.;]+$/, "");
-        if (!/\.(?:ico|png|jpe?g|gif|svg|webp|css|js)(?:$|[?#])/i.test(candidate)) return candidate;
-      }
-      return null;
-    }
-    function solveCaptchaWithSession(url) {
-      return __async(this, null, function* () {
-        var _a, _b, _c, _d;
-        if (typeof solveNumericCaptcha !== "function") return null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const getResponse = yield axios({
-              url,
-              method: "GET",
-              timeout: FETCH_TIMEOUT,
-              validateStatus: false,
-              responseType: "text",
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": `${BASE_URL}/`,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-              }
-            });
-            const html = String(getResponse.data || "");
-            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*(?:captcha|secure)[^"']*|data:image\/png;base64,[^"']+)["']/i);
-            const formMatch = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>([\s\S]*?)<\/form>/i);
-            if (!captchaMatch || !formMatch) return null;
-            let base64 = "";
-            if (/^data:image\/[^;]+;base64,/i.test(captchaMatch[1])) {
-              base64 = captchaMatch[1].split(",")[1] || "";
-            } else {
-              const captchaUrl = new URL(captchaMatch[1], url).toString();
-              const imageResponse = yield axios({
-                url: captchaUrl,
-                method: "GET",
-                timeout: FETCH_TIMEOUT,
-                responseType: "arraybuffer",
-                validateStatus: false,
-                headers: {
-                  "User-Agent": USER_AGENT,
-                  "Referer": url,
-                  "Cookie": (getResponse.headers["set-cookie"] || []).map((cookie) => cookie.split(";")[0]).join("; ")
-                }
-              });
-              base64 = Buffer.from(imageResponse.data).toString("base64");
-            }
-            const captchaCode = yield solveNumericCaptcha(base64);
-            if (!/^\d{2,6}$/.test(String(captchaCode || "").trim())) continue;
-            const inputs = {};
-            const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
-            let inputMatch;
-            while ((inputMatch = inputRegex.exec(formMatch[1])) !== null) {
-              const inputHtml = inputMatch[0] || "";
-              inputs[inputMatch[1]] = decodeEntitiesBasic(((_a = inputHtml.match(/\bvalue=["']([^"']*)["']/i)) == null ? void 0 : _a[1]) || "");
-            }
-            const captchaFieldName = ((_b = formMatch[1].match(/name=["']([^"']*(?:captcha|captch|code|response)[^"']*)["']/i)) == null ? void 0 : _b[1]) || "captcha";
-            inputs[captchaFieldName] = String(captchaCode).trim();
-            const formOpen = ((_c = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>/i)) == null ? void 0 : _c[0]) || "";
-            const action = ((_d = formOpen.match(/\baction=["']([^"']+)["']/i)) == null ? void 0 : _d[1]) || url;
-            const postUrl = new URL(action, url).toString();
-            const cookieHeader = (getResponse.headers["set-cookie"] || []).map((cookie) => cookie.split(";")[0]).join("; ");
-            const postResponse = yield axios({
-              url: postUrl,
-              method: "POST",
-              data: new URLSearchParams(inputs).toString(),
-              timeout: FETCH_TIMEOUT,
-              validateStatus: false,
-              responseType: "text",
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Referer": url,
-                "Origin": new URL(url).origin,
-                "Cookie": cookieHeader
-              }
-            });
-            const finalUrl = postResponse.request && postResponse.request.res && postResponse.request.res.responseUrl;
-            if (finalUrl && finalUrl !== postUrl && !/captcha|verification/i.test(String(postResponse.data || ""))) {
-              return finalUrl;
-            }
-            const foundUrl = findRedirectorOrHostUrl(postResponse.data);
-            if (foundUrl) return new URL(foundUrl, postUrl).toString();
-          } catch (e) {
-            traceRedirect("captcha_session_error", { url, attempt: attempt + 1, message: e.message });
-          }
-        }
-        return null;
-      });
-    }
-    function resolveShortlink(url, season = 1, episode = 1) {
-      return __async(this, null, function* () {
-        var _a, _b, _c, _d;
-        let currentUrl = normalizeHostUrl(url);
-        if (!currentUrl) return null;
-        const folderEntry = yield resolveUprotFolderEpisode(currentUrl, season, episode);
-        if (folderEntry && folderEntry.url) {
-          traceRedirect("folder_resolved", { from: currentUrl, to: folderEntry.url, season: folderEntry.season, episode: folderEntry.episode });
-          return folderEntry.url;
-        }
-        if (currentUrl.includes("uprot.net/msf/")) {
-          currentUrl = currentUrl.replace("/msf/", "/mse/");
-        }
-        let hops = 0;
-        while (hops < 5 && isRedirectorUrl(currentUrl)) {
-          hops++;
-          traceRedirect("hop_start", { hop: hops, currentUrl });
-          const stayOnlineUrl = yield resolveStayOnlineUrl(currentUrl);
-          if (stayOnlineUrl) {
-            traceRedirect("stayonline_resolved", { hop: hops, from: currentUrl, to: stayOnlineUrl });
-            currentUrl = stayOnlineUrl;
-            if (isHardCaptchaRedirector(currentUrl)) break;
-            continue;
-          }
-          if (isHardCaptchaRedirector(currentUrl)) break;
-          const decodedSafeGoUrl = decodeSafeGoUrl(currentUrl);
-          if (decodedSafeGoUrl) {
-            currentUrl = decodedSafeGoUrl;
-            continue;
-          }
-          try {
-            const fetchMeta = {};
-            const html = yield fetchHtml(currentUrl, {
-              provider: (() => {
-                try {
-                  return new URL(currentUrl).hostname.split(".")[0];
-                } catch (e) {
-                  return PROVIDER;
-                }
-              })(),
-              meta: fetchMeta,
-              headers: { "Referer": `${BASE_URL}/` }
-            });
-            if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl) {
-              currentUrl = fetchMeta.finalUrl;
-              if (!isRedirectorUrl(currentUrl)) break;
-              continue;
-            }
-            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*(?:captcha|secure)[^"']*|data:image\/png;base64,[^"']+)["']/i);
-            const formMatch = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>([\s\S]*?)<\/form>/i);
-            if (captchaMatch && formMatch && typeof solveNumericCaptcha === "function") {
-              const sessionResolvedUrl = yield solveCaptchaWithSession(currentUrl);
-              if (sessionResolvedUrl) {
-                currentUrl = sessionResolvedUrl;
-                if (!isRedirectorUrl(currentUrl)) break;
-                continue;
-              }
-              let base64 = "";
-              if (/^data:image\/[^;]+;base64,/i.test(captchaMatch[1])) {
-                base64 = captchaMatch[1].split(",")[1] || "";
-              } else {
-                const captchaUrl = new URL(captchaMatch[1], currentUrl).toString();
-                const imgData = yield smartFetch(captchaUrl, BASE_URL, {
-                  provider: PROVIDER,
-                  responseType: "arraybuffer",
-                  headers: { "Referer": currentUrl }
-                });
-                base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
-              }
-              const captchaCode = yield solveNumericCaptcha(base64);
-              if (captchaCode) {
-                const inputs = {};
-                const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
-                let inputMatch;
-                while ((inputMatch = inputRegex.exec(formMatch[1])) !== null) {
-                  const inputHtml = inputMatch[0] || "";
-                  inputs[inputMatch[1]] = decodeEntitiesBasic(((_a = inputHtml.match(/\bvalue=["']([^"']*)["']/i)) == null ? void 0 : _a[1]) || "");
-                }
-                const captchaFieldName = ((_b = formMatch[1].match(/name=["']([^"']*(?:captcha|captch|code|response)[^"']*)["']/i)) == null ? void 0 : _b[1]) || "captcha";
-                inputs[captchaFieldName] = captchaCode;
-                const formOpen = ((_c = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>/i)) == null ? void 0 : _c[0]) || "";
-                const action = ((_d = formOpen.match(/\baction=["']([^"']+)["']/i)) == null ? void 0 : _d[1]) || currentUrl;
-                const postUrl = new URL(action, currentUrl).toString();
-                const postMeta = {};
-                const postHtml = yield smartFetch(postUrl, BASE_URL, {
-                  method: "POST",
-                  provider: (() => {
-                    try {
-                      return new URL(postUrl).hostname.split(".")[0];
-                    } catch (e) {
-                      return PROVIDER;
-                    }
-                  })(),
-                  meta: postMeta,
-                  headers: {
-                    "User-Agent": USER_AGENT,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Referer": currentUrl,
-                    "Origin": new URL(currentUrl).origin
-                  },
-                  body: new URLSearchParams(inputs).toString()
-                });
-                if (postMeta.finalUrl && postMeta.finalUrl !== currentUrl) {
-                  currentUrl = postMeta.finalUrl;
-                  if (!isRedirectorUrl(currentUrl)) break;
-                  continue;
-                }
-                const finalUrl = findRedirectorOrHostUrl(postHtml);
-                if (finalUrl) {
-                  currentUrl = new URL(finalUrl, postUrl).toString();
-                  if (!isRedirectorUrl(currentUrl)) break;
-                  continue;
-                }
-              }
-            }
-            const linkUrl = findRedirectorOrHostUrl(html);
-            if (linkUrl) {
-              currentUrl = new URL(linkUrl, currentUrl).toString();
-              if (!isRedirectorUrl(currentUrl)) break;
-              continue;
-            }
-            break;
-          } catch (e) {
-            traceRedirect("error", { hop: hops, currentUrl, message: e.message });
-            break;
-          }
-        }
-        return currentUrl;
-      });
-    }
-    function extractStreamFromHost(link, displayName, season = 1, episode = 1) {
-      return __async(this, null, function* () {
-        let hostUrl = normalizeHostUrl(link && link.url ? link.url : link);
-        if (!hostUrl) return [];
-        try {
-          const folderEntry = yield resolveUprotFolderEpisode(hostUrl, season, episode);
-          const isFolderEpisode = Boolean(folderEntry && folderEntry.url);
-          if (isFolderEpisode) {
-            hostUrl = folderEntry.url;
-            link = __spreadProps(__spreadValues({}, link || {}), {
-              url: hostUrl,
-              host: "maxstream",
-              quality: folderEntry.quality || link && link.quality,
-              sourceText: folderEntry.title || link && link.sourceText,
-              isFolderEpisode: true
-            });
-          } else {
-            hostUrl = yield resolveShortlink(hostUrl, season, episode);
-          }
-          const host = detectHost(hostUrl) || link && link.host;
-          if (!host) return [];
-          let extracted = null;
-          const lower = String(hostUrl || "").toLowerCase();
-          if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) {
-            extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
-          } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
-            extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
-          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
-            extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
-          }
-          const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
-          if (host === "mixdrop" && items.length === 0) return [];
-          const pageQuality = link && link.quality;
-          let quality = pageQuality || "720p";
-          let proxySourceUrl = hostUrl;
-          let playbackUrl = hostUrl;
-          let directStreamHeaders = null;
-          for (const item of items) {
-            const streamUrl = typeof item === "string" ? item : item.url;
-            if (!streamUrl) continue;
-            const headers = typeof item === "object" ? item.headers : null;
-            const referer = headers && (headers.Referer || headers.referer || headers.Referrer || headers.referrer);
-            playbackUrl = streamUrl;
-            directStreamHeaders = headers || null;
-            if (host === "maxstream" && item && typeof item === "object" && item.sourceUrl) {
-              proxySourceUrl = item.sourceUrl;
-            }
-            if (host === "deltabit" && referer && String(referer).toLowerCase().includes("deltabit")) {
-              proxySourceUrl = referer;
-            }
-            if (streamUrl.includes(".m3u8")) {
-              const detected = yield checkQualityFromPlaylist(streamUrl, headers || {});
-              if (detected && pageQuality !== "480p") {
-                quality = detected;
-                break;
-              }
-            }
-          }
-          if (isRedirectorUrl(proxySourceUrl)) return [];
-          return [formatStream({
-            url: playbackUrl,
-            easyProxySourceUrl: proxySourceUrl,
-            host,
-            headers: directStreamHeaders,
-            name: `${DISPLAY_NAME} - ${host}`,
-            title: isFolderEpisode && link && link.sourceText ? `${displayName} - ${link.sourceText}` : displayName,
-            quality,
-            type: "direct"
-          }, DISPLAY_NAME)];
-        } catch (e) {
-          console.error(`[CB01] Extraction error for ${hostUrl}:`, e.message);
-          return [];
-        }
-      });
-    }
-    function getStreams2(id, type, season, episode, providerContext = null) {
-      return __async(this, null, function* () {
-        const parsedRequest = parseCompositeSeriesId2(id, season, episode);
-        id = parsedRequest.id;
-        season = parsedRequest.season;
-        episode = parsedRequest.episode;
-        const benchStart = Date.now();
-        const bench = [];
-        const mark = (step, meta = {}) => {
-          if (STEP_BENCH_ENABLED) bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
-        };
-        try {
-          const requestedType = String(type || "").toLowerCase();
-          const normalizedType = requestedType === "movie" ? "movie" : "tv";
-          const mappedRequest = getMappedRequest(season, episode, providerContext);
-          const tmdbId = yield resolveTmdbId(id, normalizedType, providerContext);
-          mark("tmdb_id_done", { tmdb: tmdbId || null, type: normalizedType });
-          if (!tmdbId) return [];
-          const info = yield getTmdbInfo(tmdbId, normalizedType);
-          mark("tmdb_info_done", { ok: Boolean(info) });
-          if (!info || !info.title) return [];
-          info.titleHints = mappedRequest.titleHints || [];
-          const candidates = yield searchProvider(info, normalizedType);
-          mark("search_done", { results: candidates.length });
-          if (candidates.length === 0) return [];
-          const picked = yield pickCandidate(candidates, info, normalizedType);
-          mark("candidate_done", { ok: Boolean(picked), score: picked && picked.score });
-          if (!picked) return [];
-          const links = extractStreamingLinks(picked.html, normalizedType, mappedRequest.season, mappedRequest.episode, info.titleHints);
-          mark("links_done", { links: links.length });
-          if (links.length === 0) return [];
-          const displayName = normalizedType === "movie" ? `${info.title}${info.year ? ` (${info.year})` : ""}` : `${info.title} ${mappedRequest.season}x${mappedRequest.episode}`;
-          const uniqueLinks = Array.from(new Map(links.map((link) => [`${link.host}:${link.url}`, link])).values()).slice(0, 6);
-          if (providerContext && providerContext.format === "links") {
-            const resolvedLinks = yield Promise.all(uniqueLinks.map((link) => __async(null, null, function* () {
-              const folderEntry = yield resolveUprotFolderEpisode(link.url, mappedRequest.season, mappedRequest.episode);
-              let resolvedUrl = folderEntry && folderEntry.url ? folderEntry.url : yield resolveShortlink(link.url, mappedRequest.season, mappedRequest.episode);
-              const host = folderEntry ? "maxstream" : link.host;
-              if (resolvedUrl && (host === "maxstream" || /(?:uprot\.net|maxstream|stayonline\.pro)/i.test(resolvedUrl))) {
-                const extracted = yield extractMaxStream(resolvedUrl, `${BASE_URL}/`);
-                const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
-                const source = items.find((item) => item && typeof item === "object" && item.sourceUrl);
-                if (source && source.sourceUrl) resolvedUrl = source.sourceUrl;
-              } else if (resolvedUrl && host === "mixdrop") {
-                const extracted = yield extractMixDrop(resolvedUrl, `${BASE_URL}/`);
-                const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
-                if (items.length === 0) return null;
-              }
-              return {
-                host,
-                url: resolvedUrl,
-                quality: folderEntry && folderEntry.quality || link.quality,
-                title: folderEntry && folderEntry.title ? `${displayName} - ${folderEntry.title}` : displayName,
-                needsProxy: Boolean(folderEntry || host === "maxstream")
-              };
-            })));
-            return { links: resolvedLinks.filter((link) => link && link.url && !isRedirectorUrl(link.url)) };
-          }
-          let streams = [];
-          for (const link of uniqueLinks) {
-            const extractedStreams = yield extractStreamFromHost(link, displayName, mappedRequest.season, mappedRequest.episode);
-            streams.push(...extractedStreams.filter(Boolean));
-          }
-          mark("extract_done", { streams: streams.length });
-          if (STEP_BENCH_ENABLED) {
-            console.log(`[CB01Bench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
-          }
-          return streams;
-        } catch (e) {
-          if (STEP_BENCH_ENABLED) {
-            console.log(`[CB01Bench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e.message })}`);
-          }
-          console.error("[CB01] Error:", e.message);
-          return [];
-        }
-      });
-    }
-    function warmupRedirectors() {
-      return __async(this, arguments, function* (urls = []) {
-        const targets = Array.isArray(urls) ? urls : [];
-        const results = [];
-        for (const rawUrl of targets) {
-          const url = normalizeHostUrl(rawUrl);
-          if (!url || !isRedirectorUrl(url)) continue;
-          try {
-            const resolvedUrl = yield resolveShortlink(url);
-            results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl)) });
-          } catch (e) {
-            results.push({ url, error: e.message, ok: false });
-          }
-        }
-        return results;
-      });
-    }
-    function discoverRedirectorWarmupUrls(pageUrl, limit = 5) {
-      return __async(this, null, function* () {
-        const normalizedPageUrl = normalizeHostUrl(pageUrl);
-        if (!normalizedPageUrl) return [];
-        const html = yield fetchHtml(normalizedPageUrl);
-        return extractAnchors(getArticleHtml(html)).map((anchor) => normalizeHostUrl(anchor.href)).filter((url) => url && isRedirectorUrl(url)).filter((url, index, list) => list.indexOf(url) === index).slice(0, Math.max(1, Number.parseInt(String(limit || 5), 10) || 5));
-      });
-    }
-    module2.exports = { getStreams: getStreams2, warmupRedirectors, discoverRedirectorWarmupUrls };
-  }
-});
-
 // src/index.js
 var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
@@ -15514,8 +13042,6 @@ var animeunity = require_animeunity();
 var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
-var eurostreaming = require_eurostreaming();
-var cb01 = require_cb01();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -15665,22 +13191,22 @@ function getStreams(id, type, season, episode) {
       if (likelyAnime || isKitsuRequest) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity", "guardahd");
       } else {
-        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity", "cb01");
+        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity");
       }
     } else if (normalizedType === "anime") {
-      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "eurostreaming");
+      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
     } else if (normalizedType === "tv" || normalizedType === "series") {
       if (likelyAnime) {
-        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "eurostreaming");
+        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "eurostreaming", "cinemacity", "cb01");
+          selectedProviders.push("streamingcommunity", "guardoserie", "cinemacity");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "eurostreaming", "animeunity", "animeworld", "animesaturn", "cb01");
+          selectedProviders.push("streamingcommunity", "guardoserie", "cinemacity");
         }
       }
     } else {
-      selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity", "cb01");
+      selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity");
     }
     for (const providerName of [...new Set(selectedProviders)]) {
       if (providerName === "streamingcommunity") {
@@ -15719,22 +13245,11 @@ function getStreams(id, type, season, episode) {
         );
         continue;
       }
-      if (providerName === "eurostreaming") {
-        promises.push(
-          eurostreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "EuroStreaming", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "EuroStreaming", error: e, status: "rejected" }))
-        );
-        continue;
-      }
       if (providerName === "cinemacity") {
         promises.push(
           cinemacity.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "CinemaCity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "CinemaCity", error: e, status: "rejected" }))
         );
         continue;
-      }
-      if (providerName === "cb01") {
-        promises.push(
-          cb01.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "CB01", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "CB01", error: e, status: "rejected" }))
-        );
       }
     }
     const results = yield Promise.all(promises);

@@ -468,7 +468,7 @@ function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, strea
 
 function isMixdropStreamUrl(streamUrl) {
     const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent') || lower.includes('clicka.cc/mix');
+    return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent');
 }
 
 function isMixdropStream(stream) {
@@ -480,41 +480,7 @@ function isMixdropStream(stream) {
         stream?.providerName
     ].filter(Boolean).join(' ').toLowerCase();
 
-    return text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent') || text.includes('clicka.cc/mix');
-}
-
-function isMaxstreamStreamUrl(streamUrl) {
-    const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('maxstream') || lower.includes('uprot.net') || lower.includes('stayonline.pro');
-}
-
-function isMaxstreamStream(stream) {
-    const text = [
-        stream?.url,
-        stream?.easyProxySourceUrl,
-        stream?.name,
-        stream?.title,
-        stream?.providerName
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return text.includes('maxstream') || text.includes('uprot.net') || text.includes('stayonline.pro');
-}
-
-function isDeltabitStreamUrl(streamUrl) {
-    const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('deltabit') || lower.includes('clicka.cc/delta');
-}
-
-function isDeltabitStream(stream) {
-    const text = [
-        stream?.url,
-        stream?.easyProxySourceUrl,
-        stream?.name,
-        stream?.title,
-        stream?.providerName
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return text.includes('deltabit') || text.includes('clicka.cc/delta');
+    return text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent');
 }
 
 function isStreamHgStream(stream) {
@@ -1276,8 +1242,6 @@ const providers = {
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
     cinemacity: require('./src/cinemacity/index.js'),
-    eurostreaming: require('./src/eurostreaming/index.js'),
-    cb01: require('./src/cb01/index.js'),
 };
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
@@ -1340,23 +1304,23 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01'];
+                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01'];
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
-        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
+        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
     } else {
         if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming']
-                : ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity', 'cb01'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
+                : ['streamingcommunity', 'guardoserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity', 'cb01'];
+            plan = ['streamingcommunity', 'guardoserie', 'cinemacity'];
         }
     }
 
@@ -1619,30 +1583,13 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
-                            const mixdropExtension = ['eurostreaming', 'guardahd', 'cb01'].includes(name) ? 'mp4' : 'm3u8';
+                            const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
                                 'mixdrop',
                                 s.easyProxySourceUrl || s.url,
                                 mixdropExtension
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isMaxstreamStream(s)) {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'maxstream',
-                                s.easyProxySourceUrl || s.url
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isDeltabitStream(s)) {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'deltabit',
-                                s.easyProxySourceUrl || s.url,
-                                ['eurostreaming', 'cb01'].includes(name) ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
@@ -2425,8 +2372,7 @@ async function warmupProviders() {
     const failedWarmupSessions = new Set();
     const targets = [
         { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout },
-        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout },
-        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout }
+        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout }
     ];
 
     for (const target of targets) {
@@ -2449,46 +2395,6 @@ async function warmupProviders() {
                 failedWarmupSessions.add(sessionName);
             }
             console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
-        }
-    }
-
-    let redirectorWarmupUrls = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_URLS || '')
-        .split(',')
-        .map((url) => url.trim())
-        .filter((url) => /^https?:\/\//i.test(url));
-
-    const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
-    const redirectorWarmupLimit = readPositiveIntEnv('EUROSTREAMING_REDIRECTOR_WARMUP_LIMIT', 5);
-    const redirectorSessionsReady = hasAnyValidCfSession(['maxstream', 'stayonline']);
-    const eurostreamingWarmupFailed = failedWarmupSessions.has('eurostreaming') || failedWarmupSessions.has('eurostreamings');
-    if (!forceWarmup && redirectorSessionsReady) {
-        console.log('[Warmup] Redirector EuroStreaming saltati: sessione CF maxstream/stayonline valida gia presente.');
-    } else if (!forceWarmup && eurostreamingWarmupFailed && redirectorWarmupUrls.length === 0) {
-        console.log('[Warmup] Discovery redirector EuroStreaming saltata: warmup EuroStreaming appena fallito.');
-    } else if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
-        try {
-            console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);
-            redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, redirectorWarmupLimit);
-            console.log(`[Warmup] Link redirector trovati: ${redirectorWarmupUrls.length}`);
-        } catch (e) {
-            console.error(`[Warmup] Errore ricerca redirector EuroStreaming: ${e.message}`);
-        }
-    }
-
-    if ((!redirectorSessionsReady || forceWarmup) && redirectorWarmupUrls.length > 0 && providers.eurostreaming && typeof providers.eurostreaming.warmupRedirectors === 'function') {
-        console.log(`[Warmup] Risoluzione redirector EuroStreaming (${redirectorWarmupUrls.length})...`);
-        try {
-            const results = await providers.eurostreaming.warmupRedirectors(redirectorWarmupUrls);
-            for (const result of results) {
-                if (result.ok) {
-                    const hostWarmupLabel = result.hostWarmupProvider ? ` [${result.hostWarmupProvider}]` : '';
-                    console.log(`[Warmup] Redirector pronto${hostWarmupLabel}: ${result.url} -> ${result.resolvedUrl}`);
-                } else {
-                    console.error(`[Warmup] Redirector non risolto: ${result.url}${result.error ? ` (${result.error})` : ''}`);
-                }
-            }
-        } catch (e) {
-            console.error(`[Warmup] Errore redirector EuroStreaming: ${e.message}`);
         }
     }
 
