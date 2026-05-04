@@ -34,9 +34,9 @@ if (!global.fetch) {
 const https = require('https');
 const http = require('http');
 
-const IS_PRODUCTION = false;
-const VERBOSE_LOGS = true;
-const QUIET_PROVIDER_LOGS = true;
+const LOG_LEVEL = String(process.env.LOG_LEVEL || 'warn').trim().toLowerCase();
+const ENABLE_INFO_LOGS = ['debug', 'verbose', 'info'].includes(LOG_LEVEL);
+const VERBOSE_LOGS = ['debug', 'verbose'].includes(LOG_LEVEL);
 
 const PROVIDER_LOG_PREFIXES = [
     '[GuardaHD]',
@@ -54,10 +54,7 @@ const originalConsoleWarn = console.warn.bind(console);
 const originalConsoleError = console.error.bind(console);
 
 console.log = (...args) => {
-    const first = typeof args[0] === 'string' ? args[0] : '';
-    if (IS_PRODUCTION && !VERBOSE_LOGS && QUIET_PROVIDER_LOGS && first && PROVIDER_LOG_PREFIXES.some((prefix) => first.startsWith(prefix))) {
-        return;
-    }
+    if (!ENABLE_INFO_LOGS) return;
     originalConsoleLog(...sanitizeLogArgs(args));
 };
 
@@ -95,6 +92,7 @@ const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
 const express = require('express');
 const app = express();
 const path = require('path');
+const { renderLandingPage } = require('./src/views/landing_page');
 function readPositiveIntEnv(name, fallback) {
     const value = Number.parseInt(String(process.env[name] || ''), 10);
     return Number.isInteger(value) && value > 0 ? value : fallback;
@@ -400,12 +398,53 @@ function normalizeEasyProxyUrl(value) {
     return /^https?:\/\//i.test(trimmed) ? trimmed : '';
 }
 
-function resolveEasyProxyUrlFromConfig(config = null) {
-    return normalizeEasyProxyUrl(config?.easyProxyUrl);
+function normalizeEasyProxyEntry(entry, fallbackPassword = '') {
+    const url = normalizeEasyProxyUrl(entry?.url || entry);
+    if (!url) return null;
+    return {
+        url,
+        password: String(entry?.password ?? fallbackPassword ?? '').trim()
+    };
 }
 
-function resolveEasyProxyPasswordFromConfig(config = null) {
-    return String(config?.easyProxyPassword || '').trim();
+function parseEasyProxyEntries(value) {
+    if (Array.isArray(value)) return value;
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function resolveEasyProxyEntriesFromConfig(config = null) {
+    const configuredEntries = parseEasyProxyEntries(config?.easyProxies)
+        .map((entry) => normalizeEasyProxyEntry(entry))
+        .filter(Boolean);
+
+    const entries = configuredEntries.length > 0
+        ? configuredEntries
+        : String(config?.easyProxyUrls || config?.easyProxyUrl || '')
+            .split(/[\s,]+/)
+            .map((url) => normalizeEasyProxyEntry(url, config?.easyProxyPassword))
+            .filter(Boolean);
+
+    const seen = new Set();
+    return entries.filter((entry) => {
+        const token = `${entry.url}\n${entry.password}`;
+        if (seen.has(token)) return false;
+        seen.add(token);
+        return true;
+    });
+}
+
+function resolveEasyProxyModeFromConfig(config = null) {
+    const normalized = String(config?.easyProxyMode || '').trim().toLowerCase();
+    return ['load-balance', 'loadbalance', 'balanced', 'round-robin', 'roundrobin'].includes(normalized)
+        ? 'load-balance'
+        : 'failover';
 }
 
 function resolveDisabledProvidersFromConfig(config = null) {
@@ -418,9 +457,10 @@ function getMappingLanguageToken(mappingLanguage) {
     return String(mappingLanguage || '').trim().toLowerCase() === 'it' ? 'it' : 'default';
 }
 
-function getEasyProxyToken(easyProxyUrl, easyProxyPassword = '') {
-    if (!easyProxyUrl) return 'default';
-    return `${easyProxyUrl}:pwd:${easyProxyPassword || ''}`;
+function getEasyProxyEntriesToken(easyProxyEntries, easyProxyMode = 'failover') {
+    const entries = Array.isArray(easyProxyEntries) ? easyProxyEntries.filter((entry) => entry?.url) : [];
+    if (entries.length === 0) return 'default';
+    return `${easyProxyMode}:${entries.map((entry) => `${entry.url}:pwd:${entry.password || ''}`).join('|')}`;
 }
 
 function getDisabledProvidersToken(disabledProviders) {
@@ -488,6 +528,63 @@ function buildEasyProxyStreamUrl(easyProxyUrl, easyProxyPassword, streamUrl) {
     if (!proxyBaseUrl || !normalizedStreamUrl) return normalizedStreamUrl;
     const passwordQuery = proxyPassword ? `&api_password=${encodeURIComponent(proxyPassword)}` : '';
     return `${proxyBaseUrl}/proxy/stream?d=${encodeURIComponent(normalizedStreamUrl)}&redirect_stream=true${passwordQuery}`;
+}
+
+let easyProxyRoundRobinCursor = 0;
+const EASY_PROXY_HEALTH_TIMEOUT_MS = 1000;
+
+function getEasyProxyCandidateEntries(easyProxyEntries, easyProxyMode = 'failover') {
+    const entries = Array.isArray(easyProxyEntries) ? easyProxyEntries.filter((entry) => entry?.url) : [];
+    if (entries.length <= 1 || easyProxyMode !== 'load-balance') return entries;
+    const start = easyProxyRoundRobinCursor % entries.length;
+    easyProxyRoundRobinCursor = (easyProxyRoundRobinCursor + 1) % entries.length;
+    return entries.slice(start).concat(entries.slice(0, start));
+}
+
+function buildEasyProxyHealthUrl(easyProxyUrl) {
+    const proxyBaseUrl = normalizeEasyProxyUrl(easyProxyUrl);
+    return proxyBaseUrl ? `${proxyBaseUrl}/proxy/ip` : '';
+}
+
+async function shouldFailoverEasyProxy(proxyEntry) {
+    const healthUrl = buildEasyProxyHealthUrl(proxyEntry?.url);
+    if (!healthUrl || typeof fetch !== 'function') return false;
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), EASY_PROXY_HEALTH_TIMEOUT_MS) : null;
+    try {
+        const response = await fetch(healthUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            signal: controller?.signal
+        });
+        const status = Number(response?.status || 0);
+        return status === 404 || status >= 500;
+    } catch (error) {
+        logVerbose(`[EasyProxy] Health check failed for ${healthUrl}: ${error.message}`);
+        return false;
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
+}
+
+async function buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, buildUrl) {
+    const candidates = getEasyProxyCandidateEntries(easyProxyEntries, easyProxyMode);
+    if (candidates.length === 0) return '';
+
+    let fallbackUrl = '';
+    for (const proxyEntry of candidates) {
+        const proxiedUrl = buildUrl(proxyEntry.url, proxyEntry.password || '');
+        if (!proxiedUrl) continue;
+        if (!fallbackUrl) fallbackUrl = proxiedUrl;
+        const shouldFailover = await shouldFailoverEasyProxy(proxyEntry);
+        if (!shouldFailover) {
+            return proxiedUrl;
+        }
+        logVerbose(`[EasyProxy] ${buildEasyProxyHealthUrl(proxyEntry.url)} returned 404/5xx, trying next proxy`);
+    }
+
+    return fallbackUrl;
 }
 
 function hasJapaneseCharacters(value) {
@@ -1331,14 +1428,15 @@ const builder = new addonBuilder({
             title: 'EasyCatalogs mode (adds lang=it to mapping requests)'
         },
         {
-            key: 'easyProxyUrl',
+            key: 'easyProxies',
             type: 'text',
-            title: 'EasyProxy base URL for VixSrc streams'
+            title: 'EasyProxy endpoints JSON'
         },
         {
-            key: 'easyProxyPassword',
-            type: 'text',
-            title: 'EasyProxy API password'
+            key: 'easyProxyMode',
+            type: 'select',
+            title: 'EasyProxy mode',
+            options: ['failover', 'load-balance']
         },
         {
             key: 'disabledProviders',
@@ -1350,10 +1448,12 @@ const builder = new addonBuilder({
 
 builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
-    const easyProxyUrl = resolveEasyProxyUrlFromConfig(config);
-    const easyProxyPassword = resolveEasyProxyPasswordFromConfig(config);
+    const easyProxyEntries = resolveEasyProxyEntriesFromConfig(config);
+    const easyProxyUrl = easyProxyEntries[0]?.url || '';
+    const easyProxyPassword = easyProxyEntries[0]?.password || '';
+    const easyProxyMode = resolveEasyProxyModeFromConfig(config);
     const disabledProviders = resolveDisabledProvidersFromConfig(config);
-    const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
+    const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyEntriesToken(easyProxyEntries, easyProxyMode)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);
     const providerId = parsedRequest.providerId;
     const season = parsedRequest.season;
@@ -1389,7 +1489,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
         : season;
     const baseCanonicalCacheKey = await resolveCanonicalStreamCacheKey(type, providerId, season, episode, requestContext, mappingLanguage);
     const canonicalCacheKey = baseCanonicalCacheKey
-        ? `${baseCanonicalCacheKey}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`
+        ? `${baseCanonicalCacheKey}:proxy:${getEasyProxyEntriesToken(easyProxyEntries, easyProxyMode)}:disabled:${getDisabledProvidersToken(disabledProviders)}`
         : null;
 
     if (cacheEnabledForRequest && canonicalCacheKey && canonicalCacheKey !== requestKey) {
@@ -1491,6 +1591,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     try {
                         const providerContext = buildProviderRequestContext(requestContext);
                         providerContext.proxyUrl = easyProxyUrl;
+                        providerContext.proxyUrls = easyProxyEntries.map((entry) => entry.url);
+                        providerContext.proxyEntries = easyProxyEntries;
+                        providerContext.proxyMode = easyProxyMode;
                         providerContext.proxyPassword = easyProxyPassword;
                         const streams = await provider.getStreams(providerId, providerType, effectiveSeason, episode, providerContext);
                         logVerbose(`[${name}] Found ${streams.length} streams`);
@@ -1535,42 +1638,58 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             !sTitle.includes('uqload')
                         );
                     })
-                    .map((s) => {
+                    .map(async (s) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
                         if (name === 'streamingcommunity') {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'vixsrc',
-                                s.easyProxySourceUrl || s.url,
-                                'm3u8'
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vixsrc',
+                                    s.easyProxySourceUrl || s.url,
+                                    'm3u8'
+                                )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (name === 'animeunity') {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'vixcloud',
-                                s.easyProxySourceUrl || s.url
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vixcloud',
+                                    s.easyProxySourceUrl || s.url
+                                )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isStreamHgStream(s)) {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'streamhg',
-                                s.easyProxySourceUrl || s.url
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'streamhg',
+                                    s.easyProxySourceUrl || s.url
+                                )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
                             const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'mixdrop',
-                                s.easyProxySourceUrl || s.url,
-                                mixdropExtension
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'mixdrop',
+                                    s.easyProxySourceUrl || s.url,
+                                    mixdropExtension
+                                )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
@@ -1606,13 +1725,14 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             language: s.language
                         };
                     });
-                processedStreamsCount = processedStreams.length;
+                const processedStreamsResolved = await Promise.all(processedStreams);
+                processedStreamsCount = processedStreamsResolved.length;
 
-                if (processedStreams.length > 0) {
-                    collectedStreams.push(...processedStreams);
+                if (processedStreamsResolved.length > 0) {
+                    collectedStreams.push(...processedStreamsResolved);
                 }
 
-                return processedStreams;
+                return processedStreamsResolved;
             } catch (e) {
                 executionError = e;
                 console.error(`[${name}] Error:`, e.message);
@@ -1775,487 +1895,10 @@ const addonRouter = getRouter(addonInterface);
 
 // Custom Landing Page
 app.get('/', (req, res) => {
-    const manifest = addonInterface.manifest;
-    const providerNames = Object.keys(providers);
-    const providersHtml = providerNames.map(p => `<div class="provider-tag">${p}</div>`).join('');
-    const providerSettingsHtml = providerNames.map((p) => `
-                    <label class="provider-option">
-                        <input type="checkbox" class="provider-checkbox" value="${p}" checked>
-                        <span>${p}</span>
-                    </label>`).join('');
-
-    // Standard Stremio Landing Page Style
-    const landingHtml = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${manifest.name} - Stremio Addon</title>
-        <style>
-            :root {
-                --purple: #8A5AAB;
-                --purple-hover: #7b4b9b;
-                --bg: #151515;
-                --text: #fff;
-                --text-secondary: #aaa;
-            }
-            body {
-                background-color: var(--bg);
-                color: var(--text);
-                font-family: 'Open Sans', Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                flex-direction: column;
-                min-height: 100vh;
-                background-image: radial-gradient(circle at center, #252525 0%, #151515 100%);
-            }
-            .header {
-                padding: 20px 40px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .logo-text {
-                font-weight: 700;
-                font-size: 20px;
-                color: #fff;
-                text-decoration: none;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            .logo-icon {
-                width: 32px;
-                height: 32px;
-                background: var(--purple);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 18px;
-            }
-            .main-content {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 40px 20px;
-                text-align: center;
-                position: relative;
-                z-index: 1;
-            }
-            .addon-card {
-                background: #1e1e1e;
-                border-radius: 12px;
-                padding: 50px 40px;
-                max-width: 500px;
-                width: 100%;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-            }
-            .addon-logo {
-                width: 120px;
-                height: 120px;
-                background: #252525;
-                border-radius: 16px;
-                margin-bottom: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 50px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            }
-            h1 {
-                margin: 0 0 10px 0;
-                font-size: 32px;
-                font-weight: 700;
-            }
-            .version {
-                color: var(--text-secondary);
-                font-size: 14px;
-                margin-bottom: 20px;
-                background: #2a2a2a;
-                padding: 4px 10px;
-                border-radius: 4px;
-            }
-            .description {
-                color: var(--text-secondary);
-                font-size: 16px;
-                line-height: 1.6;
-                margin-bottom: 20px;
-                max-width: 400px;
-            }
-            .providers-title {
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #666;
-                margin-bottom: 10px;
-                margin-top: 10px;
-            }
-            .providers-list {
-                margin-bottom: 30px;
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 8px;
-            }
-            .provider-tag {
-                background: #2a2a2a;
-                padding: 5px 10px;
-                border-radius: 6px;
-                font-size: 11px;
-                color: #ccc;
-                border: 1px solid #333;
-                text-transform: uppercase;
-                font-weight: 600;
-                letter-spacing: 0.5px;
-            }
-            .config-panel {
-                width: 100%;
-                margin-bottom: 24px;
-                padding: 16px 18px;
-                border-radius: 10px;
-                border: 1px solid #333;
-                background: #232323;
-                text-align: left;
-                box-sizing: border-box;
-            }
-            .config-panel-title {
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #8f8f8f;
-                margin-bottom: 12px;
-            }
-            .config-toggle {
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                cursor: pointer;
-                color: #f2f2f2;
-            }
-            .config-panel .config-toggle + .config-toggle {
-                margin-top: 14px;
-            }
-            .config-toggle input {
-                margin-top: 2px;
-            }
-            .config-toggle strong {
-                display: block;
-                font-size: 14px;
-                margin-bottom: 4px;
-            }
-            .config-toggle span {
-                display: block;
-                color: var(--text-secondary);
-                font-size: 13px;
-                line-height: 1.4;
-            }
-            .config-input {
-                width: 100%;
-                margin-top: 10px;
-                padding: 10px 12px;
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background: #171717;
-                color: #f2f2f2;
-                font-size: 14px;
-                box-sizing: border-box;
-            }
-            .config-input::placeholder {
-                color: #7a7a7a;
-            }
-            .settings-btn {
-                width: 100%;
-                margin-bottom: 14px;
-                padding: 12px 14px;
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background: #171717;
-                color: #f2f2f2;
-                font-size: 14px;
-                font-weight: 700;
-                cursor: pointer;
-                text-align: left;
-            }
-            .settings-btn:hover {
-                border-color: #555;
-            }
-            .settings-panel {
-                display: none;
-            }
-            .settings-panel.open {
-                display: block;
-            }
-            .provider-options {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 10px;
-            }
-            .provider-option {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 9px 10px;
-                border: 1px solid #333;
-                border-radius: 8px;
-                background: #191919;
-                color: #ddd;
-                font-size: 12px;
-                font-weight: 700;
-                text-transform: uppercase;
-                cursor: pointer;
-            }
-            .provider-option input {
-                margin: 0;
-            }
-            .install-btn {
-                background-color: var(--purple);
-                color: white;
-                border: none;
-                padding: 16px 40px;
-                font-size: 18px;
-                font-weight: 700;
-                border-radius: 8px;
-                cursor: pointer;
-                text-decoration: none;
-                transition: transform 0.2s, background-color 0.2s;
-                display: inline-block;
-                box-shadow: 0 4px 15px rgba(138, 90, 171, 0.4);
-            }
-            .install-btn:hover {
-                background-color: var(--purple-hover);
-                transform: translateY(-2px);
-            }
-            .install-btn:active {
-                transform: translateY(0);
-            }
-            .copy-btn {
-                background-color: transparent;
-                color: var(--text-secondary);
-                border: 1px solid #333;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: 600;
-                border-radius: 6px;
-                cursor: pointer;
-                margin-top: 15px;
-                transition: all 0.2s;
-            }
-            .copy-btn:hover {
-                border-color: #555;
-                color: #fff;
-            }
-            .footer {
-                padding: 20px;
-                text-align: center;
-                color: #555;
-                font-size: 13px;
-            }
-            .footer a {
-                color: #777;
-                text-decoration: none;
-            }
-            .footer a:hover {
-                color: var(--purple);
-            }
-            
-            /* Background Pattern */
-            .bg-pattern {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-image: url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23222" fill-opacity="0.4"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');
-                opacity: 0.5;
-                z-index: 0;
-                pointer-events: none;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="main-content">
-            <div class="addon-card">
-                <div class="addon-logo">
-                    📺
-                </div>
-                <h1>${manifest.name}</h1>
-                <div class="version">Version ${manifest.version}</div>
-                <p class="description">
-                    ${manifest.description}
-                </p>
-                
-                <div class="providers-title">Active Providers</div>
-                <div class="providers-list">
-                    ${providersHtml}
-                </div>
-
-                <div class="config-panel">
-                    <div class="config-panel-title">EasyProxy</div>
-                    <label class="config-toggle" for="easyProxyUrl">
-                        <div style="width: 100%;">
-                            <strong>EasyProxy URL</strong>
-                            <input class="config-input" type="url" id="easyProxyUrl" name="easyProxyUrl" placeholder="https://your-proxy.example.com">
-                        </div>
-                    </label>
-                    <label class="config-toggle" for="easyProxyPassword">
-                        <div style="width: 100%;">
-                            <strong>EasyProxy Password</strong>
-                            <input class="config-input" type="text" id="easyProxyPassword" name="easyProxyPassword" placeholder="your api password (optional)">
-                        </div>
-                    </label>
-                </div>
-
-                <div class="config-panel">
-                    <div class="config-panel-title">Catalogs</div>
-                    <label class="config-toggle" for="easyCatalogsLangIt">
-                        <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
-                        <div>
-                            <strong>EasyCatalogs mode</strong>
-                            <span>Adds Italian language mapping hints for EasyCatalogs installs.</span>
-                        </div>
-                    </label>
-                </div>
-
-                <button id="settingsToggle" type="button" class="settings-btn">Settings: providers</button>
-                <div id="settingsPanel" class="config-panel settings-panel">
-                    <div class="config-panel-title">Providers</div>
-                    <div class="provider-options">
-                        ${providerSettingsHtml}
-                    </div>
-                </div>
-
-                <a id="installLink" href="#" class="install-btn">INSTALL ADDON</a>
-                <button id="copyLink" type="button" class="copy-btn">📋 Copy Link</button>
-            </div>
-        </div>
-
-        <div class="footer">
-            Powered by <a href="https://github.com/realbestia1/" target="_blank">realbestia</a>
-        </div>
-
-        <script>
-            // Dynamic Install Link
-            const currentHost = window.location.host;
-            const protocol = window.location.protocol;
-            const installBtn = document.getElementById('installLink');
-            const copyBtn = document.getElementById('copyLink');
-            const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
-            const easyProxyUrlInput = document.getElementById('easyProxyUrl');
-            const easyProxyPasswordInput = document.getElementById('easyProxyPassword');
-            const settingsToggle = document.getElementById('settingsToggle');
-            const settingsPanel = document.getElementById('settingsPanel');
-            const providerCheckboxes = Array.from(document.querySelectorAll('.provider-checkbox'));
-            let manifestUrl = '';
-            let stremioUrl = '';
-
-            function getConfigPath() {
-                const config = {};
-                if (easyCatalogsToggle && easyCatalogsToggle.checked) {
-                    config.easyCatalogsLangIt = 'on';
-                }
-                if (easyProxyUrlInput) {
-                    let normalizedEasyProxyUrl = easyProxyUrlInput.value.trim();
-                    while (normalizedEasyProxyUrl.endsWith('/')) {
-                        normalizedEasyProxyUrl = normalizedEasyProxyUrl.slice(0, -1);
-                    }
-                    if (normalizedEasyProxyUrl) {
-                        config.easyProxyUrl = normalizedEasyProxyUrl;
-                    }
-                }
-                if (easyProxyPasswordInput) {
-                    const normalizedEasyProxyPassword = easyProxyPasswordInput.value.trim();
-                    if (normalizedEasyProxyPassword) {
-                        config.easyProxyPassword = normalizedEasyProxyPassword;
-                    }
-                }
-                const disabledProviders = providerCheckboxes
-                    .filter((input) => !input.checked)
-                    .map((input) => input.value);
-                if (disabledProviders.length > 0) {
-                    config.disabledProviders = disabledProviders.join(',');
-                }
-                if (Object.keys(config).length === 0) return '';
-                const encodedConfig = encodeURIComponent(JSON.stringify(config));
-                return \`/\${encodedConfig}\`;
-            }
-
-            function updateInstallLinks() {
-                const configPath = getConfigPath();
-                manifestUrl = \`\${protocol}//\${currentHost}\${configPath}/manifest.json\`;
-                stremioUrl = \`stremio://\${currentHost}\${configPath}/manifest.json\`;
-                installBtn.href = stremioUrl;
-            }
-            if (easyCatalogsToggle) {
-                easyCatalogsToggle.addEventListener('change', updateInstallLinks);
-            }
-            if (easyProxyUrlInput) {
-                easyProxyUrlInput.addEventListener('input', updateInstallLinks);
-            }
-            if (easyProxyPasswordInput) {
-                easyProxyPasswordInput.addEventListener('input', updateInstallLinks);
-            }
-            if (settingsToggle && settingsPanel) {
-                settingsToggle.addEventListener('click', () => {
-                    settingsPanel.classList.toggle('open');
-                });
-            }
-            providerCheckboxes.forEach((input) => {
-                input.addEventListener('change', updateInstallLinks);
-            });
-            updateInstallLinks();
-            // Copy Link Logic
-            copyBtn.addEventListener('click', async () => {
-                try {
-                    const showCopySuccess = () => {
-                        const originalText = copyBtn.innerText;
-                        copyBtn.innerText = '? Copied!';
-                        copyBtn.style.borderColor = '#4CAF50';
-                        copyBtn.style.color = '#4CAF50';
-                        
-                        setTimeout(() => {
-                            copyBtn.innerText = originalText;
-                            copyBtn.style.borderColor = '';
-                            copyBtn.style.color = '';
-                        }, 2000);
-                    };
-
-                    if (navigator.clipboard && window.isSecureContext) {
-                        await navigator.clipboard.writeText(manifestUrl);
-                    } else {
-                        const textArea = document.createElement('textarea');
-                        textArea.value = manifestUrl;
-                        textArea.setAttribute('readonly', '');
-                        textArea.style.position = 'fixed';
-                        textArea.style.top = '-9999px';
-                        textArea.style.left = '-9999px';
-                        document.body.appendChild(textArea);
-                        textArea.focus();
-                        textArea.select();
-                        const copied = document.execCommand('copy');
-                        document.body.removeChild(textArea);
-                        if (!copied) throw new Error('Fallback copy failed');
-                    }
-
-                    showCopySuccess();
-                } catch (err) {
-                    console.error('Failed to copy: ', err);
-                }
-            });
-            
-            console.log("Manifest URL:", manifestUrl);
-        </script>
-    </body>
-    </html>
-    `;
-    res.send(landingHtml);
+    res.send(renderLandingPage({
+        manifest: addonInterface.manifest,
+        providerNames: Object.keys(providers)
+    }));
 });
 
 app.use('/', addonRouter);
