@@ -8031,7 +8031,7 @@ var require_cf_handler = __commonJS({
         const isUsefulHtml = (value) => {
           const text = typeof value === "string" ? value.trim() : "";
           if (text.length < 200) return false;
-          if (/Just a moment|cf-browser-verification|challenge-platform|turnstile|cf-challenge/i.test(text)) return false;
+          if (/Just a moment|cf-browser-verification|turnstile|cf-challenge/i.test(text)) return false;
           return true;
         };
         const isCfStatus = (errorOrResponse) => {

@@ -288,8 +288,8 @@ var require_quality_helper = __commonJS({
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
-    var fs = require("fs");
-    var path = require("path");
+    var fs2 = require("fs");
+    var path2 = require("path");
     var axios = require("axios");
     var { exec } = require("child_process");
     var activeBypasses = /* @__PURE__ */ new Map();
@@ -524,8 +524,8 @@ var require_cf_bypass = __commonJS({
     }
     function writeJsonAtomic(filePath, data) {
       const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
-      fs.renameSync(tempPath, filePath);
+      fs2.writeFileSync(tempPath, JSON.stringify(data, null, 2));
+      fs2.renameSync(tempPath, filePath);
     }
     function saveSessionFile(sessionFile, data) {
       try {
@@ -716,14 +716,14 @@ var require_cf_bypass = __commonJS({
                 };
                 saveSessionFile(sessionFile, providerData);
               } else {
-                console.log(`[CF] Cookie provider [${provider}] non trovati per ${originalHost}; non salvo cookie di ${finalHost || "dominio finale"} in ${path.basename(sessionFile)}.`);
+                console.log(`[CF] Cookie provider [${provider}] non trovati per ${originalHost}; non salvo cookie di ${finalHost || "dominio finale"} in ${path2.basename(sessionFile)}.`);
               }
               if (cookiesList.length > 0) {
                 const domains = getCookieDomains(cookiesList);
                 for (const domain of domains) {
                   const domainProvider = domain.replace("www.", "").split(".")[0];
                   if (!domainProvider || domainProvider === provider) continue;
-                  const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
+                  const domainSessionFile = path2.join(process.cwd(), `cf-session-${domainProvider}.json`);
                   const domainCookiesList = filterCookiesForHost(cookiesList, domain);
                   const domainCookies = serializeCookies(domainCookiesList);
                   if (!domainCookies) continue;
@@ -761,7 +761,7 @@ var require_cf_bypass = __commonJS({
     }
     function getClearance(_0) {
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        const sessionFile = path2.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
           logThrottled(`wait:${provider}`, `[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
           return activeBypasses.get(provider);
@@ -789,8 +789,8 @@ var require_cf_bypass = __commonJS({
 var require_cf_handler = __commonJS({
   "src/utils/cf_handler.js"(exports2, module2) {
     var axios = require("axios");
-    var fs = require("fs");
-    var path = require("path");
+    var fs2 = require("fs");
+    var path2 = require("path");
     var { getClearance } = require_cf_bypass();
     var https = require("https");
     var http = require("http");
@@ -817,7 +817,7 @@ var require_cf_handler = __commonJS({
           const parts = normalizeHost(host).split(".").filter(Boolean);
           return parts.length >= 2 ? parts.slice(-2).join(".") : parts.join(".");
         };
-        const domainMatchesHost = (domainValue, hostValue) => {
+        const domainMatchesHost2 = (domainValue, hostValue) => {
           const cookieDomain = normalizeHost(domainValue);
           const host = normalizeHost(hostValue);
           if (!cookieDomain || !host) return false;
@@ -827,21 +827,21 @@ var require_cf_handler = __commonJS({
         const domainHost = getHost(domain);
         const providerFromHost = (host) => normalizeHost(host).split(".")[0] || "default";
         const provider = urlHost !== domainHost ? providerFromHost(urlHost) : options.provider || providerFromHost(domainHost);
-        const sessionFileForProvider = (providerName) => path.join(process.cwd(), `cf-session-${providerName}.json`);
+        const sessionFileForProvider = (providerName) => path2.join(process.cwd(), `cf-session-${providerName}.json`);
         const sessionFile = sessionFileForProvider(provider);
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
         const loadSession = (providerName = provider, targetHost = urlHost) => {
           const targetSessionFile = sessionFileForProvider(providerName);
-          if (fs.existsSync(targetSessionFile)) {
+          if (fs2.existsSync(targetSessionFile)) {
             try {
-              const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
+              const data = JSON.parse(fs2.readFileSync(targetSessionFile, "utf8"));
               if (data && data.userAgent) {
                 const ageMs = Date.now() - (data.timestamp || 0);
                 const twoHours = 2 * 60 * 60 * 1e3;
                 if (ageMs > twoHours) {
                   console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
                   try {
-                    fs.unlinkSync(targetSessionFile);
+                    fs2.unlinkSync(targetSessionFile);
                   } catch (e) {
                   }
                   return {};
@@ -852,11 +852,11 @@ var require_cf_handler = __commonJS({
                     const sessionRoot = rootDomain(sessionHost);
                     const currentRoot = rootDomain(targetHost);
                     const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
-                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, targetHost));
+                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost2(cookieDomain, targetHost));
                     if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
                       console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
                       try {
-                        fs.unlinkSync(targetSessionFile);
+                        fs2.unlinkSync(targetSessionFile);
                       } catch (e) {
                       }
                       return {};
@@ -944,7 +944,7 @@ var require_cf_handler = __commonJS({
         const isUsefulHtml = (value) => {
           const text = typeof value === "string" ? value.trim() : "";
           if (text.length < 200) return false;
-          if (/Just a moment|cf-browser-verification|challenge-platform|turnstile|cf-challenge/i.test(text)) return false;
+          if (/Just a moment|cf-browser-verification|turnstile|cf-challenge/i.test(text)) return false;
           return true;
         };
         const isCfStatus = (errorOrResponse) => {
@@ -968,7 +968,7 @@ var require_cf_handler = __commonJS({
             updateMetaFinalUrl(redirectedRes);
             if (redirectedRes.status === 403 || redirectedRes.status === 503) {
               try {
-                fs.unlinkSync(sessionFileForProvider(challengeProvider));
+                fs2.unlinkSync(sessionFileForProvider(challengeProvider));
               } catch (e) {
               }
               return null;
@@ -978,7 +978,7 @@ var require_cf_handler = __commonJS({
           } catch (retryErr) {
             if (isCfStatus(retryErr)) {
               try {
-                fs.unlinkSync(sessionFileForProvider(challengeProvider));
+                fs2.unlinkSync(sessionFileForProvider(challengeProvider));
               } catch (e) {
               }
               return null;
@@ -1017,9 +1017,9 @@ var require_cf_handler = __commonJS({
             } catch (e) {
             }
             const bypassSessionFile = sessionFileForProvider(bypassProvider);
-            if (fs.existsSync(bypassSessionFile)) {
+            if (fs2.existsSync(bypassSessionFile)) {
               try {
-                fs.unlinkSync(bypassSessionFile);
+                fs2.unlinkSync(bypassSessionFile);
               } catch (e) {
               }
             }
@@ -8810,6 +8810,8 @@ var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { smartFetch } = require_cf_handler();
 var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
+var fs = require("fs");
+var path = require("path");
 var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
 if (!IS_SERVER) {
   module.exports = {
@@ -8913,11 +8915,11 @@ function fetchHtml(_0) {
     }, options));
   });
 }
-function fetchTmdbJson(path) {
+function fetchTmdbJson(path2) {
   return __async(this, null, function* () {
     try {
-      const sep = path.includes("?") ? "&" : "?";
-      const url = `https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY}&language=it-IT`;
+      const sep = path2.includes("?") ? "&" : "?";
+      const url = `https://api.themoviedb.org/3${path2}${sep}api_key=${TMDB_API_KEY}&language=it-IT`;
       const response = yield fetch(url);
       if (!response.ok) return null;
       return yield response.json();
@@ -8961,8 +8963,8 @@ function fetchMapping(provider, value, season, episode, providerContext = null) 
   });
 }
 function getNested(obj, paths) {
-  for (const path of paths) {
-    const parts = path.split(".");
+  for (const path2 of paths) {
+    const parts = path2.split(".");
     let current = obj;
     for (const part of parts) {
       current = current && current[part];
@@ -9223,19 +9225,64 @@ function extractAnchors(html) {
 }
 function isHostLink(anchor) {
   const value = `${anchor.text} ${anchor.href}`.toLowerCase();
-  return /(maxstream|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
+  return /(maxstream|stayonline|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
 }
 function detectHost(anchorOrUrl) {
   const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
   const lower = String(value || "").toLowerCase();
   if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) return "deltabit";
   if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
-  if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
+  if (lower.includes("maxstream") || lower.includes("stayonline.pro") || lower.includes("uprot.net")) return "maxstream";
   return null;
 }
 function isRedirectorUrl(url) {
   const lower = String(url || "").toLowerCase();
   return lower.includes("uprot.net") || lower.includes("clicka.cc") || lower.includes("safego.cc");
+}
+function getUrlHost(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch (e) {
+    return "";
+  }
+}
+function getRootDomain(host) {
+  const parts = String(host || "").toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join(".") : parts.join(".");
+}
+function domainMatchesHost(domain, host) {
+  const cookieDomain = String(domain || "").toLowerCase().replace(/^\./, "").replace(/^www\./, "");
+  const targetHost = String(host || "").toLowerCase().replace(/^www\./, "");
+  if (!cookieDomain || !targetHost) return false;
+  return targetHost === cookieDomain || targetHost.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${targetHost}`);
+}
+function getWarmupFinalHostProvider(url) {
+  const lower = String(url || "").toLowerCase();
+  if (lower.includes("maxstream.video")) return "maxstream";
+  if (lower.includes("stayonline.pro")) return "stayonline";
+  return null;
+}
+function warmupFinalHostSession(url) {
+  return __async(this, null, function* () {
+    const normalizedUrl = normalizeHostUrl(url);
+    const provider = getWarmupFinalHostProvider(normalizedUrl);
+    if (!normalizedUrl || !provider) {
+      return { attempted: false, ok: true, provider: null };
+    }
+    try {
+      yield smartFetch(normalizedUrl, provider, {
+        provider,
+        timeout: 3e4,
+        headers: {
+          "Referer": `${BASE_URL}/`,
+          "Accept-Language": "en-US,en;q=0.5"
+        }
+      });
+      return { attempted: true, ok: true, provider };
+    } catch (e) {
+      return { attempted: true, ok: false, provider, error: e.message };
+    }
+  });
 }
 function findRedirectorOrHostUrl(text) {
   const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\.[a-z]+\/[^"'<>\\\s]+/ig;
@@ -9593,10 +9640,33 @@ function warmupRedirectors() {
     const results = [];
     for (const rawUrl of targets) {
       const url = normalizeHostUrl(rawUrl);
-      if (!url || !isRedirectorUrl(url)) continue;
+      if (!url) continue;
+      if (!isRedirectorUrl(url)) {
+        const hostWarmup = yield warmupFinalHostSession(url);
+        if (hostWarmup.attempted) {
+          results.push({
+            url,
+            resolvedUrl: url,
+            ok: hostWarmup.ok,
+            hostWarmupProvider: hostWarmup.provider,
+            hostWarmupOk: hostWarmup.ok,
+            error: hostWarmup.error
+          });
+        }
+        continue;
+      }
       try {
         const resolvedUrl = yield resolveShortlink(url);
-        results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl)) });
+        const resolvedOk = Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl));
+        const hostWarmup = resolvedOk ? yield warmupFinalHostSession(resolvedUrl) : { attempted: false, ok: true, provider: null };
+        results.push({
+          url,
+          resolvedUrl,
+          ok: resolvedOk && hostWarmup.ok,
+          hostWarmupProvider: hostWarmup.provider,
+          hostWarmupOk: hostWarmup.attempted ? hostWarmup.ok : void 0,
+          error: hostWarmup.error
+        });
       } catch (e) {
         results.push({ url, error: e.message, ok: false });
       }
@@ -9604,12 +9674,64 @@ function warmupRedirectors() {
     return results;
   });
 }
+function extractWarmupRedirectorUrlsFromHtml(html, limit = 5) {
+  const max = Math.max(1, Number.parseInt(String(limit || 5), 10) || 5);
+  const urls = [];
+  const addUrl = (rawUrl) => {
+    const url = normalizeHostUrl(rawUrl);
+    if (url && isRedirectorUrl(url) && !urls.includes(url)) urls.push(url);
+  };
+  for (const anchor of extractAnchors(html)) {
+    addUrl(anchor.href);
+  }
+  const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:uprot\.net|clicka\.cc|safego\.cc)\/[^"'<>\\\s]+/ig;
+  let match;
+  while ((match = regex.exec(String(html || ""))) !== null) {
+    addUrl(decodeEntitiesBasic(match[0]).replace(/[),.;]+$/, ""));
+  }
+  return urls.sort((a, b) => {
+    const score = (url) => {
+      const lower = String(url || "").toLowerCase();
+      if (lower.includes("uprot.net")) return 0;
+      if (lower.includes("safego.cc")) return 1;
+      return 2;
+    };
+    return score(a) - score(b);
+  }).slice(0, max);
+}
+function loadSavedDiscoveryHtml(providerNames, targetUrl) {
+  const targetHost = getUrlHost(targetUrl);
+  const targetRoot = getRootDomain(targetHost);
+  const maxAgeMs = 2 * 60 * 60 * 1e3;
+  for (const providerName of providerNames) {
+    const sessionFile = path.join(process.cwd(), `cf-session-${providerName}.json`);
+    if (!fs.existsSync(sessionFile)) continue;
+    try {
+      const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+      const ageMs = Date.now() - (data.timestamp || 0);
+      if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) continue;
+      const response = typeof data.response === "string" ? data.response : "";
+      if (response.length < 500) continue;
+      if (!/(?:uprot\.net|clicka\.cc|safego\.cc)/i.test(response)) continue;
+      const sessionHost = getUrlHost(data.url);
+      const sessionRoot = getRootDomain(sessionHost);
+      const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
+      const matchesTarget = targetRoot && sessionRoot && targetRoot === sessionRoot || cookieDomains.some((domain) => domainMatchesHost(domain, targetHost));
+      if (!matchesTarget) continue;
+      console.log(`[EuroStreaming] Discovery redirector da HTML sessione salvata (${providerName}, ${Math.round(ageMs / 6e4)} min fa).`);
+      return response;
+    } catch (e) {
+    }
+  }
+  return null;
+}
 function discoverRedirectorWarmupUrls(pageUrl, limit = 5) {
   return __async(this, null, function* () {
     const normalizedPageUrl = normalizeHostUrl(pageUrl);
     if (!normalizedPageUrl) return [];
-    const html = yield fetchHtml(normalizedPageUrl);
-    return extractAnchors(html).map((anchor) => normalizeHostUrl(anchor.href)).filter((url) => url && isRedirectorUrl(url)).filter((url, index, list) => list.indexOf(url) === index).slice(0, Math.max(1, Number.parseInt(String(limit || 5), 10) || 5));
+    const savedHtml = loadSavedDiscoveryHtml(["eurostreaming", "eurostreamings"], normalizedPageUrl);
+    const html = savedHtml || (yield fetchHtml(normalizedPageUrl));
+    return extractWarmupRedirectorUrlsFromHtml(html, limit);
   });
 }
 module.exports = { getStreams, warmupRedirectors, discoverRedirectorWarmupUrls };
