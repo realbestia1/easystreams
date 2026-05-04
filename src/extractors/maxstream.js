@@ -80,6 +80,11 @@ function hasUprotCaptcha(html) {
     /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
 }
 
+function isFlareSolverrBlockedError(error) {
+  const message = String(error && error.message || error || '');
+  return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+}
+
 async function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
   const directRedirect = extractUprotRedirect(html);
   if (directRedirect && !hasUprotCaptcha(html)) return directRedirect;
@@ -267,7 +272,11 @@ async function resolveUprotProtectedUrl(targetUrl, refererBase) {
     });
     if (smartRedirect) return smartRedirect;
   } catch (e) {
-    console.error('[Extractors] Uprot smart captcha resolution failed:', e.message);
+    if (isFlareSolverrBlockedError(e)) {
+      console.warn('[Extractors] Uprot smart captcha resolution skipped:', e.message);
+    } else {
+      console.error('[Extractors] Uprot smart captcha resolution failed:', e.message);
+    }
   }
 
   return lastDirectRedirect || null;
@@ -288,9 +297,18 @@ async function extractMaxStream(url, refererBase = 'https://uprot.net/') {
       } else if (isProtectedUprot) {
         return null;
       } else {
-        const html = await smartFetch(targetUrl, 'uprot', {
-          headers: { 'User-Agent': USER_AGENT, 'Referer': refererBase }
-        });
+        let html;
+        try {
+          html = await smartFetch(targetUrl, 'uprot', {
+            headers: { 'User-Agent': USER_AGENT, 'Referer': refererBase }
+          });
+        } catch (e) {
+          if (isFlareSolverrBlockedError(e)) {
+            console.warn('[Extractors] Uprot redirect fetch skipped:', e.message);
+            return null;
+          }
+          throw e;
+        }
         if (!html) return null;
 
         const redirectUrl = extractUprotRedirect(html);

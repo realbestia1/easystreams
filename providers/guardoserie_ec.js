@@ -8395,6 +8395,10 @@ var require_maxstream = __commonJS({
       const text = String(html || "");
       return /data:image\/[^;]+;base64,/i.test(text) && /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
     }
+    function isFlareSolverrBlockedError(error) {
+      const message = String(error && error.message || error || "");
+      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+    }
     function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
       return __async(this, null, function* () {
         const directRedirect = extractUprotRedirect(html);
@@ -8554,7 +8558,11 @@ var require_maxstream = __commonJS({
           }));
           if (smartRedirect) return smartRedirect;
         } catch (e) {
-          console.error("[Extractors] Uprot smart captcha resolution failed:", e.message);
+          if (isFlareSolverrBlockedError(e)) {
+            console.warn("[Extractors] Uprot smart captcha resolution skipped:", e.message);
+          } else {
+            console.error("[Extractors] Uprot smart captcha resolution failed:", e.message);
+          }
         }
         return lastDirectRedirect || null;
       });
@@ -8573,9 +8581,18 @@ var require_maxstream = __commonJS({
             } else if (isProtectedUprot) {
               return null;
             } else {
-              const html2 = yield smartFetch(targetUrl, "uprot", {
-                headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
-              });
+              let html2;
+              try {
+                html2 = yield smartFetch(targetUrl, "uprot", {
+                  headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
+                });
+              } catch (e) {
+                if (isFlareSolverrBlockedError(e)) {
+                  console.warn("[Extractors] Uprot redirect fetch skipped:", e.message);
+                  return null;
+                }
+                throw e;
+              }
               if (!html2) return null;
               const redirectUrl = extractUprotRedirect(html2);
               if (!redirectUrl) return null;
