@@ -316,20 +316,20 @@ var require_cf_bypass = __commonJS({
               });
             } catch (e) {
             }
+            const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
+            const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
             const payload = {
               cmd: options.method === "POST" ? "request.post" : "request.get",
               url,
               session: provider,
-              maxTimeout: 35e3
-              // Ridotto per rientrare nei 40s del provider
+              maxTimeout
             };
             if (options.method === "POST" && options.body) {
               payload.postData = options.body;
             }
             try {
               const response = yield axios.post(FLARE_URL, payload, {
-                timeout: 4e4,
-                // Leggermente più alto di maxTimeout (35s)
+                timeout: requestTimeout,
                 headers: { "Content-Type": "application/json" }
               });
               if (response.data && response.data.status === "ok") {

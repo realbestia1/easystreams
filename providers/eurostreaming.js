@@ -315,20 +315,20 @@ var require_cf_bypass = __commonJS({
               });
             } catch (e) {
             }
+            const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
+            const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
             const payload = {
               cmd: options.method === "POST" ? "request.post" : "request.get",
               url,
               session: provider,
-              maxTimeout: 35e3
-              // Ridotto per rientrare nei 40s del provider
+              maxTimeout
             };
             if (options.method === "POST" && options.body) {
               payload.postData = options.body;
             }
             try {
               const response = yield axios.post(FLARE_URL, payload, {
-                timeout: 4e4,
-                // Leggermente più alto di maxTimeout (35s)
+                timeout: requestTimeout,
                 headers: { "Content-Type": "application/json" }
               });
               if (response.data && response.data.status === "ok") {
@@ -524,6 +524,9 @@ var require_cf_handler = __commonJS({
           return res.data;
         } catch (err) {
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (options.skipBypassOnFailure) {
+              throw err;
+            }
             if (fs.existsSync(sessionFile)) {
               try {
                 fs.unlinkSync(sessionFile);
@@ -625,42 +628,83 @@ var require_mixdrop = __commonJS({
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
     }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function extractPackedStream(html) {
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (!match) return null;
+      const p = match[1];
+      const a = parseInt(match[2]);
+      const c = parseInt(match[3]);
+      const k = match[4].split("|");
+      const unpacked = unPack(p, a, c, k, null, {});
+      const wurlMatch = unpacked.match(/wurl\s*=\s*["']([^"']+)["']/);
+      if (!wurlMatch) return null;
+      let streamUrl = wurlMatch[1];
+      if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+      return streamUrl;
+    }
+    function extractEmbedUrl(html, pageUrl) {
+      const match = String(html || "").match(/<iframe\b[^>]+src=["']([^"']*\/e\/[^"']+)["']/i);
+      if (match) return normalizeUrl(match[1], pageUrl);
+      const converted = String(pageUrl || "").replace(/\/f\//i, "/e/");
+      return converted !== pageUrl ? converted : null;
+    }
     function extractMixDrop2(url, refererBase = "https://m1xdrop.net/") {
       return __async(this, null, function* () {
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": refererBase
-            }
+          const fetchHtml2 = (targetUrl, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl, {
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": referer
+              }
+            });
+            if (!response.ok) return null;
+            return {
+              url: response.url || targetUrl,
+              html: yield response.text()
+            };
           });
-          if (!response.ok) return null;
-          const html = yield response.text();
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack(p, a, c, k, null, {});
-            const wurlMatch = unpacked.match(/wurl="([^"]+)"/);
-            if (wurlMatch) {
-              let streamUrl = wurlMatch[1];
-              if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-              return {
-                url: streamUrl,
-                headers: {
-                  "User-Agent": USER_AGENT,
-                  "Referer": "https://m1xdrop.net/",
-                  "Origin": "https://m1xdrop.net"
-                }
-              };
+          let page = yield fetchHtml2(url, refererBase);
+          if (!page) return null;
+          let streamUrl = extractPackedStream(page.html);
+          let pageUrl = page.url;
+          if (!streamUrl) {
+            const embedUrl = extractEmbedUrl(page.html, pageUrl);
+            if (embedUrl && embedUrl !== pageUrl) {
+              const embedPage = yield fetchHtml2(embedUrl, pageUrl);
+              if (embedPage) {
+                page = embedPage;
+                pageUrl = embedPage.url;
+                streamUrl = extractPackedStream(embedPage.html);
+              }
             }
           }
-          return null;
+          if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "https://m1xdrop.net";
+            }
+          })();
+          return {
+            url: streamUrl,
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": pageUrl,
+              "Origin": origin
+            }
+          };
         } catch (e) {
           console.error("[Extractors] MixDrop extraction error:", e);
           return null;
@@ -7727,128 +7771,6 @@ var require_streamhg = __commonJS({
   }
 });
 
-// src/extractors/maxstream.js
-var require_maxstream = __commonJS({
-  "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
-    var { smartFetch: smartFetch2 } = require_cf_handler();
-    function extractMaxStream2(url, refererBase = "https://uprot.net/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
-          if (targetUrl.includes("uprot.net")) {
-            targetUrl = targetUrl.replace("/msf/", "/mse/");
-            const html2 = yield smartFetch2(targetUrl, "uprot", {
-              headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
-            });
-            if (!html2) return null;
-            const redirectMatch = html2.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/);
-            if (redirectMatch) {
-              targetUrl = redirectMatch[0].replace(/\\/g, "");
-            } else {
-              const jsMatch = html2.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/);
-              if (jsMatch) {
-                targetUrl = jsMatch[1];
-              } else {
-                const btnMatch = html2.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
-                if (btnMatch) targetUrl = btnMatch[1];
-                else return null;
-              }
-            }
-          }
-          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
-          const html = yield smartFetch2(targetUrl, provider, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": "https://uprot.net/",
-              "Accept-Language": "en-US,en;q=0.5"
-            }
-          });
-          if (!html) return null;
-          let canonicalUrl = null;
-          const fileCodeMatch = html.match(/[?&]file_code=([a-z0-9]+)/i) || html.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i) || html.match(/\$\.cookie\(['"]file_id['"],\s*['"]([a-z0-9]+)['"]/i);
-          if (fileCodeMatch) {
-            canonicalUrl = `https://maxstream.video/emhuih/${fileCodeMatch[1]}`;
-          }
-          const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
-          if (directMatch) {
-            return {
-              url: directMatch[1],
-              sourceUrl: canonicalUrl || targetUrl,
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": targetUrl
-              }
-            };
-          }
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack(p, a, c, k, null, {});
-            const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
-            if (srcMatch) {
-              return {
-                url: srcMatch[1],
-                sourceUrl: canonicalUrl || targetUrl,
-                headers: {
-                  "User-Agent": USER_AGENT,
-                  "Referer": targetUrl
-                }
-              };
-            }
-            try {
-              const urlsetIdx = k.indexOf("urlset");
-              const hlsIdx = k.indexOf("hls");
-              const sourcesIdx = k.indexOf("sources");
-              if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
-                const result = k.slice(urlsetIdx + 1, hlsIdx);
-                const reversedElements = result.reverse();
-                const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
-                const reversedFirstPart = firstPartTerms.reverse();
-                let firstUrlPart = "";
-                for (const fp of reversedFirstPart) {
-                  if (fp.includes("0")) {
-                    firstUrlPart += fp;
-                  } else {
-                    firstUrlPart += fp + "-";
-                  }
-                }
-                const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
-                let finalUrl = "";
-                if (reversedElements.length === 1) {
-                  finalUrl = baseUrl + "," + reversedElements[0] + ".urlset/master.m3u8";
-                } else {
-                  finalUrl = baseUrl + reversedElements.join(",") + ".urlset/master.m3u8";
-                }
-                return {
-                  url: finalUrl,
-                  sourceUrl: canonicalUrl || targetUrl,
-                  headers: {
-                    "User-Agent": USER_AGENT,
-                    "Referer": targetUrl
-                  }
-                };
-              }
-            } catch (e) {
-              console.error("[Extractors] MaxStream manual reconstruction failed:", e);
-            }
-          }
-          return null;
-        } catch (e) {
-          console.error("[Extractors] MaxStream extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractMaxStream: extractMaxStream2 };
-  }
-});
-
 // src/utils/ocr.js
 var require_ocr = __commonJS({
   "src/utils/ocr.js"(exports2, module2) {
@@ -7903,6 +7825,224 @@ var require_ocr = __commonJS({
       });
     }
     module2.exports = { solveNumericCaptcha: solveNumericCaptcha2 };
+  }
+});
+
+// src/extractors/maxstream.js
+var require_maxstream = __commonJS({
+  "src/extractors/maxstream.js"(exports2, module2) {
+    var { USER_AGENT, unPack } = require_common();
+    var { smartFetch: smartFetch2 } = require_cf_handler();
+    var axios = require("axios");
+    var solveNumericCaptcha2 = null;
+    try {
+      solveNumericCaptcha2 = require_ocr().solveNumericCaptcha;
+    } catch (e) {
+    }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function getCookieHeader(setCookie) {
+      if (!Array.isArray(setCookie)) return "";
+      return setCookie.map((cookie) => String(cookie).split(";")[0]).filter(Boolean).join("; ");
+    }
+    function extractUprotRedirect(html) {
+      const text = String(html || "");
+      const anchorRegex = /<a\b[^>]+href=["']([^"']*(?:stayonline\.pro|maxstream\.video)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let anchorMatch;
+      while ((anchorMatch = anchorRegex.exec(text)) !== null) {
+        const label = String(anchorMatch[2] || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (/(?:C0NTINUE|CONTINUE)/i.test(label)) return anchorMatch[1].replace(/\\/g, "");
+      }
+      const redirectMatch = text.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/i);
+      if (redirectMatch) return redirectMatch[0].replace(/\\/g, "");
+      const jsMatch = text.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i);
+      if (jsMatch) return jsMatch[1].replace(/\\/g, "");
+      const btnMatch = text.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
+      return btnMatch ? btnMatch[1].replace(/\\/g, "") : null;
+    }
+    function extractEmbedUrl(html, targetUrl) {
+      const targetEmbed = String(targetUrl || "").match(/^https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)/i);
+      if (targetEmbed) return `https://maxstream.video/emhuih/${targetEmbed[1]}`;
+      const text = String(html || "");
+      const iframeMatch = text.match(/src=["'](https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)[^"']*)["']/i) || text.match(/src=["'](\/emhuih\/([a-z0-9]+)[^"']*)["']/i);
+      if (iframeMatch) return normalizeUrl(iframeMatch[1], targetUrl || "https://maxstream.video/");
+      const fileCodeMatch = text.match(/[?&]file_code=([a-z0-9]+)/i) || text.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i);
+      return fileCodeMatch ? `https://maxstream.video/emhuih/${fileCodeMatch[1]}` : null;
+    }
+    function parseMaxStreamHtml(html, targetUrl, sourceUrl = null) {
+      const canonicalUrl = sourceUrl || extractEmbedUrl(html, targetUrl);
+      const directMatch = String(html || "").match(/sources:\s*\[\{src:\s*"([^"]+)"/);
+      if (directMatch) {
+        return {
+          url: directMatch[1],
+          sourceUrl: canonicalUrl || targetUrl,
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Referer": targetUrl
+          }
+        };
+      }
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (match) {
+        const p = match[1];
+        const a = parseInt(match[2]);
+        const c = parseInt(match[3]);
+        const k = match[4].split("|");
+        const unpacked = unPack(p, a, c, k, null, {});
+        const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
+        if (srcMatch) {
+          return {
+            url: srcMatch[1],
+            sourceUrl: canonicalUrl || targetUrl,
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": targetUrl
+            }
+          };
+        }
+        try {
+          const urlsetIdx = k.indexOf("urlset");
+          const hlsIdx = k.indexOf("hls");
+          const sourcesIdx = k.indexOf("sources");
+          if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
+            const result = k.slice(urlsetIdx + 1, hlsIdx);
+            const reversedElements = result.reverse();
+            const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
+            const reversedFirstPart = firstPartTerms.reverse();
+            let firstUrlPart = "";
+            for (const fp of reversedFirstPart) {
+              if (fp.includes("0")) {
+                firstUrlPart += fp;
+              } else {
+                firstUrlPart += `${fp}-`;
+              }
+            }
+            const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
+            const finalUrl = reversedElements.length === 1 ? `${baseUrl},${reversedElements[0]}.urlset/master.m3u8` : `${baseUrl}${reversedElements.join(",")}.urlset/master.m3u8`;
+            return {
+              url: finalUrl,
+              sourceUrl: canonicalUrl || targetUrl,
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": targetUrl
+              }
+            };
+          }
+        } catch (e) {
+          console.error("[Extractors] MaxStream manual reconstruction failed:", e);
+        }
+      }
+      return canonicalUrl ? { canonicalUrl } : null;
+    }
+    function resolveUprotProtectedUrl(targetUrl, refererBase) {
+      return __async(this, null, function* () {
+        const headers = {
+          "User-Agent": USER_AGENT,
+          "Referer": refererBase,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        };
+        let lastDirectRedirect = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = yield axios({
+              url: targetUrl,
+              method: "GET",
+              headers,
+              maxRedirects: 0,
+              timeout: 2e4,
+              validateStatus: false
+            });
+            const html = String(response.data || "");
+            const directRedirect = extractUprotRedirect(html);
+            if (directRedirect) lastDirectRedirect = directRedirect;
+            if (directRedirect && !/name=["']captcha["']/i.test(html)) return directRedirect;
+            const captchaMatch = html.match(/<img[^>]+src=["']data:image\/png;base64,([^"']+)["'][^>]*>/i);
+            if (!captchaMatch || !solveNumericCaptcha2) return directRedirect || null;
+            const captchaCode = yield solveNumericCaptcha2(captchaMatch[1]);
+            if (!/^\d{3}$/.test(String(captchaCode || ""))) continue;
+            const postHeaders = __spreadProps(__spreadValues({}, headers), {
+              "Referer": targetUrl,
+              "Content-Type": "application/x-www-form-urlencoded"
+            });
+            const cookieHeader = getCookieHeader(response.headers && response.headers["set-cookie"]);
+            if (cookieHeader) postHeaders.Cookie = cookieHeader;
+            const postResponse = yield axios({
+              url: targetUrl,
+              method: "POST",
+              data: new URLSearchParams({ captcha: captchaCode }).toString(),
+              headers: postHeaders,
+              maxRedirects: 0,
+              timeout: 2e4,
+              validateStatus: false
+            });
+            const postRedirect = postResponse.headers && postResponse.headers.location ? normalizeUrl(postResponse.headers.location, targetUrl) : extractUprotRedirect(postResponse.data);
+            if (postRedirect) return postRedirect;
+          } catch (e) {
+            if (attempt === 2) console.error("[Extractors] Uprot captcha resolution failed:", e.message);
+          }
+        }
+        return lastDirectRedirect || null;
+      });
+    }
+    function extractMaxStream2(url, refererBase = "https://uprot.net/") {
+      return __async(this, null, function* () {
+        try {
+          let targetUrl = url;
+          if (targetUrl.startsWith("//")) targetUrl = `https:${targetUrl}`;
+          if (targetUrl.includes("uprot.net")) {
+            targetUrl = targetUrl.replace("/msf/", "/mse/");
+            const isProtectedUprot = /\/(?:msei|msfi|mseild|msefd)\//i.test(targetUrl);
+            const protectedRedirect = yield resolveUprotProtectedUrl(targetUrl, refererBase);
+            if (protectedRedirect) {
+              targetUrl = protectedRedirect;
+            } else if (isProtectedUprot) {
+              return null;
+            } else {
+              const html2 = yield smartFetch2(targetUrl, "uprot", {
+                headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
+              });
+              if (!html2) return null;
+              const redirectUrl = extractUprotRedirect(html2);
+              if (!redirectUrl) return null;
+              targetUrl = redirectUrl;
+            }
+          }
+          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
+          const html = yield smartFetch2(targetUrl, provider, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": "https://uprot.net/",
+              "Accept-Language": "en-US,en;q=0.5"
+            }
+          });
+          if (!html) return null;
+          const parsed = parseMaxStreamHtml(html, targetUrl);
+          if (parsed && parsed.url) return parsed;
+          if (parsed && parsed.canonicalUrl && parsed.canonicalUrl !== targetUrl) {
+            const embedHtml = yield smartFetch2(parsed.canonicalUrl, "maxstream", {
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": targetUrl,
+                "Accept-Language": "en-US,en;q=0.5"
+              }
+            });
+            const embedParsed = parseMaxStreamHtml(embedHtml, parsed.canonicalUrl, parsed.canonicalUrl);
+            if (embedParsed && embedParsed.url) return embedParsed;
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] MaxStream extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractMaxStream: extractMaxStream2 };
   }
 });
 
@@ -8132,6 +8272,15 @@ if (IS_SERVER) {
   }
 }
 var STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
+var TRACE_REDIRECTS_ENABLED = String(process.env.TRACE_EURO_REDIRECTS || "").trim().toLowerCase() === "1";
+function traceRedirect(step, data = {}) {
+  if (!TRACE_REDIRECTS_ENABLED) return;
+  try {
+    console.log(`[EuroStreamingTrace] ${step}: ${JSON.stringify(data)}`);
+  } catch (e) {
+    console.log(`[EuroStreamingTrace] ${step}`);
+  }
+}
 function getMappingApiBase() {
   return "https://animemapping.realbestia.com";
 }
@@ -8544,27 +8693,39 @@ function resolveShortlink(url) {
   return __async(this, null, function* () {
     var _a, _b, _c, _d;
     console.log(`[EuroStreaming] Tentativo di risoluzione link breve: ${url}`);
+    traceRedirect("start", { url });
     if (url.includes("uprot.net/msf/")) {
+      traceRedirect("normalize_uprot_msf", { from: url, to: url.replace("/msf/", "/mse/") });
       url = url.replace("/msf/", "/mse/");
     }
     let currentUrl = url;
     let hops = 0;
     while (hops < 4 && isRedirectorUrl(currentUrl)) {
       hops++;
+      traceRedirect("hop_start", { hop: hops, currentUrl });
       try {
         const decodedSafeGoUrl = decodeSafeGoUrl(currentUrl);
         if (decodedSafeGoUrl) {
+          traceRedirect("decoded_safego_url", { hop: hops, from: currentUrl, to: decodedSafeGoUrl });
           currentUrl = decodedSafeGoUrl;
           if (!isRedirectorUrl(currentUrl)) break;
           continue;
         }
         const fetchMeta = {};
         const html = yield fetchHtml(currentUrl, { meta: fetchMeta });
+        traceRedirect("fetch_done", {
+          hop: hops,
+          currentUrl,
+          finalUrl: fetchMeta.finalUrl || null,
+          htmlLength: typeof html === "string" ? html.length : null
+        });
         if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && !isRedirectorUrl(fetchMeta.finalUrl)) {
+          traceRedirect("final_url_non_redirector", { hop: hops, finalUrl: fetchMeta.finalUrl });
           currentUrl = fetchMeta.finalUrl;
           break;
         }
         if (fetchMeta.finalUrl && fetchMeta.finalUrl !== currentUrl && isRedirectorUrl(fetchMeta.finalUrl)) {
+          traceRedirect("final_url_redirector", { hop: hops, finalUrl: fetchMeta.finalUrl });
           currentUrl = fetchMeta.finalUrl;
           continue;
         }
@@ -8572,6 +8733,11 @@ function resolveShortlink(url) {
         const formMatch = html.match(/<form\b[^>]*method=["']?post["']?[^>]*>([\s\S]*?)<\/form>/i);
         if (captchaMatch && formMatch) {
           console.log(`[EuroStreaming] Captcha numerico rilevato per ${currentUrl}. Risoluzione in corso...`);
+          traceRedirect("captcha_detected", {
+            hop: hops,
+            currentUrl,
+            inlineImage: /^data:image\//i.test(captchaMatch[1] || "")
+          });
           let base64 = "";
           if (/^data:image\/[^;]+;base64,/i.test(captchaMatch[1])) {
             base64 = captchaMatch[1].split(",")[1] || "";
@@ -8587,6 +8753,7 @@ function resolveShortlink(url) {
           const captchaCode = yield solveNumericCaptcha(base64);
           if (captchaCode) {
             console.log(`[EuroStreaming] Captcha risolto: ${captchaCode}. Sblocco link...`);
+            traceRedirect("captcha_solved", { hop: hops, currentUrl, codeLength: String(captchaCode).length });
             const inputs = {};
             const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
             let inputMatch;
@@ -8601,6 +8768,11 @@ function resolveShortlink(url) {
             const postUrl = new URL(action, currentUrl).toString();
             const postBody = new URLSearchParams(inputs).toString();
             const postMeta = {};
+            traceRedirect("captcha_post_start", {
+              hop: hops,
+              postUrl,
+              fieldNames: Object.keys(inputs)
+            });
             const postHtml = yield smartFetch(postUrl, BASE_URL, {
               method: "POST",
               provider: PROVIDER,
@@ -8612,42 +8784,59 @@ function resolveShortlink(url) {
               },
               body: postBody
             });
+            traceRedirect("captcha_post_done", {
+              hop: hops,
+              postUrl,
+              finalUrl: postMeta.finalUrl || null,
+              htmlLength: typeof postHtml === "string" ? postHtml.length : null
+            });
             if (postMeta.finalUrl && postMeta.finalUrl !== currentUrl) {
+              traceRedirect("captcha_post_final_url", { hop: hops, finalUrl: postMeta.finalUrl });
               currentUrl = postMeta.finalUrl;
               if (!isRedirectorUrl(currentUrl)) break;
               continue;
             }
             const finalUrl = findRedirectorOrHostUrl(postHtml);
             if (finalUrl) {
+              traceRedirect("captcha_post_found_url", { hop: hops, finalUrl });
               currentUrl = finalUrl;
               if (!isRedirectorUrl(currentUrl)) break;
               continue;
             }
+            traceRedirect("captcha_post_no_url", { hop: hops, currentUrl });
+          } else {
+            traceRedirect("captcha_ocr_empty", { hop: hops, currentUrl });
           }
         }
         const linkUrl = findRedirectorOrHostUrl(html);
         if (linkUrl) {
+          traceRedirect("fallback_found_url", { hop: hops, linkUrl });
           currentUrl = new URL(linkUrl, currentUrl).toString();
           if (!isRedirectorUrl(currentUrl)) break;
           continue;
         }
         const deltabitMatch = html.match(/https?:\/\/deltabit\.(?:co|sx|bz|sx)\/[a-zA-Z0-9\/=_+-]+/i);
         if (deltabitMatch) {
+          traceRedirect("fallback_deltabit_match", { hop: hops, url: deltabitMatch[0] });
           currentUrl = deltabitMatch[0];
           break;
         }
         const refreshMatch = html.match(new RegExp(`url=(https?:\\/\\/(?:deltabit|maxstream|stayonline|uprot|mixdrop|m1xdrop|safego|clicka)\\.[^"']+(?<!\\.ico|\\.png|\\.jpg))`, "i"));
         if (refreshMatch) {
+          traceRedirect("fallback_refresh_match", { hop: hops, url: refreshMatch[1] });
           currentUrl = decodeEntitiesBasic(refreshMatch[1]);
           if (!isRedirectorUrl(currentUrl)) break;
           continue;
         }
+        traceRedirect("stop_no_candidate_url", { hop: hops, currentUrl });
         break;
       } catch (e) {
+        traceRedirect("error", { hop: hops, currentUrl, message: e.message });
         console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
         break;
       }
     }
+    traceRedirect("end", { url, currentUrl, stillRedirector: isRedirectorUrl(currentUrl), hops });
     return currentUrl;
   });
 }
@@ -8658,7 +8847,10 @@ function extractStreamFromHost(link, displayName) {
     try {
       hostUrl = yield resolveShortlink(hostUrl);
       const host = detectHost(hostUrl) || link && link.host;
-      if (!host) return [];
+      if (!host) {
+        traceRedirect("extract_stop_no_host", { hostUrl, originalHost: link && link.host || null });
+        return [];
+      }
       let extracted = null;
       const lower = hostUrl.toLowerCase();
       if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) {
@@ -8668,6 +8860,12 @@ function extractStreamFromHost(link, displayName) {
       } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
         extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
       }
+      traceRedirect("extractor_done", {
+        host,
+        hostUrl,
+        hasResult: Boolean(extracted),
+        resultCount: Array.isArray(extracted) ? extracted.length : extracted ? 1 : 0
+      });
       const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
       let quality = "720p";
       let proxySourceUrl = hostUrl;
@@ -8693,6 +8891,7 @@ function extractStreamFromHost(link, displayName) {
         }
       }
       if (isRedirectorUrl(proxySourceUrl)) {
+        traceRedirect("extract_stop_still_redirector", { host, proxySourceUrl, hostUrl });
         console.error(`[EuroStreaming] Redirector non risolto per ${host}: ${proxySourceUrl}`);
         return [];
       }

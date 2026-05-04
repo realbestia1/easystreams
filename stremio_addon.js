@@ -1254,6 +1254,7 @@ const providers = {
     streamingcommunity: require('./src/streamingcommunity/index.js'),
     cinemacity: require('./src/cinemacity/index.js'),
     eurostreaming: require('./src/eurostreaming/index.js'),
+    cb01: require('./src/cb01/index.js'),
 };
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
@@ -1316,11 +1317,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
+                : ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity', 'cb01'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
@@ -1328,11 +1329,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming']
-                : ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
+                : ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity', 'cb01'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity', 'cb01'];
         }
     }
 
@@ -1596,7 +1597,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
-                            const mixdropExtension = ['eurostreaming', 'guardahd'].includes(name) ? 'mp4' : 'm3u8';
+                            const mixdropExtension = ['eurostreaming', 'guardahd', 'cb01'].includes(name) ? 'mp4' : 'm3u8';
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
@@ -1619,7 +1620,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 easyProxyPassword,
                                 'deltabit',
                                 s.easyProxySourceUrl || s.url,
-                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
+                                ['eurostreaming', 'cb01'].includes(name) ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }

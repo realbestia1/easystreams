@@ -1,4 +1,6 @@
 var __defProp = Object.defineProperty;
+var __defProps = Object.defineProperties;
+var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
@@ -15,6 +17,7 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
+var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __objRest = (source, exclude) => {
   var target = {};
   for (var prop in source)
@@ -111,42 +114,83 @@ var require_mixdrop = __commonJS({
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
     }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function extractPackedStream(html) {
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (!match) return null;
+      const p = match[1];
+      const a = parseInt(match[2]);
+      const c = parseInt(match[3]);
+      const k = match[4].split("|");
+      const unpacked = unPack2(p, a, c, k, null, {});
+      const wurlMatch = unpacked.match(/wurl\s*=\s*["']([^"']+)["']/);
+      if (!wurlMatch) return null;
+      let streamUrl = wurlMatch[1];
+      if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+      return streamUrl;
+    }
+    function extractEmbedUrl(html, pageUrl) {
+      const match = String(html || "").match(/<iframe\b[^>]+src=["']([^"']*\/e\/[^"']+)["']/i);
+      if (match) return normalizeUrl(match[1], pageUrl);
+      const converted = String(pageUrl || "").replace(/\/f\//i, "/e/");
+      return converted !== pageUrl ? converted : null;
+    }
     function extractMixDrop2(url, refererBase = "https://m1xdrop.net/") {
       return __async(this, null, function* () {
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT2,
-              "Referer": refererBase
-            }
+          const fetchHtml = (targetUrl, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl, {
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": referer
+              }
+            });
+            if (!response.ok) return null;
+            return {
+              url: response.url || targetUrl,
+              html: yield response.text()
+            };
           });
-          if (!response.ok) return null;
-          const html = yield response.text();
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack2(p, a, c, k, null, {});
-            const wurlMatch = unpacked.match(/wurl="([^"]+)"/);
-            if (wurlMatch) {
-              let streamUrl = wurlMatch[1];
-              if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-              return {
-                url: streamUrl,
-                headers: {
-                  "User-Agent": USER_AGENT2,
-                  "Referer": "https://m1xdrop.net/",
-                  "Origin": "https://m1xdrop.net"
-                }
-              };
+          let page = yield fetchHtml(url, refererBase);
+          if (!page) return null;
+          let streamUrl = extractPackedStream(page.html);
+          let pageUrl = page.url;
+          if (!streamUrl) {
+            const embedUrl = extractEmbedUrl(page.html, pageUrl);
+            if (embedUrl && embedUrl !== pageUrl) {
+              const embedPage = yield fetchHtml(embedUrl, pageUrl);
+              if (embedPage) {
+                page = embedPage;
+                pageUrl = embedPage.url;
+                streamUrl = extractPackedStream(embedPage.html);
+              }
             }
           }
-          return null;
+          if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "https://m1xdrop.net";
+            }
+          })();
+          return {
+            url: streamUrl,
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": pageUrl,
+              "Origin": origin
+            }
+          };
         } catch (e) {
           console.error("[Extractors] MixDrop extraction error:", e);
           return null;
@@ -7361,20 +7405,20 @@ var require_cf_bypass = __commonJS({
               });
             } catch (e) {
             }
+            const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
+            const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
             const payload = {
               cmd: options.method === "POST" ? "request.post" : "request.get",
               url,
               session: provider,
-              maxTimeout: 35e3
-              // Ridotto per rientrare nei 40s del provider
+              maxTimeout
             };
             if (options.method === "POST" && options.body) {
               payload.postData = options.body;
             }
             try {
               const response = yield axios.post(FLARE_URL, payload, {
-                timeout: 4e4,
-                // Leggermente più alto di maxTimeout (35s)
+                timeout: requestTimeout,
                 headers: { "Content-Type": "application/json" }
               });
               if (response.data && response.data.status === "ok") {
@@ -7570,6 +7614,9 @@ var require_cf_handler = __commonJS({
           return res.data;
         } catch (err) {
           if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+            if (options.skipBypassOnFailure) {
+              throw err;
+            }
             if (fs.existsSync(sessionFile)) {
               try {
                 fs.unlinkSync(sessionFile);
@@ -7608,128 +7655,6 @@ var require_cf_handler = __commonJS({
       });
     }
     module2.exports = { smartFetch };
-  }
-});
-
-// src/extractors/maxstream.js
-var require_maxstream = __commonJS({
-  "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
-    var { smartFetch } = require_cf_handler();
-    function extractMaxStream2(url, refererBase = "https://uprot.net/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
-          if (targetUrl.includes("uprot.net")) {
-            targetUrl = targetUrl.replace("/msf/", "/mse/");
-            const html2 = yield smartFetch(targetUrl, "uprot", {
-              headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
-            });
-            if (!html2) return null;
-            const redirectMatch = html2.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/);
-            if (redirectMatch) {
-              targetUrl = redirectMatch[0].replace(/\\/g, "");
-            } else {
-              const jsMatch = html2.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/);
-              if (jsMatch) {
-                targetUrl = jsMatch[1];
-              } else {
-                const btnMatch = html2.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
-                if (btnMatch) targetUrl = btnMatch[1];
-                else return null;
-              }
-            }
-          }
-          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
-          const html = yield smartFetch(targetUrl, provider, {
-            headers: {
-              "User-Agent": USER_AGENT2,
-              "Referer": "https://uprot.net/",
-              "Accept-Language": "en-US,en;q=0.5"
-            }
-          });
-          if (!html) return null;
-          let canonicalUrl = null;
-          const fileCodeMatch = html.match(/[?&]file_code=([a-z0-9]+)/i) || html.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i) || html.match(/\$\.cookie\(['"]file_id['"],\s*['"]([a-z0-9]+)['"]/i);
-          if (fileCodeMatch) {
-            canonicalUrl = `https://maxstream.video/emhuih/${fileCodeMatch[1]}`;
-          }
-          const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
-          if (directMatch) {
-            return {
-              url: directMatch[1],
-              sourceUrl: canonicalUrl || targetUrl,
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": targetUrl
-              }
-            };
-          }
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack2(p, a, c, k, null, {});
-            const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
-            if (srcMatch) {
-              return {
-                url: srcMatch[1],
-                sourceUrl: canonicalUrl || targetUrl,
-                headers: {
-                  "User-Agent": USER_AGENT2,
-                  "Referer": targetUrl
-                }
-              };
-            }
-            try {
-              const urlsetIdx = k.indexOf("urlset");
-              const hlsIdx = k.indexOf("hls");
-              const sourcesIdx = k.indexOf("sources");
-              if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
-                const result = k.slice(urlsetIdx + 1, hlsIdx);
-                const reversedElements = result.reverse();
-                const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
-                const reversedFirstPart = firstPartTerms.reverse();
-                let firstUrlPart = "";
-                for (const fp of reversedFirstPart) {
-                  if (fp.includes("0")) {
-                    firstUrlPart += fp;
-                  } else {
-                    firstUrlPart += fp + "-";
-                  }
-                }
-                const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
-                let finalUrl = "";
-                if (reversedElements.length === 1) {
-                  finalUrl = baseUrl + "," + reversedElements[0] + ".urlset/master.m3u8";
-                } else {
-                  finalUrl = baseUrl + reversedElements.join(",") + ".urlset/master.m3u8";
-                }
-                return {
-                  url: finalUrl,
-                  sourceUrl: canonicalUrl || targetUrl,
-                  headers: {
-                    "User-Agent": USER_AGENT2,
-                    "Referer": targetUrl
-                  }
-                };
-              }
-            } catch (e) {
-              console.error("[Extractors] MaxStream manual reconstruction failed:", e);
-            }
-          }
-          return null;
-        } catch (e) {
-          console.error("[Extractors] MaxStream extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractMaxStream: extractMaxStream2 };
   }
 });
 
@@ -7787,6 +7712,224 @@ var require_ocr = __commonJS({
       });
     }
     module2.exports = { solveNumericCaptcha };
+  }
+});
+
+// src/extractors/maxstream.js
+var require_maxstream = __commonJS({
+  "src/extractors/maxstream.js"(exports2, module2) {
+    var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
+    var { smartFetch } = require_cf_handler();
+    var axios = require("axios");
+    var solveNumericCaptcha = null;
+    try {
+      solveNumericCaptcha = require_ocr().solveNumericCaptcha;
+    } catch (e) {
+    }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function getCookieHeader(setCookie) {
+      if (!Array.isArray(setCookie)) return "";
+      return setCookie.map((cookie) => String(cookie).split(";")[0]).filter(Boolean).join("; ");
+    }
+    function extractUprotRedirect(html) {
+      const text = String(html || "");
+      const anchorRegex = /<a\b[^>]+href=["']([^"']*(?:stayonline\.pro|maxstream\.video)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let anchorMatch;
+      while ((anchorMatch = anchorRegex.exec(text)) !== null) {
+        const label = String(anchorMatch[2] || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (/(?:C0NTINUE|CONTINUE)/i.test(label)) return anchorMatch[1].replace(/\\/g, "");
+      }
+      const redirectMatch = text.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/i);
+      if (redirectMatch) return redirectMatch[0].replace(/\\/g, "");
+      const jsMatch = text.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i);
+      if (jsMatch) return jsMatch[1].replace(/\\/g, "");
+      const btnMatch = text.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
+      return btnMatch ? btnMatch[1].replace(/\\/g, "") : null;
+    }
+    function extractEmbedUrl(html, targetUrl) {
+      const targetEmbed = String(targetUrl || "").match(/^https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)/i);
+      if (targetEmbed) return `https://maxstream.video/emhuih/${targetEmbed[1]}`;
+      const text = String(html || "");
+      const iframeMatch = text.match(/src=["'](https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)[^"']*)["']/i) || text.match(/src=["'](\/emhuih\/([a-z0-9]+)[^"']*)["']/i);
+      if (iframeMatch) return normalizeUrl(iframeMatch[1], targetUrl || "https://maxstream.video/");
+      const fileCodeMatch = text.match(/[?&]file_code=([a-z0-9]+)/i) || text.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i);
+      return fileCodeMatch ? `https://maxstream.video/emhuih/${fileCodeMatch[1]}` : null;
+    }
+    function parseMaxStreamHtml(html, targetUrl, sourceUrl = null) {
+      const canonicalUrl = sourceUrl || extractEmbedUrl(html, targetUrl);
+      const directMatch = String(html || "").match(/sources:\s*\[\{src:\s*"([^"]+)"/);
+      if (directMatch) {
+        return {
+          url: directMatch[1],
+          sourceUrl: canonicalUrl || targetUrl,
+          headers: {
+            "User-Agent": USER_AGENT2,
+            "Referer": targetUrl
+          }
+        };
+      }
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (match) {
+        const p = match[1];
+        const a = parseInt(match[2]);
+        const c = parseInt(match[3]);
+        const k = match[4].split("|");
+        const unpacked = unPack2(p, a, c, k, null, {});
+        const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
+        if (srcMatch) {
+          return {
+            url: srcMatch[1],
+            sourceUrl: canonicalUrl || targetUrl,
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": targetUrl
+            }
+          };
+        }
+        try {
+          const urlsetIdx = k.indexOf("urlset");
+          const hlsIdx = k.indexOf("hls");
+          const sourcesIdx = k.indexOf("sources");
+          if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
+            const result = k.slice(urlsetIdx + 1, hlsIdx);
+            const reversedElements = result.reverse();
+            const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
+            const reversedFirstPart = firstPartTerms.reverse();
+            let firstUrlPart = "";
+            for (const fp of reversedFirstPart) {
+              if (fp.includes("0")) {
+                firstUrlPart += fp;
+              } else {
+                firstUrlPart += `${fp}-`;
+              }
+            }
+            const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
+            const finalUrl = reversedElements.length === 1 ? `${baseUrl},${reversedElements[0]}.urlset/master.m3u8` : `${baseUrl}${reversedElements.join(",")}.urlset/master.m3u8`;
+            return {
+              url: finalUrl,
+              sourceUrl: canonicalUrl || targetUrl,
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": targetUrl
+              }
+            };
+          }
+        } catch (e) {
+          console.error("[Extractors] MaxStream manual reconstruction failed:", e);
+        }
+      }
+      return canonicalUrl ? { canonicalUrl } : null;
+    }
+    function resolveUprotProtectedUrl(targetUrl, refererBase) {
+      return __async(this, null, function* () {
+        const headers = {
+          "User-Agent": USER_AGENT2,
+          "Referer": refererBase,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        };
+        let lastDirectRedirect = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = yield axios({
+              url: targetUrl,
+              method: "GET",
+              headers,
+              maxRedirects: 0,
+              timeout: 2e4,
+              validateStatus: false
+            });
+            const html = String(response.data || "");
+            const directRedirect = extractUprotRedirect(html);
+            if (directRedirect) lastDirectRedirect = directRedirect;
+            if (directRedirect && !/name=["']captcha["']/i.test(html)) return directRedirect;
+            const captchaMatch = html.match(/<img[^>]+src=["']data:image\/png;base64,([^"']+)["'][^>]*>/i);
+            if (!captchaMatch || !solveNumericCaptcha) return directRedirect || null;
+            const captchaCode = yield solveNumericCaptcha(captchaMatch[1]);
+            if (!/^\d{3}$/.test(String(captchaCode || ""))) continue;
+            const postHeaders = __spreadProps(__spreadValues({}, headers), {
+              "Referer": targetUrl,
+              "Content-Type": "application/x-www-form-urlencoded"
+            });
+            const cookieHeader = getCookieHeader(response.headers && response.headers["set-cookie"]);
+            if (cookieHeader) postHeaders.Cookie = cookieHeader;
+            const postResponse = yield axios({
+              url: targetUrl,
+              method: "POST",
+              data: new URLSearchParams({ captcha: captchaCode }).toString(),
+              headers: postHeaders,
+              maxRedirects: 0,
+              timeout: 2e4,
+              validateStatus: false
+            });
+            const postRedirect = postResponse.headers && postResponse.headers.location ? normalizeUrl(postResponse.headers.location, targetUrl) : extractUprotRedirect(postResponse.data);
+            if (postRedirect) return postRedirect;
+          } catch (e) {
+            if (attempt === 2) console.error("[Extractors] Uprot captcha resolution failed:", e.message);
+          }
+        }
+        return lastDirectRedirect || null;
+      });
+    }
+    function extractMaxStream2(url, refererBase = "https://uprot.net/") {
+      return __async(this, null, function* () {
+        try {
+          let targetUrl = url;
+          if (targetUrl.startsWith("//")) targetUrl = `https:${targetUrl}`;
+          if (targetUrl.includes("uprot.net")) {
+            targetUrl = targetUrl.replace("/msf/", "/mse/");
+            const isProtectedUprot = /\/(?:msei|msfi|mseild|msefd)\//i.test(targetUrl);
+            const protectedRedirect = yield resolveUprotProtectedUrl(targetUrl, refererBase);
+            if (protectedRedirect) {
+              targetUrl = protectedRedirect;
+            } else if (isProtectedUprot) {
+              return null;
+            } else {
+              const html2 = yield smartFetch(targetUrl, "uprot", {
+                headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
+              });
+              if (!html2) return null;
+              const redirectUrl = extractUprotRedirect(html2);
+              if (!redirectUrl) return null;
+              targetUrl = redirectUrl;
+            }
+          }
+          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
+          const html = yield smartFetch(targetUrl, provider, {
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": "https://uprot.net/",
+              "Accept-Language": "en-US,en;q=0.5"
+            }
+          });
+          if (!html) return null;
+          const parsed = parseMaxStreamHtml(html, targetUrl);
+          if (parsed && parsed.url) return parsed;
+          if (parsed && parsed.canonicalUrl && parsed.canonicalUrl !== targetUrl) {
+            const embedHtml = yield smartFetch(parsed.canonicalUrl, "maxstream", {
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": targetUrl,
+                "Accept-Language": "en-US,en;q=0.5"
+              }
+            });
+            const embedParsed = parseMaxStreamHtml(embedHtml, parsed.canonicalUrl, parsed.canonicalUrl);
+            if (embedParsed && embedParsed.url) return embedParsed;
+          }
+          return null;
+        } catch (e) {
+          console.error("[Extractors] MaxStream extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractMaxStream: extractMaxStream2 };
   }
 });
 
