@@ -1,4 +1,3 @@
-const { solveNumericCaptcha } = require('./src/utils/ocr');
 const { spawn } = require('child_process');
 const { sanitizeLogArgs } = require('./src/utils/log_sanitizer');
 
@@ -2260,23 +2259,6 @@ app.get('/', (req, res) => {
 });
 
 app.use('/', addonRouter);
-
-// API per Nuvio / Client-side
-
-// API OCR per Nuvio (risoluzione captcha numerici)
-app.post('/ocr', express.text({ limit: '1mb' }), async (req, res) => {
-    const imgBase64 = req.body;
-    if (!imgBase64) return res.status(400).json({ error: 'Missing image data' });
-    console.log('[OCR] Richiesta risoluzione captcha...');
-    try {
-        const solved = await solveNumericCaptcha(imgBase64);
-        console.log('[OCR] Risultato:', solved);
-        res.json({ result: solved });
-    } catch (e) {
-        console.error('[OCR] Errore critico:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
 
 app.get('/resolve/:provider', async (req, res) => {
     const { provider: providerName } = req.params;
