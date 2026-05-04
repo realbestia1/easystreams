@@ -96,28 +96,10 @@ const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
 const express = require('express');
 const app = express();
 const path = require('path');
-let isWarmingUp = true;
-let warmupBlockTimer = null;
 function readPositiveIntEnv(name, fallback) {
     const value = Number.parseInt(String(process.env[name] || ''), 10);
     return Number.isInteger(value) && value > 0 ? value : fallback;
 }
-const WARMUP_MAX_BLOCK_MS = readPositiveIntEnv('WARMUP_MAX_BLOCK_MS', 120000);
-function isWarmupBypassPath(pathname) {
-    const value = String(pathname || '');
-    return value.startsWith('/ocr')
-        || value.startsWith('/health')
-        || value === '/manifest.json'
-        || value.endsWith('/manifest.json');
-}
-
-// Warmup middleware: reject requests during initialization
-app.use((req, res, next) => {
-    if (isWarmingUp && !isWarmupBypassPath(req.path)) {
-        return res.status(503).set('Retry-After', '20').send('Server warming up... please wait 20 seconds.');
-    }
-    next();
-});
 
 app.get('/health/flaresolverr', (req, res) => {
     res.json({
@@ -2364,70 +2346,36 @@ function describeValidCfSession(providersToCheck) {
     return null;
 }
 
-async function warmupProviders() {
-    console.log('[Warmup] Avvio riscaldamento provider...');
+async function warmupGuardoserie() {
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
-    const warmupMaxTimeout = readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000);
-    const warmupRequestTimeout = readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000);
-    const failedWarmupSessions = new Set();
-    const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout },
-        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout }
-    ];
-
-    for (const target of targets) {
-        try {
-            const validSession = describeValidCfSession(target.sessions || [target.name.toLowerCase()]);
-            if (!forceWarmup && validSession) {
-                console.log(`[Warmup] ${target.name} saltato: sessione CF valida gia presente (${validSession}).`);
-                continue;
-            }
-            console.log(`[Warmup] Riscaldamento ${target.name}...`);
-            await getClearance(target.url, target.name.toLowerCase(), {
-                maxTimeout: target.maxTimeout,
-                requestTimeout: target.requestTimeout
-            });
-            console.log(`[Warmup] ${target.name} pronto!`);
-            // Piccola pausa per lasciare respirare FlareSolverr
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (e) {
-            for (const sessionName of target.sessions || [target.name.toLowerCase()]) {
-                failedWarmupSessions.add(sessionName);
-            }
-            console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
-        }
+    const validSession = describeValidCfSession(['guardoserie']);
+    if (!forceWarmup && validSession) {
+        console.log(`[Warmup] Guardoserie saltato: sessione CF valida gia presente (${validSession}).`);
+        return;
     }
 
-    isWarmingUp = false;
-    console.log('[Warmup] Riscaldamento completato. Server pronto ad accettare richieste.');
+    try {
+        console.log('[Warmup] Riscaldamento Guardoserie...');
+        await getClearance('https://guardoserie.run/wp-admin/admin-ajax.php', 'guardoserie', {
+            maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
+            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000)
+        });
+        console.log('[Warmup] Guardoserie pronto!');
+    } catch (e) {
+        console.error(`[Warmup] Errore riscaldamento Guardoserie: ${e.message}`);
+    }
 }
 
 let server;
 (async () => {
-    // Avvia FlareSolverr prima di accettare connessioni
+    // Avvia FlareSolverr come fallback runtime; warmup iniziale solo per Guardoserie.
     try {
         await flareManager.start();
         console.log('[FlareSolverr] Pronto.');
-        warmupBlockTimer = setTimeout(() => {
-            if (!isWarmingUp) return;
-            isWarmingUp = false;
-            console.warn(`[Warmup] Timeout blocco iniziale dopo ${WARMUP_MAX_BLOCK_MS}ms. Il warmup continua in background.`);
-        }, WARMUP_MAX_BLOCK_MS);
-        if (typeof warmupBlockTimer.unref === 'function') warmupBlockTimer.unref();
-        // Avvia riscaldamento in background
-        warmupProviders()
-            .catch(e => {
-                isWarmingUp = false;
-                console.error('[Warmup] Errore critico:', e);
-            })
-            .finally(() => {
-                if (warmupBlockTimer) {
-                    clearTimeout(warmupBlockTimer);
-                    warmupBlockTimer = null;
-                }
-            });
+        warmupGuardoserie().catch(e => {
+            console.error('[Warmup] Errore critico Guardoserie:', e);
+        });
     } catch (e) {
-        isWarmingUp = false;
         console.error('[Addon] Errore avvio FlareSolverr:', e.message);
     }
 

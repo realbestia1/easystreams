@@ -1143,6 +1143,9 @@ var BASE_URL = base64Decode("aHR0cHM6Ly9jaW5lbWFjaXR5LmNj");
 var USER_AGENT = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 var FETCH_TIMEOUT = 1e4;
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+var SITEMAP_URL = `${BASE_URL}/news_pages.xml`;
+var SITEMAP_CACHE_MS = 60 * 60 * 1e3;
+var sitemapCache = null;
 function getMappingApiUrl() {
   return "https://animemapping.realbestia.com";
 }
@@ -1187,6 +1190,13 @@ function fetchHtml(_0) {
     return yield response.text();
   });
 }
+function fetchHtmlNoBypass(_0) {
+  return __async(this, arguments, function* (url, headers = {}, options = {}) {
+    return yield fetchHtml(url, headers, __spreadProps(__spreadValues({}, options), {
+      skipBypassOnFailure: true
+    }));
+  });
+}
 function decodeHtmlEntities(str) {
   return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
 }
@@ -1207,7 +1217,206 @@ function isCloudflareBlockedError(error) {
   return /Cloudflare has blocked this request|Error solving the challenge/i.test(message);
 }
 function normalizeTitle(value) {
-  return decodeHtmlEntities(String(value || "")).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, "").trim();
+  return decodeHtmlEntities(String(value || "")).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function compactTitle(value) {
+  return normalizeTitle(value).replace(/\s+/g, "");
+}
+function extractYearFromMetadata(metadata) {
+  const date = (metadata == null ? void 0 : metadata.release_date) || (metadata == null ? void 0 : metadata.first_air_date) || "";
+  const year = Number.parseInt(String(date).slice(0, 4), 10);
+  return Number.isInteger(year) ? year : null;
+}
+function getSignificantTokens(value) {
+  const stopwords = /* @__PURE__ */ new Set([
+    "the",
+    "a",
+    "an",
+    "of",
+    "and",
+    "in",
+    "on",
+    "to",
+    "for",
+    "at",
+    "by",
+    "is",
+    "it",
+    "il",
+    "lo",
+    "la",
+    "gli",
+    "le",
+    "un",
+    "uno",
+    "una",
+    "di",
+    "da",
+    "del",
+    "della",
+    "dei",
+    "e",
+    "o",
+    "con",
+    "per",
+    "su",
+    "tra",
+    "fra"
+  ]);
+  return normalizeTitle(value).split(/\s+/).filter((token) => token.length > 1 && !stopwords.has(token));
+}
+function parseSitemapEntries(xml) {
+  const entries = [];
+  const regex = /<loc>(https:\/\/cinemacity\.cc\/(movies|tv-series)\/\d+-([a-z0-9-]+)\.html)<\/loc>/gi;
+  let match;
+  while ((match = regex.exec(String(xml || ""))) !== null) {
+    const url = match[1];
+    const kind = match[2];
+    const slug = match[3];
+    const yearMatch = slug.match(/-(\d{4})$/);
+    const year = yearMatch ? Number.parseInt(yearMatch[1], 10) : null;
+    const titleSlug = yearMatch ? slug.slice(0, -5) : slug;
+    const title = titleSlug.replace(/-/g, " ");
+    entries.push({
+      url,
+      kind,
+      title,
+      normalizedTitle: normalizeTitle(title),
+      compactTitle: compactTitle(title),
+      tokens: getSignificantTokens(title),
+      year: Number.isInteger(year) ? year : null
+    });
+  }
+  return entries;
+}
+function fetchSitemapEntries() {
+  return __async(this, null, function* () {
+    if (sitemapCache && sitemapCache.expiresAt > Date.now()) {
+      return sitemapCache.entries;
+    }
+    console.log("[CinemaCity] Fetching sitemap catalog...");
+    const cookies = getSessionCookies();
+    const response = yield fetchWithTimeout(SITEMAP_URL, {
+      timeout: FETCH_TIMEOUT,
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/xml,text/xml,text/html;q=0.9,*/*;q=0.8",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": `${BASE_URL}/`,
+        "Cookie": cookies
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const xml = yield response.text();
+    const entries = parseSitemapEntries(xml);
+    sitemapCache = {
+      entries,
+      expiresAt: Date.now() + SITEMAP_CACHE_MS
+    };
+    console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
+    return entries;
+  });
+}
+function scoreSitemapEntry(entry, expectedTitles, expectedYear) {
+  let bestScore = 0;
+  for (const title of expectedTitles) {
+    const normalized = normalizeTitle(title);
+    const compact = compactTitle(title);
+    if (!normalized || !compact) continue;
+    let score = 0;
+    if (entry.normalizedTitle === normalized || entry.compactTitle === compact) {
+      score = 1e3;
+    } else if (entry.normalizedTitle.startsWith(normalized) || normalized.startsWith(entry.normalizedTitle)) {
+      score = 500;
+    } else if (entry.compactTitle.includes(compact) || compact.includes(entry.compactTitle)) {
+      score = 420;
+    } else {
+      const expectedTokens = getSignificantTokens(title);
+      if (expectedTokens.length > 0 && entry.tokens.length > 0) {
+        let hits = 0;
+        const entryTokenSet = new Set(entry.tokens);
+        for (const token of expectedTokens) {
+          if (entryTokenSet.has(token)) hits++;
+        }
+        const coverage = hits / expectedTokens.length;
+        const extraTokens = Math.max(0, entry.tokens.length - expectedTokens.length);
+        score = coverage * 300 - extraTokens * 20 - Math.abs(entry.tokens.length - expectedTokens.length) * 2;
+      }
+    }
+    if (expectedYear && entry.year) {
+      score += entry.year === expectedYear ? 50 : -Math.abs(entry.year - expectedYear) * 3;
+    }
+    bestScore = Math.max(bestScore, score);
+  }
+  return bestScore;
+}
+function searchBySitemap(id, providerType) {
+  return __async(this, null, function* () {
+    const expectedImdbId = /^tt\d{5,}$/i.test(String(id || "").trim()) ? String(id).trim().toLowerCase() : null;
+    const metadata = yield getTmdbMetadata(id, providerType);
+    const expectedTitles = Array.from(new Set([
+      metadata == null ? void 0 : metadata.title,
+      metadata == null ? void 0 : metadata.name,
+      metadata == null ? void 0 : metadata.original_title,
+      metadata == null ? void 0 : metadata.original_name
+    ].filter(Boolean)));
+    if (expectedTitles.length === 0) {
+      return null;
+    }
+    const expectedYear = extractYearFromMetadata(metadata);
+    const expectedKind = providerType === "movie" ? "movies" : "tv-series";
+    const entries = yield fetchSitemapEntries();
+    let bestEntry = null;
+    let bestScore = -Infinity;
+    const ranked = [];
+    for (const entry of entries) {
+      if (entry.kind !== expectedKind) continue;
+      const score = scoreSitemapEntry(entry, expectedTitles, expectedYear);
+      if (score >= 250) {
+        ranked.push({ entry, score });
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestEntry = entry;
+      }
+    }
+    if (!bestEntry || bestScore < 250) {
+      console.log(`[CinemaCity] Sitemap no confident match for ${expectedTitles.join(" / ")} (best=${Math.round(bestScore)})`);
+      return null;
+    }
+    if (expectedImdbId) {
+      ranked.sort((a, b) => b.score - a.score);
+      const candidatesToVerify = ranked.slice(0, 3);
+      for (const candidate of candidatesToVerify) {
+        const candidateImdbId = yield verifyCandidateImdb(candidate.entry.url, expectedImdbId, {
+          skipBypassOnFailure: true
+        });
+        if (candidateImdbId === expectedImdbId) {
+          console.log(`[CinemaCity] Sitemap IMDb verified: ${expectedTitles[0]} -> ${candidate.entry.url}`);
+          return {
+            url: candidate.entry.url,
+            title: expectedTitles[0] || candidate.entry.title
+          };
+        }
+        if (candidateImdbId && candidateImdbId !== expectedImdbId) {
+          console.log(`[CinemaCity] Sitemap IMDb mismatch: ${candidate.entry.url} has ${candidateImdbId}, expected ${expectedImdbId}`);
+          continue;
+        }
+      }
+      const isHighConfidence = bestScore >= 950;
+      if (!isHighConfidence) {
+        console.log(`[CinemaCity] Sitemap match not IMDb verified for ${expectedTitles.join(" / ")} (best=${Math.round(bestScore)})`);
+        return null;
+      }
+    }
+    console.log(`[CinemaCity] Sitemap match: ${expectedTitles[0]} -> ${bestEntry.url} [score=${Math.round(bestScore)}]`);
+    return {
+      url: bestEntry.url,
+      title: expectedTitles[0] || bestEntry.title
+    };
+  });
 }
 function extractCandidateLinksFromListing(html, sectionType) {
   const pathPrefix = sectionType === "movie" ? "movies" : "tv-series";
@@ -1250,14 +1459,15 @@ function extractImdbIdFromHtml(html) {
   }
   return null;
 }
-function verifyCandidateImdb(candidateUrl, expectedImdbId) {
-  return __async(this, null, function* () {
+function verifyCandidateImdb(_0, _1) {
+  return __async(this, arguments, function* (candidateUrl, expectedImdbId, options = {}) {
     const normalizedExpected = String(expectedImdbId || "").trim().toLowerCase();
     if (!/^tt\d{5,}$/.test(normalizedExpected)) {
       return null;
     }
     try {
-      const html = yield fetchHtml(candidateUrl, {
+      const fetcher = options.skipBypassOnFailure ? fetchHtmlNoBypass : fetchHtml;
+      const html = yield fetcher(candidateUrl, {
         "Referer": `${BASE_URL}/`,
         "Upgrade-Insecure-Requests": "1",
         "Sec-Fetch-Dest": "document",
@@ -1265,8 +1475,16 @@ function verifyCandidateImdb(candidateUrl, expectedImdbId) {
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-User": "?1"
       });
-      return extractImdbIdFromHtml(html);
-    } catch (_) {
+      const imdbId = extractImdbIdFromHtml(html);
+      if (imdbId) {
+        console.log(`[CinemaCity] IMDb check ${candidateUrl}: ${imdbId}`);
+      }
+      return imdbId;
+    } catch (e) {
+      const status = getHttpStatusFromError(e);
+      if (status !== 403 && status !== 503 && !isCloudflareBlockedError(e)) {
+        console.error(`[CinemaCity] IMDb check error for ${candidateUrl}:`, e);
+      }
       return null;
     }
   });
@@ -1642,9 +1860,13 @@ function getStreams(id, type, season, episode, providerContext = null) {
       const isStremioAddon = providerContext && providerContext.__requestContext === true;
       const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
       const proxyPassword = providerContext && providerContext.proxyPassword || "";
-      let searchResult = yield searchByImdb(imdbId);
-      if (!searchResult || !searchResult.url) {
-        searchResult = yield searchByTitleFallback(imdbId, providerType);
+      let searchResult = yield searchBySitemap(imdbId, providerType);
+      const allowLegacySearch = String(process.env.CINEMACITY_LEGACY_SEARCH || "").trim().toLowerCase() === "1";
+      if ((!searchResult || !searchResult.url) && allowLegacySearch) {
+        searchResult = yield searchByImdb(imdbId);
+        if (!searchResult || !searchResult.url) {
+          searchResult = yield searchByTitleFallback(imdbId, providerType);
+        }
       }
       if (!searchResult || !searchResult.url) {
         return [];
