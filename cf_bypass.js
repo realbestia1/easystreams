@@ -24,15 +24,25 @@ const MAX_GLOBAL_CONCURRENT = readPositiveIntEnv('FLARE_MAX_CONCURRENT', 4);
 const MAX_GLOBAL_QUEUE = readPositiveIntEnv('FLARE_MAX_QUEUE', 100);
 const GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv('FLARE_QUEUE_TIMEOUT_MS', 45000);
 const FLARE_HEALTH_TIMEOUT = readPositiveIntEnv('FLARE_HEALTH_TIMEOUT_MS', 3000);
+const FLARE_HEALTH_CACHE_MS = readPositiveIntEnv('FLARE_HEALTH_CACHE_MS', 10000);
 const FLARE_RETRIES = readPositiveIntEnv('FLARE_RETRIES', 1);
 const FLARE_KEEP_SESSIONS = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.FLARE_KEEP_SESSIONS || '').trim().toLowerCase()
 );
+const FLARE_KEEP_SESSION_PROVIDERS = new Set(
+    String(process.env.FLARE_KEEP_SESSION_PROVIDERS || 'clicka')
+        .split(',')
+        .map(value => value.trim().toLowerCase())
+        .filter(Boolean)
+);
+const FLARE_KEEP_SESSION_IDLE_MS = readPositiveIntEnv('FLARE_KEEP_SESSION_IDLE_MS', 300000);
 const FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv('FLARE_IDLE_CLEANUP_MS', 5000);
 const FLARE_IDLE_PROCESS_CLEANUP = !['0', 'false', 'no', 'off'].includes(
     String(process.env.FLARE_IDLE_PROCESS_CLEANUP || '').trim().toLowerCase()
 );
 let idleCleanupTimer = null;
+const keptSessionTimers = new Map();
+let lastFlareHealthOkAt = 0;
 
 function getFlareUrl() {
     return process.env.FLARE_URL || 'http://127.0.0.1:8191/v1';
@@ -46,7 +56,11 @@ function getStats() {
         maxConcurrent: MAX_GLOBAL_CONCURRENT,
         maxQueue: MAX_GLOBAL_QUEUE,
         queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
+        healthCacheMs: FLARE_HEALTH_CACHE_MS,
         keepSessions: FLARE_KEEP_SESSIONS,
+        keepSessionProviders: Array.from(FLARE_KEEP_SESSION_PROVIDERS),
+        keepSessionIdleMs: FLARE_KEEP_SESSION_IDLE_MS,
+        keptSessions: Array.from(keptSessionTimers.keys()),
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
         idleCleanupMs: FLARE_IDLE_CLEANUP_MS
     };
@@ -122,9 +136,40 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function shouldKeepFlareSession(provider) {
+    return FLARE_KEEP_SESSIONS || FLARE_KEEP_SESSION_PROVIDERS.has(String(provider || '').toLowerCase());
+}
+
+function touchKeptSession(flareUrl, provider) {
+    const key = String(provider || '').toLowerCase();
+    if (!key) return;
+
+    const existing = keptSessionTimers.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+        keptSessionTimers.delete(key);
+        try {
+            await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
+                timeout: 5000,
+                headers: { 'Content-Type': 'application/json' }
+            });
+            console.log(`[CF] Sessione FlareSolverr idle chiusa per [${provider}] dopo ${FLARE_KEEP_SESSION_IDLE_MS}ms.`);
+        } catch {
+            // Sessione gia chiusa o non esistente.
+        } finally {
+            scheduleIdleProcessCleanup();
+        }
+    }, FLARE_KEEP_SESSION_IDLE_MS);
+
+    if (typeof timer.unref === 'function') timer.unref();
+    keptSessionTimers.set(key, timer);
+}
+
 function runIdleProcessCleanup() {
     if (FLARE_KEEP_SESSIONS || !FLARE_IDLE_PROCESS_CLEANUP) return;
     if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
+    if (keptSessionTimers.size > 0) return;
 
     const command = process.platform === 'win32'
         ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`
@@ -183,12 +228,17 @@ async function postFlare(flareUrl, payload, timeout, attemptLabel) {
 }
 
 async function assertFlareSolverrReady(flareUrl) {
+    if (Date.now() - lastFlareHealthOkAt <= FLARE_HEALTH_CACHE_MS) return;
+
     try {
         const response = await axios.post(flareUrl, { cmd: 'sessions.list' }, {
             timeout: FLARE_HEALTH_TIMEOUT,
             headers: { 'Content-Type': 'application/json' }
         });
-        if (response.data && response.data.status === 'ok') return;
+        if (response.data && response.data.status === 'ok') {
+            lastFlareHealthOkAt = Date.now();
+            return;
+        }
     } catch (error) {
         throw new Error(`FlareSolverr non disponibile su ${flareUrl}: ${error.message}`);
     }
@@ -220,7 +270,11 @@ async function createSessionIfNeeded(flareUrl, provider) {
 }
 
 async function destroySessionIfNeeded(flareUrl, provider) {
-    if (FLARE_KEEP_SESSIONS) return;
+    if (shouldKeepFlareSession(provider)) {
+        touchKeptSession(flareUrl, provider);
+        console.log(`[CF] Sessione FlareSolverr mantenuta per [${provider}] (idle ${FLARE_KEEP_SESSION_IDLE_MS}ms).`);
+        return;
+    }
     try {
         await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
             timeout: 5000,
