@@ -31,7 +31,7 @@ class FlareSolverrManager {
         const escapedUcDir = ucDir.replace(/'/g, "''").toLowerCase();
 
         try {
-            await execAsync(`powershell -NoProfile -Command "$targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chromedriver.exe','flaresolverr.exe')) -and ($p.StartsWith('${escapedRoot}') -or $p.StartsWith('${escapedUcDir}')) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`);
+            await execAsync(`powershell -NoProfile -Command "$targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe','flaresolverr.exe')) -and ($p.StartsWith('${escapedRoot}') -or $p.StartsWith('${escapedUcDir}')) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`);
         } catch (e) {
             console.error('[FlareSolverr] Pulizia processi driver non riuscita:', e.message);
         }

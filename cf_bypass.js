@@ -24,6 +24,9 @@ const MAX_GLOBAL_QUEUE = readPositiveIntEnv('FLARE_MAX_QUEUE', 100);
 const GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv('FLARE_QUEUE_TIMEOUT_MS', 45000);
 const FLARE_HEALTH_TIMEOUT = readPositiveIntEnv('FLARE_HEALTH_TIMEOUT_MS', 3000);
 const FLARE_RETRIES = readPositiveIntEnv('FLARE_RETRIES', 1);
+const FLARE_KEEP_SESSIONS = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.FLARE_KEEP_SESSIONS || '').trim().toLowerCase()
+);
 
 function getFlareUrl() {
     return process.env.FLARE_URL || 'http://127.0.0.1:8191/v1';
@@ -36,7 +39,8 @@ function getStats() {
         activeProviders: activeBypasses.size,
         maxConcurrent: MAX_GLOBAL_CONCURRENT,
         maxQueue: MAX_GLOBAL_QUEUE,
-        queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT
+        queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
+        keepSessions: FLARE_KEEP_SESSIONS
     };
 }
 
@@ -171,6 +175,19 @@ async function createSessionIfNeeded(flareUrl, provider) {
     }
 }
 
+async function destroySessionIfNeeded(flareUrl, provider) {
+    if (FLARE_KEEP_SESSIONS) return;
+    try {
+        await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
+            timeout: 5000,
+            headers: { 'Content-Type': 'application/json' }
+        });
+        console.log(`[CF] Sessione FlareSolverr chiusa per [${provider}] dopo salvataggio cookie.`);
+    } catch {
+        // La sessione puo essere gia chiusa o inesistente: non e un errore operativo.
+    }
+}
+
 async function runBypass(url, provider, options, sessionFile) {
     const flareUrl = getFlareUrl();
     const releaseSlot = await acquireGlobalSlot(provider, url);
@@ -265,6 +282,7 @@ async function runBypass(url, provider, options, sessionFile) {
             throw error;
         }
     } finally {
+        await destroySessionIfNeeded(flareUrl, provider);
         releaseSlot();
     }
 }
