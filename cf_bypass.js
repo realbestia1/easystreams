@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { exec } = require('child_process');
 
 /**
  * Risolve la sfida Cloudflare usando FlareSolverr.
@@ -27,6 +28,11 @@ const FLARE_RETRIES = readPositiveIntEnv('FLARE_RETRIES', 1);
 const FLARE_KEEP_SESSIONS = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.FLARE_KEEP_SESSIONS || '').trim().toLowerCase()
 );
+const FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv('FLARE_IDLE_CLEANUP_MS', 5000);
+const FLARE_IDLE_PROCESS_CLEANUP = !['0', 'false', 'no', 'off'].includes(
+    String(process.env.FLARE_IDLE_PROCESS_CLEANUP || '').trim().toLowerCase()
+);
+let idleCleanupTimer = null;
 
 function getFlareUrl() {
     return process.env.FLARE_URL || 'http://127.0.0.1:8191/v1';
@@ -40,8 +46,16 @@ function getStats() {
         maxConcurrent: MAX_GLOBAL_CONCURRENT,
         maxQueue: MAX_GLOBAL_QUEUE,
         queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
-        keepSessions: FLARE_KEEP_SESSIONS
+        keepSessions: FLARE_KEEP_SESSIONS,
+        idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
+        idleCleanupMs: FLARE_IDLE_CLEANUP_MS
     };
+}
+
+function clearIdleCleanupTimer() {
+    if (!idleCleanupTimer) return;
+    clearTimeout(idleCleanupTimer);
+    idleCleanupTimer = null;
 }
 
 function createRelease() {
@@ -69,6 +83,8 @@ function drainGlobalQueue() {
 }
 
 function acquireGlobalSlot(provider, url) {
+    clearIdleCleanupTimer();
+
     if (activeGlobalRequests < MAX_GLOBAL_CONCURRENT) {
         activeGlobalRequests++;
         return Promise.resolve(createRelease());
@@ -104,6 +120,34 @@ function acquireGlobalSlot(provider, url) {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function runIdleProcessCleanup() {
+    if (FLARE_KEEP_SESSIONS || !FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
+
+    const command = process.platform === 'win32'
+        ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`
+        : `sh -lc "pkill -f '/usr/bin/chromium|/usr/bin/chromedriver|chromedriver|--user-data-dir=/tmp/tmp' 2>/dev/null || true"`;
+
+    exec(command, { timeout: 10000 }, (error) => {
+        if (error) {
+            console.error(`[CF] Idle cleanup browser fallito: ${error.message}`);
+            return;
+        }
+        console.log('[CF] Idle cleanup browser completato.');
+    });
+}
+
+function scheduleIdleProcessCleanup() {
+    if (FLARE_KEEP_SESSIONS || !FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
+    clearIdleCleanupTimer();
+    idleCleanupTimer = setTimeout(() => {
+        idleCleanupTimer = null;
+        runIdleProcessCleanup();
+    }, FLARE_IDLE_CLEANUP_MS);
+    if (typeof idleCleanupTimer.unref === 'function') idleCleanupTimer.unref();
 }
 
 function isRetryableFlareError(error) {
@@ -284,6 +328,7 @@ async function runBypass(url, provider, options, sessionFile) {
     } finally {
         await destroySessionIfNeeded(flareUrl, provider);
         releaseSlot();
+        scheduleIdleProcessCleanup();
     }
 }
 
