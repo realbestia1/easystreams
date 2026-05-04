@@ -14305,7 +14305,7 @@ var require_eurostreaming = __commonJS({
           }
           if (isRedirectorUrl(proxySourceUrl)) {
             traceRedirect("extract_stop_still_redirector", { host, proxySourceUrl, hostUrl });
-            console.error(`[EuroStreaming] Redirector non risolto per ${host}: ${proxySourceUrl}`);
+            console.warn(`[EuroStreaming] Redirector saltato per ${host}: ${proxySourceUrl}`);
             return [];
           }
           return [formatStream({
