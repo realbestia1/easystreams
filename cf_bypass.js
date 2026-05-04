@@ -12,6 +12,8 @@ const { exec } = require('child_process');
  * - timeout di coda, cosi le richieste non restano appese indefinitamente.
  */
 const activeBypasses = new Map();
+const providerCooldowns = new Map();
+const throttledLogAt = new Map();
 const globalQueue = [];
 let activeGlobalRequests = 0;
 
@@ -26,6 +28,8 @@ const GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv('FLARE_QUEUE_TIMEOUT_MS', 45000)
 const FLARE_HEALTH_TIMEOUT = readPositiveIntEnv('FLARE_HEALTH_TIMEOUT_MS', 3000);
 const FLARE_HEALTH_CACHE_MS = readPositiveIntEnv('FLARE_HEALTH_CACHE_MS', 10000);
 const FLARE_RETRIES = readPositiveIntEnv('FLARE_RETRIES', 1);
+const FLARE_FAILURE_COOLDOWN_MS = readPositiveIntEnv('FLARE_FAILURE_COOLDOWN_MS', 120000);
+const FLARE_FAILURE_COOLDOWN_MAX_MS = readPositiveIntEnv('FLARE_FAILURE_COOLDOWN_MAX_MS', 300000);
 const FLARE_ORIGIN_COOKIE_TIMEOUT = readPositiveIntEnv('FLARE_ORIGIN_COOKIE_TIMEOUT_MS', 10000);
 const FLARE_CAPTURE_ORIGIN_COOKIES = !['0', 'false', 'no', 'off'].includes(
     String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || '').trim().toLowerCase()
@@ -56,12 +60,78 @@ function getStats() {
         maxQueue: MAX_GLOBAL_QUEUE,
         queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
         healthCacheMs: FLARE_HEALTH_CACHE_MS,
+        failureCooldownMs: FLARE_FAILURE_COOLDOWN_MS,
+        failureCooldownMaxMs: FLARE_FAILURE_COOLDOWN_MAX_MS,
+        cooldowns: getActiveCooldownStats(),
         captureOriginCookies: FLARE_CAPTURE_ORIGIN_COOKIES,
         captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
         originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
         idleCleanupMs: FLARE_IDLE_CLEANUP_MS
     };
+}
+
+function logThrottled(key, message, intervalMs = 5000) {
+    const now = Date.now();
+    const last = throttledLogAt.get(key) || 0;
+    if (now - last < intervalMs) return;
+    throttledLogAt.set(key, now);
+    console.log(message);
+}
+
+function getActiveCooldown(provider) {
+    const key = String(provider || 'default').toLowerCase();
+    const entry = providerCooldowns.get(key);
+    if (!entry) return null;
+    if (Date.now() >= entry.until) {
+        providerCooldowns.delete(key);
+        return null;
+    }
+    return entry;
+}
+
+function getActiveCooldownStats() {
+    const now = Date.now();
+    const stats = [];
+    for (const [provider, entry] of providerCooldowns.entries()) {
+        if (!entry || now >= entry.until) {
+            providerCooldowns.delete(provider);
+            continue;
+        }
+        stats.push({
+            provider,
+            remainingMs: entry.until - now,
+            failures: entry.failures,
+            reason: entry.reason
+        });
+    }
+    return stats;
+}
+
+function markProviderCooldown(provider, error) {
+    const key = String(provider || 'default').toLowerCase();
+    const now = Date.now();
+    const previous = providerCooldowns.get(key);
+    const previousFailures = previous && now - previous.lastFailureAt <= FLARE_FAILURE_COOLDOWN_MAX_MS
+        ? previous.failures
+        : 0;
+    const failures = previousFailures + 1;
+    const duration = Math.min(
+        FLARE_FAILURE_COOLDOWN_MS * Math.pow(2, Math.max(0, failures - 1)),
+        FLARE_FAILURE_COOLDOWN_MAX_MS
+    );
+    const reason = error && error.message ? error.message : String(error || 'errore sconosciuto');
+    providerCooldowns.set(key, {
+        until: now + duration,
+        lastFailureAt: now,
+        failures,
+        reason
+    });
+    console.warn(`[CF] Cooldown FlareSolverr per [${key}] ${Math.round(duration / 1000)}s dopo errore: ${reason}`);
+}
+
+function clearProviderCooldown(provider) {
+    providerCooldowns.delete(String(provider || 'default').toLowerCase());
 }
 
 function clearIdleCleanupTimer() {
@@ -474,6 +544,7 @@ async function runBypass(url, provider, options, sessionFile) {
                 }
 
                 console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+                clearProviderCooldown(provider);
                 return data;
             }
 
@@ -497,11 +568,21 @@ async function getClearance(url, provider = 'default', options = {}) {
     const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
 
     if (activeBypasses.has(provider)) {
-        console.log(`[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
+        logThrottled(`wait:${provider}`, `[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
         return activeBypasses.get(provider);
     }
 
+    const cooldown = getActiveCooldown(provider);
+    if (cooldown) {
+        const remainingMs = Math.max(0, cooldown.until - Date.now());
+        throw new Error(`FlareSolverr in cooldown per [${provider}] ancora ${Math.ceil(remainingMs / 1000)}s (${cooldown.reason})`);
+    }
+
     const bypassPromise = runBypass(url, provider, options, sessionFile)
+        .catch((error) => {
+            markProviderCooldown(provider, error);
+            throw error;
+        })
         .finally(() => {
             activeBypasses.delete(provider);
         });

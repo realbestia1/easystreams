@@ -7493,6 +7493,8 @@ var require_cf_bypass = __commonJS({
     var axios2 = require("axios");
     var { exec } = require("child_process");
     var activeBypasses = /* @__PURE__ */ new Map();
+    var providerCooldowns = /* @__PURE__ */ new Map();
+    var throttledLogAt = /* @__PURE__ */ new Map();
     var globalQueue = [];
     var activeGlobalRequests = 0;
     function readPositiveIntEnv(name, fallback) {
@@ -7505,6 +7507,8 @@ var require_cf_bypass = __commonJS({
     var FLARE_HEALTH_TIMEOUT = readPositiveIntEnv("FLARE_HEALTH_TIMEOUT_MS", 3e3);
     var FLARE_HEALTH_CACHE_MS = readPositiveIntEnv("FLARE_HEALTH_CACHE_MS", 1e4);
     var FLARE_RETRIES = readPositiveIntEnv("FLARE_RETRIES", 1);
+    var FLARE_FAILURE_COOLDOWN_MS = readPositiveIntEnv("FLARE_FAILURE_COOLDOWN_MS", 12e4);
+    var FLARE_FAILURE_COOLDOWN_MAX_MS = readPositiveIntEnv("FLARE_FAILURE_COOLDOWN_MAX_MS", 3e5);
     var FLARE_ORIGIN_COOKIE_TIMEOUT = readPositiveIntEnv("FLARE_ORIGIN_COOKIE_TIMEOUT_MS", 1e4);
     var FLARE_CAPTURE_ORIGIN_COOKIES = !["0", "false", "no", "off"].includes(
       String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || "").trim().toLowerCase()
@@ -7530,12 +7534,71 @@ var require_cf_bypass = __commonJS({
         maxQueue: MAX_GLOBAL_QUEUE,
         queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
         healthCacheMs: FLARE_HEALTH_CACHE_MS,
+        failureCooldownMs: FLARE_FAILURE_COOLDOWN_MS,
+        failureCooldownMaxMs: FLARE_FAILURE_COOLDOWN_MAX_MS,
+        cooldowns: getActiveCooldownStats(),
         captureOriginCookies: FLARE_CAPTURE_ORIGIN_COOKIES,
         captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
         originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
         idleCleanupMs: FLARE_IDLE_CLEANUP_MS
       };
+    }
+    function logThrottled(key, message, intervalMs = 5e3) {
+      const now = Date.now();
+      const last = throttledLogAt.get(key) || 0;
+      if (now - last < intervalMs) return;
+      throttledLogAt.set(key, now);
+      console.log(message);
+    }
+    function getActiveCooldown(provider) {
+      const key = String(provider || "default").toLowerCase();
+      const entry = providerCooldowns.get(key);
+      if (!entry) return null;
+      if (Date.now() >= entry.until) {
+        providerCooldowns.delete(key);
+        return null;
+      }
+      return entry;
+    }
+    function getActiveCooldownStats() {
+      const now = Date.now();
+      const stats = [];
+      for (const [provider, entry] of providerCooldowns.entries()) {
+        if (!entry || now >= entry.until) {
+          providerCooldowns.delete(provider);
+          continue;
+        }
+        stats.push({
+          provider,
+          remainingMs: entry.until - now,
+          failures: entry.failures,
+          reason: entry.reason
+        });
+      }
+      return stats;
+    }
+    function markProviderCooldown(provider, error) {
+      const key = String(provider || "default").toLowerCase();
+      const now = Date.now();
+      const previous = providerCooldowns.get(key);
+      const previousFailures = previous && now - previous.lastFailureAt <= FLARE_FAILURE_COOLDOWN_MAX_MS ? previous.failures : 0;
+      const failures = previousFailures + 1;
+      const duration = Math.min(
+        FLARE_FAILURE_COOLDOWN_MS * Math.pow(2, Math.max(0, failures - 1)),
+        FLARE_FAILURE_COOLDOWN_MAX_MS
+      );
+      const reason = error && error.message ? error.message : String(error || "errore sconosciuto");
+      providerCooldowns.set(key, {
+        until: now + duration,
+        lastFailureAt: now,
+        failures,
+        reason
+      });
+      console.warn(`[CF] Cooldown FlareSolverr per [${key}] ${Math.round(duration / 1e3)}s dopo errore: ${reason}`);
+    }
+    function clearProviderCooldown(provider) {
+      providerCooldowns.delete(String(provider || "default").toLowerCase());
     }
     function clearIdleCleanupTimer() {
       if (!idleCleanupTimer) return;
@@ -7877,6 +7940,7 @@ var require_cf_bypass = __commonJS({
                 }
               }
               console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+              clearProviderCooldown(provider);
               return data;
             }
             const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
@@ -7899,10 +7963,18 @@ var require_cf_bypass = __commonJS({
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
         const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
-          console.log(`[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
+          logThrottled(`wait:${provider}`, `[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
           return activeBypasses.get(provider);
         }
-        const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
+        const cooldown = getActiveCooldown(provider);
+        if (cooldown) {
+          const remainingMs = Math.max(0, cooldown.until - Date.now());
+          throw new Error(`FlareSolverr in cooldown per [${provider}] ancora ${Math.ceil(remainingMs / 1e3)}s (${cooldown.reason})`);
+        }
+        const bypassPromise = runBypass(url, provider, options, sessionFile).catch((error) => {
+          markProviderCooldown(provider, error);
+          throw error;
+        }).finally(() => {
           activeBypasses.delete(provider);
         });
         activeBypasses.set(provider, bypassPromise);
@@ -8048,9 +8120,12 @@ var require_cf_handler = __commonJS({
           const data = response.data;
           const responseUrl = ((_b = (_a = response.request) == null ? void 0 : _a.res) == null ? void 0 : _b.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
           if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            const quietHttpErrors = options.quietHttpErrors === true || Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status);
+            if (!quietHttpErrors) {
+              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            }
             const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data };
+            err.response = { status: response.status, data, url: targetUrl };
             throw err;
           }
           return { data, status: response.status, headers: response.headers, url: responseUrl };
@@ -8105,7 +8180,11 @@ var require_cf_handler = __commonJS({
               try {
                 const oldUrlObj = new URL(url);
                 const newUrlObj = new URL(newSession.url);
-                if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                const newSessionHasSpecificTarget = newUrlObj.pathname !== "/" || Boolean(newUrlObj.search) || Boolean(newUrlObj.hash) || oldUrlObj.hostname === newUrlObj.hostname;
+                if (newSessionHasSpecificTarget) {
+                  finalUrl = newUrlObj.toString();
+                  if (options.meta) options.meta.finalUrl = finalUrl;
+                } else if (oldUrlObj.hostname !== newUrlObj.hostname) {
                   oldUrlObj.hostname = newUrlObj.hostname;
                   oldUrlObj.protocol = newUrlObj.protocol;
                   finalUrl = oldUrlObj.toString();
@@ -8407,6 +8486,14 @@ var require_deltabit = __commonJS({
     var { USER_AGENT: USER_AGENT2 } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
     var { solveNumericCaptcha: solveNumericCaptcha2 } = require_ocr();
+    function isDeadDeltaBitRedirectUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.hostname.toLowerCase().includes("deltabit.") && /^\/a?delta\//i.test(parsed.pathname);
+      } catch (e) {
+        return false;
+      }
+    }
     function extractDeltaBit2(url, refererBase = "https://eurostreamings.help/") {
       return __async(this, null, function* () {
         try {
@@ -8415,13 +8502,29 @@ var require_deltabit = __commonJS({
           let redirectLoopCount = 0;
           while (redirectLoopCount < 3 && (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc"))) {
             redirectLoopCount++;
+            const fetchMeta = {};
             const html2 = yield smartFetch2(targetUrl, "clicka", {
+              meta: fetchMeta,
+              quietHttpErrors: [404],
               headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
             });
             if (!html2) break;
+            if (fetchMeta.finalUrl && fetchMeta.finalUrl !== targetUrl) {
+              targetUrl = fetchMeta.finalUrl;
+              if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+                return null;
+              }
+              if (targetUrl.includes("deltabit.")) break;
+              if (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc")) continue;
+            }
             const nextMatch = html2.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
             if (nextMatch) {
               targetUrl = nextMatch[0].replace(/&amp;/g, "&");
+              if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+                return null;
+              }
               if (targetUrl.includes("deltabit.")) break;
             } else {
               const refreshMatch = html2.match(/url=(https?:\/\/[^"']+)/i);
@@ -8432,7 +8535,12 @@ var require_deltabit = __commonJS({
               }
             }
           }
+          if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+            console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+            return null;
+          }
           const html = yield smartFetch2(targetUrl, "deltabit", {
+            quietHttpErrors: [404],
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": refererBase
@@ -8493,6 +8601,7 @@ var require_deltabit = __commonJS({
             yield new Promise((resolve) => setTimeout(resolve, 3500));
             const postHtml = yield smartFetch2(targetUrl, "deltabit", {
               method: "POST",
+              quietHttpErrors: [404],
               headers: {
                 "User-Agent": USER_AGENT2,
                 "Referer": targetUrl,
@@ -8514,7 +8623,11 @@ var require_deltabit = __commonJS({
           }
           return null;
         } catch (e) {
-          console.error("[Extractors] DeltaBit extraction error:", e);
+          if (e && e.response && e.response.status === 404) {
+            console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
+            return null;
+          }
+          console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);
           return null;
         }
       });

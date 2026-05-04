@@ -154,9 +154,13 @@ async function smartFetch(url, domain, options = {}) {
             response.config?.url ||
             targetUrl;
         if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            const quietHttpErrors = options.quietHttpErrors === true ||
+                (Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status));
+            if (!quietHttpErrors) {
+                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+            }
             const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data };
+            err.response = { status: response.status, data, url: targetUrl };
             throw err;
         }
 
@@ -220,7 +224,14 @@ async function smartFetch(url, domain, options = {}) {
                 try {
                     const oldUrlObj = new URL(url);
                     const newUrlObj = new URL(newSession.url);
-                    if (oldUrlObj.hostname !== newUrlObj.hostname) {
+                    const newSessionHasSpecificTarget = newUrlObj.pathname !== '/' ||
+                        Boolean(newUrlObj.search) ||
+                        Boolean(newUrlObj.hash) ||
+                        oldUrlObj.hostname === newUrlObj.hostname;
+                    if (newSessionHasSpecificTarget) {
+                        finalUrl = newUrlObj.toString();
+                        if (options.meta) options.meta.finalUrl = finalUrl;
+                    } else if (oldUrlObj.hostname !== newUrlObj.hostname) {
                         oldUrlObj.hostname = newUrlObj.hostname;
                         oldUrlObj.protocol = newUrlObj.protocol;
                         finalUrl = oldUrlObj.toString();

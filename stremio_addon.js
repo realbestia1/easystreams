@@ -2410,6 +2410,7 @@ function describeValidCfSession(providersToCheck) {
 async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
+    const failedWarmupSessions = new Set();
     const targets = [
         { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
         { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: 12000, requestTimeout: 17000 },
@@ -2432,6 +2433,9 @@ async function warmupProviders() {
             // Piccola pausa per lasciare respirare FlareSolverr
             await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (e) {
+            for (const sessionName of target.sessions || [target.name.toLowerCase()]) {
+                failedWarmupSessions.add(sessionName);
+            }
             console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
         }
     }
@@ -2443,8 +2447,11 @@ async function warmupProviders() {
 
     const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
     const redirectorSessionsReady = hasAnyValidCfSession(['clicka']) && hasAnyValidCfSession(['safego']);
+    const eurostreamingWarmupFailed = failedWarmupSessions.has('eurostreaming') || failedWarmupSessions.has('eurostreamings');
     if (!forceWarmup && redirectorSessionsReady) {
         console.log('[Warmup] Redirector EuroStreaming saltati: sessioni CF clicka/safego valide gia presenti.');
+    } else if (!forceWarmup && eurostreamingWarmupFailed && redirectorWarmupUrls.length === 0) {
+        console.log('[Warmup] Discovery redirector EuroStreaming saltata: warmup EuroStreaming appena fallito.');
     } else if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
         try {
             console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);

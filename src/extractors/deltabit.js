@@ -2,6 +2,16 @@ const { USER_AGENT } = require('./common');
 const { smartFetch } = require('../utils/cf_handler');
 const { solveNumericCaptcha } = require('../utils/ocr');
 
+function isDeadDeltaBitRedirectUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase().includes('deltabit.') &&
+      /^\/a?delta\//i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/') {
   try {
     let targetUrl = url;
@@ -11,15 +21,32 @@ async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/'
     let redirectLoopCount = 0;
     while (redirectLoopCount < 3 && (targetUrl.includes('safego.cc') || targetUrl.includes('clicka.cc'))) {
         redirectLoopCount++;
+        const fetchMeta = {};
         const html = await smartFetch(targetUrl, 'clicka', {
+            meta: fetchMeta,
+            quietHttpErrors: [404],
             headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
         });
         if (!html) break;
+
+        if (fetchMeta.finalUrl && fetchMeta.finalUrl !== targetUrl) {
+            targetUrl = fetchMeta.finalUrl;
+            if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+                return null;
+            }
+            if (targetUrl.includes('deltabit.')) break;
+            if (targetUrl.includes('safego.cc') || targetUrl.includes('clicka.cc')) continue;
+        }
         
         // Look for the next link (deltabit or another redirector)
         const nextMatch = html.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
         if (nextMatch) {
             targetUrl = nextMatch[0].replace(/&amp;/g, '&');
+            if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+                console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+                return null;
+            }
             if (targetUrl.includes('deltabit.')) break; // Found the final destination
         } else {
             // Check for meta refresh
@@ -32,8 +59,14 @@ async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/'
         }
     }
 
+    if (isDeadDeltaBitRedirectUrl(targetUrl)) {
+      console.warn(`[DeltaBit] Redirector finale non valido: ${targetUrl}`);
+      return null;
+    }
+
     // 2. GET the initial page
     const html = await smartFetch(targetUrl, 'deltabit', {
+      quietHttpErrors: [404],
       headers: {
         "User-Agent": USER_AGENT,
         "Referer": refererBase
@@ -119,6 +152,7 @@ async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/'
         // POST to get the final page
         const postHtml = await smartFetch(targetUrl, 'deltabit', {
             method: 'POST',
+            quietHttpErrors: [404],
             headers: {
                 "User-Agent": USER_AGENT,
                 "Referer": targetUrl,
@@ -143,7 +177,11 @@ async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/'
 
     return null;
   } catch (e) {
-    console.error("[Extractors] DeltaBit extraction error:", e);
+    if (e && e.response && e.response.status === 404) {
+      console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
+      return null;
+    }
+    console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);
     return null;
   }
 }
