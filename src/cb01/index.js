@@ -24,7 +24,7 @@ if (!IS_SERVER) {
 
                         if (lower.includes('maxstream') || lower.includes('uprot.net')) {
                             extracted = await extractMaxStream(sourceUrl, 'https://cb01uno.run/');
-                        } else if (lower.includes('deltabit') || lower.includes('clicka.cc/delta')) {
+                        } else if (lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) {
                             extracted = await extractDeltaBit(sourceUrl, 'https://cb01uno.run/');
                         } else if (lower.includes('mixdrop') || lower.includes('m1xdrop')) {
                             streams.push(formatStream({
@@ -378,7 +378,7 @@ function extractAnchors(html) {
 
 function isHostLink(anchor) {
     const value = `${anchor && anchor.text || ''} ${anchor && anchor.href || ''} ${anchor && anchor.raw || ''}`.toLowerCase();
-    return /(stayonline\.pro|uprot\.net|maxstream|mixdrop|m1xdrop|deltabit|clicka\.cc\/(?:delta|mix)|safego\.cc)/i.test(value);
+    return /(stayonline\.pro|uprot\.net|maxstream|mixdrop|m1xdrop|deltabit|clicka\.cc\/(?:adelta|delta|mix)|safego\.cc)/i.test(value);
 }
 
 function detectHost(anchorOrUrl) {
@@ -386,7 +386,7 @@ function detectHost(anchorOrUrl) {
         ? anchorOrUrl
         : `${anchorOrUrl && anchorOrUrl.text || ''} ${anchorOrUrl && anchorOrUrl.href || ''} ${anchorOrUrl && anchorOrUrl.raw || ''}`;
     const lower = String(value || '').toLowerCase();
-    if (lower.includes('deltabit') || lower.includes('clicka.cc/delta')) return 'deltabit';
+    if (lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) return 'deltabit';
     if (lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('clicka.cc/mix')) return 'mixdrop';
     if (lower.includes('maxstream') || lower.includes('uprot.net')) return 'maxstream';
     if (lower.includes('stayonline.pro') && lower.includes('mixdrop')) return 'mixdrop';
@@ -938,7 +938,7 @@ async function extractStreamFromHost(link, displayName, season = 1, episode = 1)
             extracted = await extractMixDrop(hostUrl, `${BASE_URL}/`);
         } else if (lower.includes('maxstream') || lower.includes('uprot.net')) {
             extracted = await extractMaxStream(hostUrl, `${BASE_URL}/`);
-        } else if (host === 'deltabit' || lower.includes('deltabit') || lower.includes('clicka.cc/delta')) {
+        } else if (host === 'deltabit' || lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) {
             extracted = await extractDeltaBit(hostUrl, `${BASE_URL}/`);
         }
 

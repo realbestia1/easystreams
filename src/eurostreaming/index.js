@@ -23,7 +23,7 @@ if (!IS_SERVER) {
                         const lower = link.url.toLowerCase();
                         if (lower.includes('maxstream') || lower.includes('uprot.net')) {
                             extracted = await extractMaxStream(link.url, 'https://eurostreamings.work/');
-                        } else if (lower.includes('deltabit') || lower.includes('clicka.cc/delta')) {
+                        } else if (lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) {
                             extracted = await extractDeltaBit(link.url, 'https://eurostreamings.work/');
                         } else if (lower.includes('mixdrop') || lower.includes('m1xdrop')) {
                             console.log(`[EuroStreaming-Client] MixDrop aggiunto direttamente.`);
@@ -482,7 +482,7 @@ function extractAnchors(html) {
 
 function isHostLink(anchor) {
     const value = `${anchor.text} ${anchor.href}`.toLowerCase();
-    return /(maxstream|uprot|deltabit|clicka\.cc\/delta|mixdrop|m1xdrop)/i.test(value);
+    return /(maxstream|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
 }
 
 function detectHost(anchorOrUrl) {
@@ -490,7 +490,7 @@ function detectHost(anchorOrUrl) {
         ? anchorOrUrl
         : `${anchorOrUrl && anchorOrUrl.text || ''} ${anchorOrUrl && anchorOrUrl.href || ''} ${anchorOrUrl && anchorOrUrl.raw || ''}`;
     const lower = String(value || '').toLowerCase();
-    if (lower.includes('deltabit') || lower.includes('clicka.cc/delta')) return 'deltabit';
+    if (lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) return 'deltabit';
     if (lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('clicka.cc/mix')) return 'mixdrop';
     if (lower.includes('maxstream') || lower.includes('uprot.net')) return 'maxstream';
     return null;
@@ -764,7 +764,7 @@ async function extractStreamFromHost(link, displayName) {
             extracted = await extractMixDrop(hostUrl, `${BASE_URL}/`);
         } else if (lower.includes('maxstream') || lower.includes('uprot.net')) {
             extracted = await extractMaxStream(hostUrl, `${BASE_URL}/`);
-        } else if (host === 'deltabit' || lower.includes('deltabit') || lower.includes('clicka.cc/delta')) {
+        } else if (host === 'deltabit' || lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) {
             extracted = await extractDeltaBit(hostUrl, `${BASE_URL}/`);
         }
         traceRedirect('extractor_done', {

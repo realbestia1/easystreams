@@ -13318,7 +13318,7 @@ var require_eurostreaming = __commonJS({
                 const lower = link.url.toLowerCase();
                 if (lower.includes("maxstream") || lower.includes("uprot.net")) {
                   extracted = yield extractMaxStream(link.url, "https://eurostreamings.work/");
-                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
                   extracted = yield extractDeltaBit(link.url, "https://eurostreamings.work/");
                 } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
                   console.log(`[EuroStreaming-Client] MixDrop aggiunto direttamente.`);
@@ -13713,12 +13713,12 @@ var require_eurostreaming = __commonJS({
     }
     function isHostLink(anchor) {
       const value = `${anchor.text} ${anchor.href}`.toLowerCase();
-      return /(maxstream|uprot|deltabit|clicka\.cc\/delta|mixdrop|m1xdrop)/i.test(value);
+      return /(maxstream|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
     }
     function detectHost(anchorOrUrl) {
       const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
       const lower = String(value || "").toLowerCase();
-      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) return "deltabit";
+      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) return "deltabit";
       if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
       if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
       return null;
@@ -13949,7 +13949,7 @@ var require_eurostreaming = __commonJS({
             extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
           } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
             extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
-          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
             extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
           }
           traceRedirect("extractor_done", {
@@ -14131,7 +14131,7 @@ var require_cb01 = __commonJS({
                 let extracted = null;
                 if (lower.includes("maxstream") || lower.includes("uprot.net")) {
                   extracted = yield extractMaxStream(sourceUrl, "https://cb01uno.run/");
-                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+                } else if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
                   extracted = yield extractDeltaBit(sourceUrl, "https://cb01uno.run/");
                 } else if (lower.includes("mixdrop") || lower.includes("m1xdrop")) {
                   streams.push(formatStream({
@@ -14423,12 +14423,12 @@ var require_cb01 = __commonJS({
     }
     function isHostLink(anchor) {
       const value = `${anchor && anchor.text || ""} ${anchor && anchor.href || ""} ${anchor && anchor.raw || ""}`.toLowerCase();
-      return /(stayonline\.pro|uprot\.net|maxstream|mixdrop|m1xdrop|deltabit|clicka\.cc\/(?:delta|mix)|safego\.cc)/i.test(value);
+      return /(stayonline\.pro|uprot\.net|maxstream|mixdrop|m1xdrop|deltabit|clicka\.cc\/(?:adelta|delta|mix)|safego\.cc)/i.test(value);
     }
     function detectHost(anchorOrUrl) {
       const value = typeof anchorOrUrl === "string" ? anchorOrUrl : `${anchorOrUrl && anchorOrUrl.text || ""} ${anchorOrUrl && anchorOrUrl.href || ""} ${anchorOrUrl && anchorOrUrl.raw || ""}`;
       const lower = String(value || "").toLowerCase();
-      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta")) return "deltabit";
+      if (lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) return "deltabit";
       if (lower.includes("mixdrop") || lower.includes("m1xdrop") || lower.includes("clicka.cc/mix")) return "mixdrop";
       if (lower.includes("maxstream") || lower.includes("uprot.net")) return "maxstream";
       if (lower.includes("stayonline.pro") && lower.includes("mixdrop")) return "mixdrop";
@@ -14925,7 +14925,7 @@ var require_cb01 = __commonJS({
             extracted = yield extractMixDrop(hostUrl, `${BASE_URL}/`);
           } else if (lower.includes("maxstream") || lower.includes("uprot.net")) {
             extracted = yield extractMaxStream(hostUrl, `${BASE_URL}/`);
-          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta")) {
+          } else if (host === "deltabit" || lower.includes("deltabit") || lower.includes("clicka.cc/delta") || lower.includes("clicka.cc/adelta")) {
             extracted = yield extractDeltaBit(hostUrl, `${BASE_URL}/`);
           }
           const items = Array.isArray(extracted) ? extracted : extracted ? [extracted] : [];
