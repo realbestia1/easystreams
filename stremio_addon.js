@@ -2414,11 +2414,13 @@ function describeValidCfSession(providersToCheck) {
 async function warmupProviders() {
     console.log('[Warmup] Avvio riscaldamento provider...');
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
+    const warmupMaxTimeout = readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000);
+    const warmupRequestTimeout = readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000);
     const failedWarmupSessions = new Set();
     const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
-        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: 12000, requestTimeout: 17000 },
-        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'] }
+        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout },
+        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout },
+        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'], maxTimeout: warmupMaxTimeout, requestTimeout: warmupRequestTimeout }
     ];
 
     for (const target of targets) {
