@@ -7,6 +7,31 @@ try {
   solveNumericCaptcha = require('../utils/ocr').solveNumericCaptcha;
 } catch {}
 
+function readBoolEnv(name, defaultValue = false) {
+  try {
+    const value = process && process.env && process.env[name];
+    if (value == null || value === '') return defaultValue;
+    return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+  } catch {
+    return defaultValue;
+  }
+}
+
+function readPositiveIntEnv(name, defaultValue) {
+  try {
+    const value = parseInt(process && process.env && process.env[name], 10);
+    return Number.isFinite(value) && value > 0 ? value : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+const UPROT_DIRECT_ATTEMPTS = readPositiveIntEnv('UPROT_DIRECT_ATTEMPTS', 1);
+const UPROT_DIRECT_TIMEOUT_MS = readPositiveIntEnv('UPROT_DIRECT_TIMEOUT_MS', 6000);
+const UPROT_ENABLE_FLARE_FALLBACK = readBoolEnv('UPROT_ENABLE_FLARE_FALLBACK', true);
+const UPROT_FLARE_MAX_TIMEOUT_MS = readPositiveIntEnv('UPROT_FLARE_MAX_TIMEOUT_MS', 12000);
+const UPROT_FLARE_REQUEST_TIMEOUT_MS = readPositiveIntEnv('UPROT_FLARE_REQUEST_TIMEOUT_MS', UPROT_FLARE_MAX_TIMEOUT_MS + 3000);
+
 function normalizeUrl(url, baseUrl) {
   try {
     return new URL(String(url || ''), baseUrl).toString();
@@ -202,14 +227,14 @@ async function resolveUprotProtectedUrl(targetUrl, refererBase) {
   };
 
   let lastDirectRedirect = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < UPROT_DIRECT_ATTEMPTS; attempt++) {
     try {
       const response = await axios({
         url: targetUrl,
         method: 'GET',
         headers,
         maxRedirects: 0,
-        timeout: 20000,
+        timeout: UPROT_DIRECT_TIMEOUT_MS,
         validateStatus: false
       });
       const html = String(response.data || '');
@@ -232,7 +257,7 @@ async function resolveUprotProtectedUrl(targetUrl, refererBase) {
           data: body,
           headers: postHeaders,
           maxRedirects: 0,
-          timeout: 20000,
+          timeout: UPROT_DIRECT_TIMEOUT_MS,
           validateStatus: false
         });
         return {
@@ -246,15 +271,23 @@ async function resolveUprotProtectedUrl(targetUrl, refererBase) {
     }
   }
 
+  if (!UPROT_ENABLE_FLARE_FALLBACK) {
+    return lastDirectRedirect || null;
+  }
+
   try {
     const html = await smartFetch(targetUrl, 'uprot', {
       provider: 'uprot',
+      maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
+      requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
       headers
     });
     const smartRedirect = await solveUprotCaptchaRedirect(html, targetUrl, async (body) => {
       const postHtml = await smartFetch(targetUrl, 'uprot', {
         provider: 'uprot',
         method: 'POST',
+        maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
+        requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
         body,
         headers: {
           ...headers,

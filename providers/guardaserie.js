@@ -8223,6 +8223,28 @@ var require_maxstream = __commonJS({
       solveNumericCaptcha = require_ocr().solveNumericCaptcha;
     } catch (e) {
     }
+    function readBoolEnv(name, defaultValue = false) {
+      try {
+        const value = process && process.env && process.env[name];
+        if (value == null || value === "") return defaultValue;
+        return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+      } catch (e) {
+        return defaultValue;
+      }
+    }
+    function readPositiveIntEnv(name, defaultValue) {
+      try {
+        const value = parseInt(process && process.env && process.env[name], 10);
+        return Number.isFinite(value) && value > 0 ? value : defaultValue;
+      } catch (e) {
+        return defaultValue;
+      }
+    }
+    var UPROT_DIRECT_ATTEMPTS = readPositiveIntEnv("UPROT_DIRECT_ATTEMPTS", 1);
+    var UPROT_DIRECT_TIMEOUT_MS = readPositiveIntEnv("UPROT_DIRECT_TIMEOUT_MS", 6e3);
+    var UPROT_ENABLE_FLARE_FALLBACK = readBoolEnv("UPROT_ENABLE_FLARE_FALLBACK", true);
+    var UPROT_FLARE_MAX_TIMEOUT_MS = readPositiveIntEnv("UPROT_FLARE_MAX_TIMEOUT_MS", 12e3);
+    var UPROT_FLARE_REQUEST_TIMEOUT_MS = readPositiveIntEnv("UPROT_FLARE_REQUEST_TIMEOUT_MS", UPROT_FLARE_MAX_TIMEOUT_MS + 3e3);
     function normalizeUrl(url, baseUrl) {
       try {
         return new URL(String(url || ""), baseUrl).toString();
@@ -8385,14 +8407,14 @@ var require_maxstream = __commonJS({
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         };
         let lastDirectRedirect = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < UPROT_DIRECT_ATTEMPTS; attempt++) {
           try {
             const response = yield axios({
               url: targetUrl,
               method: "GET",
               headers,
               maxRedirects: 0,
-              timeout: 2e4,
+              timeout: UPROT_DIRECT_TIMEOUT_MS,
               validateStatus: false
             });
             const html = String(response.data || "");
@@ -8412,7 +8434,7 @@ var require_maxstream = __commonJS({
                 data: body,
                 headers: postHeaders,
                 maxRedirects: 0,
-                timeout: 2e4,
+                timeout: UPROT_DIRECT_TIMEOUT_MS,
                 validateStatus: false
               });
               return {
@@ -8425,15 +8447,22 @@ var require_maxstream = __commonJS({
             if (attempt === 2) console.error("[Extractors] Uprot captcha resolution failed:", e.message);
           }
         }
+        if (!UPROT_ENABLE_FLARE_FALLBACK) {
+          return lastDirectRedirect || null;
+        }
         try {
           const html = yield smartFetch2(targetUrl, "uprot", {
             provider: "uprot",
+            maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
+            requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
             headers
           });
           const smartRedirect = yield solveUprotCaptchaRedirect(html, targetUrl, (body) => __async(null, null, function* () {
             const postHtml = yield smartFetch2(targetUrl, "uprot", {
               provider: "uprot",
               method: "POST",
+              maxTimeout: UPROT_FLARE_MAX_TIMEOUT_MS,
+              requestTimeout: UPROT_FLARE_REQUEST_TIMEOUT_MS,
               body,
               headers: __spreadProps(__spreadValues({}, headers), {
                 "Referer": targetUrl,
