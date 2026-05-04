@@ -1,6 +1,10 @@
 const { solveNumericCaptcha } = require('./src/utils/ocr');
 const { spawn } = require('child_process');
 
+try {
+    require('dns').setDefaultResultOrder('ipv4first');
+} catch {}
+
 // Polyfill fetch and related Web APIs
 if (typeof global.Blob === 'undefined') {
     global.Blob = require('node:buffer').Blob;

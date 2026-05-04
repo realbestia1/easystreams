@@ -38,10 +38,14 @@ for i in {1..20}; do
 done
 
 # Verifica finale IP
-echo "[WARP] IP Pubblico finale:"
-curl -s --connect-timeout 5 https://ifconfig.me || echo "Impossibile rilevare IP (VPN potrebbe essere attiva ma DNS/Routing lenti)"
+echo "[WARP] IP Pubblico finale IPv4:"
+curl -4 -s --connect-timeout 5 https://ifconfig.me || echo "Impossibile rilevare IPv4 (VPN potrebbe essere attiva ma DNS/Routing lenti)"
 echo ""
 
 # Avvio applicazione
 echo "[App] Avvio EasyStreams..."
+case " $NODE_OPTIONS " in
+    *"--dns-result-order="*) ;;
+    *) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" ;;
+esac
 node stremio_addon.js

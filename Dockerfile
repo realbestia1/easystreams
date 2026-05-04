@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Prefer IPv4 when both A and AAAA records are available.
+RUN printf 'precedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
+
 # 1.5 Install Cloudflare Warp
 RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
@@ -46,7 +49,7 @@ RUN git clone https://github.com/FlareSolverr/FlareSolverr.git /app/flaresolverr
     # Patch 1: Force system chromedriver path
     sed -i 's/driver_executable_path=driver_exe_path/driver_executable_path="\/usr\/bin\/chromedriver"/' src/utils.py && \
     # Patch 2: Add headless flags and optimizations
-    sed -i "s|options.add_argument('--no-sandbox')|options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage'); options.add_argument('--disable-gpu'); options.add_argument('--headless=new')|" src/utils.py && \
+    sed -i "s|options.add_argument('--no-sandbox')|options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage'); options.add_argument('--disable-gpu'); options.add_argument('--disable-ipv6'); options.add_argument('--headless=new')|" src/utils.py && \
     # Patch 3: Disable Xvfb by replacing start_xvfb_display() with pass
     sed -i "s|^\([[:space:]]*\)start_xvfb_display()|\1pass|g" src/utils.py && \
     pip3 install --no-cache-dir -r requirements.txt --break-system-packages && \
@@ -59,6 +62,7 @@ ENV NODE_ENV=production
 ENV IN_DOCKER=true
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
 # 4. Copy Node.js files and install dependencies
 COPY package.json package-lock.json* ./

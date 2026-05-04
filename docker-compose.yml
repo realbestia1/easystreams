@@ -9,9 +9,13 @@ services:
       - NODE_ENV=production
       - VERBOSE_LOGS=0
       - QUIET_PROVIDER_LOGS=1
+      - NODE_OPTIONS=--dns-result-order=ipv4first
       # FlareSolverr viene gestito internamente dall'addon
     cap_add:
       - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
     devices:
       - /dev/net/tun
     restart: unless-stopped
