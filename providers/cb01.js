@@ -7494,108 +7494,425 @@ var require_cf_bypass = __commonJS({
     var fs = require("fs");
     var path = require("path");
     var axios2 = require("axios");
+    var { exec } = require("child_process");
     var activeBypasses = /* @__PURE__ */ new Map();
-    var MAX_GLOBAL_CONCURRENT = 4;
+    var globalQueue = [];
     var activeGlobalRequests = 0;
+    function readPositiveIntEnv(name, fallback) {
+      const value = Number.parseInt(String(process.env[name] || ""), 10);
+      return Number.isInteger(value) && value > 0 ? value : fallback;
+    }
+    var MAX_GLOBAL_CONCURRENT = readPositiveIntEnv("FLARE_MAX_CONCURRENT", 4);
+    var MAX_GLOBAL_QUEUE = readPositiveIntEnv("FLARE_MAX_QUEUE", 100);
+    var GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv("FLARE_QUEUE_TIMEOUT_MS", 45e3);
+    var FLARE_HEALTH_TIMEOUT = readPositiveIntEnv("FLARE_HEALTH_TIMEOUT_MS", 3e3);
+    var FLARE_HEALTH_CACHE_MS = readPositiveIntEnv("FLARE_HEALTH_CACHE_MS", 1e4);
+    var FLARE_RETRIES = readPositiveIntEnv("FLARE_RETRIES", 1);
+    var FLARE_ORIGIN_COOKIE_TIMEOUT = readPositiveIntEnv("FLARE_ORIGIN_COOKIE_TIMEOUT_MS", 1e4);
+    var FLARE_CAPTURE_ORIGIN_COOKIES = !["0", "false", "no", "off"].includes(
+      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || "").trim().toLowerCase()
+    );
+    var FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
+      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || "clicka").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean)
+    );
+    var FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv("FLARE_IDLE_CLEANUP_MS", 5e3);
+    var FLARE_IDLE_PROCESS_CLEANUP = !["0", "false", "no", "off"].includes(
+      String(process.env.FLARE_IDLE_PROCESS_CLEANUP || "").trim().toLowerCase()
+    );
+    var idleCleanupTimer = null;
+    var lastFlareHealthOkAt = 0;
+    function getFlareUrl() {
+      return process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
+    }
+    function getStats() {
+      return {
+        active: activeGlobalRequests,
+        queued: globalQueue.length,
+        activeProviders: activeBypasses.size,
+        maxConcurrent: MAX_GLOBAL_CONCURRENT,
+        maxQueue: MAX_GLOBAL_QUEUE,
+        queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
+        healthCacheMs: FLARE_HEALTH_CACHE_MS,
+        captureOriginCookies: FLARE_CAPTURE_ORIGIN_COOKIES,
+        captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
+        originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
+        idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
+        idleCleanupMs: FLARE_IDLE_CLEANUP_MS
+      };
+    }
+    function clearIdleCleanupTimer() {
+      if (!idleCleanupTimer) return;
+      clearTimeout(idleCleanupTimer);
+      idleCleanupTimer = null;
+    }
+    function createRelease() {
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        activeGlobalRequests = Math.max(0, activeGlobalRequests - 1);
+        drainGlobalQueue();
+      };
+    }
+    function drainGlobalQueue() {
+      while (activeGlobalRequests < MAX_GLOBAL_CONCURRENT && globalQueue.length > 0) {
+        const entry = globalQueue.shift();
+        if (!entry || entry.done) continue;
+        entry.done = true;
+        clearTimeout(entry.timeoutId);
+        activeGlobalRequests++;
+        const waitedMs = Date.now() - entry.enqueuedAt;
+        console.log(`[CF] Slot FlareSolverr assegnato a [${entry.provider}] dopo ${waitedMs}ms. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
+        entry.resolve(createRelease());
+      }
+    }
+    function acquireGlobalSlot(provider, url) {
+      clearIdleCleanupTimer();
+      if (activeGlobalRequests < MAX_GLOBAL_CONCURRENT) {
+        activeGlobalRequests++;
+        return Promise.resolve(createRelease());
+      }
+      if (globalQueue.length >= MAX_GLOBAL_QUEUE) {
+        return Promise.reject(new Error(`Coda FlareSolverr piena (${globalQueue.length}/${MAX_GLOBAL_QUEUE}) per ${provider}`));
+      }
+      return new Promise((resolve, reject) => {
+        const entry = {
+          provider,
+          url,
+          enqueuedAt: Date.now(),
+          done: false,
+          resolve,
+          reject,
+          timeoutId: null
+        };
+        entry.timeoutId = setTimeout(() => {
+          if (entry.done) return;
+          entry.done = true;
+          const index = globalQueue.indexOf(entry);
+          if (index >= 0) globalQueue.splice(index, 1);
+          reject(new Error(`Timeout coda FlareSolverr dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
+        }, GLOBAL_QUEUE_TIMEOUT);
+        globalQueue.push(entry);
+        console.log(`[CF] Coda FlareSolverr [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_QUEUE} Active=${activeGlobalRequests}: ${url}`);
+      });
+    }
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+    function runIdleProcessCleanup() {
+      if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+      if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
+      const command = process.platform === "win32" ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"` : `sh -lc "pkill -f '/usr/bin/chromium|/usr/bin/chromedriver|chromedriver|--user-data-dir=/tmp/tmp' 2>/dev/null || true"`;
+      exec(command, { timeout: 1e4 }, (error) => {
+        if (error) {
+          console.error(`[CF] Idle cleanup browser fallito: ${error.message}`);
+          return;
+        }
+        console.log("[CF] Idle cleanup browser completato.");
+      });
+    }
+    function scheduleIdleProcessCleanup() {
+      if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+      if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
+      clearIdleCleanupTimer();
+      idleCleanupTimer = setTimeout(() => {
+        idleCleanupTimer = null;
+        runIdleProcessCleanup();
+      }, FLARE_IDLE_CLEANUP_MS);
+      if (typeof idleCleanupTimer.unref === "function") idleCleanupTimer.unref();
+    }
+    function isRetryableFlareError(error) {
+      const status = error && error.response && error.response.status;
+      return error && (error.code === "ECONNRESET" || error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT" || error.code === "ECONNABORTED" || status === 502 || status === 503 || status === 504);
+    }
+    function postFlare(flareUrl, payload, timeout, attemptLabel) {
+      return __async(this, null, function* () {
+        let lastError = null;
+        for (let attempt = 0; attempt <= FLARE_RETRIES; attempt++) {
+          try {
+            return yield axios2.post(flareUrl, payload, {
+              timeout,
+              headers: { "Content-Type": "application/json" }
+            });
+          } catch (error) {
+            lastError = error;
+            if (attempt >= FLARE_RETRIES || !isRetryableFlareError(error)) break;
+            const waitMs = 750 * (attempt + 1);
+            console.error(`[CF] FlareSolverr ${attemptLabel} fallito (${error.message}), retry tra ${waitMs}ms...`);
+            yield sleep(waitMs);
+          }
+        }
+        throw lastError;
+      });
+    }
+    function assertFlareSolverrReady(flareUrl) {
+      return __async(this, null, function* () {
+        if (Date.now() - lastFlareHealthOkAt <= FLARE_HEALTH_CACHE_MS) return;
+        try {
+          const response = yield axios2.post(flareUrl, { cmd: "sessions.list" }, {
+            timeout: FLARE_HEALTH_TIMEOUT,
+            headers: { "Content-Type": "application/json" }
+          });
+          if (response.data && response.data.status === "ok") {
+            lastFlareHealthOkAt = Date.now();
+            return;
+          }
+        } catch (error) {
+          throw new Error(`FlareSolverr non disponibile su ${flareUrl}: ${error.message}`);
+        }
+      });
+    }
+    function writeJsonAtomic(filePath, data) {
+      const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
+      fs.renameSync(tempPath, filePath);
+    }
+    function saveSessionFile(sessionFile, data) {
+      try {
+        writeJsonAtomic(sessionFile, data);
+      } catch (error) {
+        console.error(`[CF] Errore salvataggio sessione ${sessionFile}: ${error.message}`);
+      }
+    }
+    function normalizeHost(host) {
+      return String(host || "").trim().toLowerCase().replace(/^www\./, "").replace(/^\./, "");
+    }
+    function getHostFromUrl(url) {
+      try {
+        return normalizeHost(new URL(url).hostname);
+      } catch (e) {
+        return "";
+      }
+    }
+    function getOriginFromUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return `${parsed.protocol}//${parsed.hostname}`;
+      } catch (e) {
+        return null;
+      }
+    }
+    function normalizeCookieDomain(domain) {
+      return normalizeHost(domain);
+    }
+    function cookieMatchesHost(cookie, host) {
+      const cookieDomain = normalizeCookieDomain(cookie && cookie.domain);
+      const targetHost = normalizeHost(host);
+      if (!cookieDomain || !targetHost) return false;
+      return targetHost === cookieDomain || targetHost.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${targetHost}`);
+    }
+    function filterCookiesForHost(cookiesList, host) {
+      return cookiesList.filter((cookie) => cookieMatchesHost(cookie, host));
+    }
+    function uniqueCookies(cookiesList) {
+      const byKey = /* @__PURE__ */ new Map();
+      for (const cookie of cookiesList) {
+        if (!cookie || !cookie.name) continue;
+        const key = [
+          normalizeCookieDomain(cookie.domain),
+          cookie.path || "/",
+          cookie.name
+        ].join("|");
+        byKey.set(key, cookie);
+      }
+      return Array.from(byKey.values());
+    }
+    function serializeCookies(cookiesList) {
+      return uniqueCookies(cookiesList).map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    }
+    function getCookieDomains(cookiesList) {
+      return [...new Set(
+        uniqueCookies(cookiesList).map((cookie) => normalizeCookieDomain(cookie.domain)).filter(Boolean)
+      )];
+    }
+    function findCfClearance(cookiesList) {
+      var _a;
+      return ((_a = cookiesList.find((cookie) => cookie && cookie.name === "cf_clearance")) == null ? void 0 : _a.value) || null;
+    }
+    function shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList) {
+      if (!FLARE_CAPTURE_ORIGIN_COOKIES) return false;
+      if (!originalHost || !finalHost || originalHost === finalHost) return false;
+      if (providerCookiesList.length > 0) return false;
+      const key = String(provider || "").toLowerCase();
+      return FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has("*") || FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has(key);
+    }
+    function captureOriginCookies(flareUrl, provider, url) {
+      return __async(this, null, function* () {
+        const originalHost = getHostFromUrl(url);
+        const origin = getOriginFromUrl(url);
+        if (!origin || !originalHost) return [];
+        const probeUrls = [
+          `${origin}/cdn-cgi/trace`,
+          `${origin}/favicon.ico`,
+          `${origin}/`
+        ];
+        for (const probeUrl of probeUrls) {
+          try {
+            const response = yield postFlare(flareUrl, {
+              cmd: "request.get",
+              url: probeUrl,
+              session: provider,
+              maxTimeout: FLARE_ORIGIN_COOKIE_TIMEOUT
+            }, FLARE_ORIGIN_COOKIE_TIMEOUT + 5e3, `origin-cookie ${provider}`);
+            if (!response.data || response.data.status !== "ok") continue;
+            const solution = response.data.solution || {};
+            const cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
+            const originCookies = filterCookiesForHost(cookiesList, originalHost);
+            if (originCookies.length > 0) {
+              console.log(`[CF] Cookie dominio originale catturati per [${provider}] da ${probeUrl}: ${originCookies.length}`);
+              return originCookies;
+            }
+            const returnedHost = getHostFromUrl(solution.url);
+            console.log(`[CF] Nessun cookie ${originalHost} da ${probeUrl} (finale: ${returnedHost || "n/d"}).`);
+          } catch (error) {
+            console.error(`[CF] Cattura cookie dominio originale fallita per [${provider}] ${probeUrl}: ${error.message}`);
+          }
+        }
+        return [];
+      });
+    }
+    function createSessionIfNeeded(flareUrl, provider) {
+      return __async(this, null, function* () {
+        try {
+          yield axios2.post(flareUrl, { cmd: "sessions.create", session: provider }, {
+            timeout: 5e3,
+            headers: { "Content-Type": "application/json" }
+          });
+        } catch (e) {
+        }
+      });
+    }
+    function destroySessionIfNeeded(flareUrl, provider) {
+      return __async(this, null, function* () {
+        try {
+          yield axios2.post(flareUrl, { cmd: "sessions.destroy", session: provider }, {
+            timeout: 5e3,
+            headers: { "Content-Type": "application/json" }
+          });
+          console.log(`[CF] Sessione FlareSolverr chiusa per [${provider}].`);
+        } catch (e) {
+        }
+      });
+    }
+    function runBypass(url, provider, options, sessionFile) {
+      return __async(this, null, function* () {
+        const flareUrl = getFlareUrl();
+        const releaseSlot = yield acquireGlobalSlot(provider, url);
+        try {
+          yield assertFlareSolverrReady(flareUrl);
+          console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}][Queue: ${globalQueue.length}]: ${url}`);
+          yield createSessionIfNeeded(flareUrl, provider);
+          const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
+          const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
+          const payload = {
+            cmd: options.method === "POST" ? "request.post" : "request.get",
+            url,
+            session: provider,
+            maxTimeout
+          };
+          if (options.method === "POST" && options.body) {
+            payload.postData = options.body;
+          }
+          try {
+            const response = yield postFlare(flareUrl, payload, requestTimeout, `${payload.cmd} ${provider}`);
+            if (response.data && response.data.status === "ok") {
+              const solution = response.data.solution || {};
+              let cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
+              const originalHost = getHostFromUrl(url);
+              const finalHost = getHostFromUrl(solution.url);
+              let providerCookiesList = filterCookiesForHost(cookiesList, originalHost);
+              console.log(`[CF] FlareSolverr ha restituito ${cookiesList.length} cookie.`);
+              if (shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList)) {
+                const originCookies = yield captureOriginCookies(flareUrl, provider, url);
+                if (originCookies.length > 0) {
+                  cookiesList = uniqueCookies([...cookiesList, ...originCookies]);
+                  providerCookiesList = uniqueCookies([...providerCookiesList, ...originCookies]);
+                }
+              }
+              const cookies = serializeCookies(cookiesList);
+              const cfClearance = findCfClearance(cookiesList);
+              if (!cookies && !solution.response) {
+                throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
+              }
+              const data = {
+                userAgent: solution.userAgent,
+                cookies: cookies || "",
+                cf_clearance: cfClearance || null,
+                url: solution.url,
+                response: solution.response,
+                cookieDomains: getCookieDomains(cookiesList),
+                timestamp: Date.now()
+              };
+              const providerCookies = serializeCookies(providerCookiesList);
+              if (providerCookies || !originalHost || originalHost === finalHost) {
+                const providerData = {
+                  userAgent: solution.userAgent,
+                  cookies: providerCookies || cookies || "",
+                  cf_clearance: findCfClearance(providerCookiesList) || cfClearance || null,
+                  url: providerCookies ? url : solution.url,
+                  response: solution.response,
+                  cookieDomains: getCookieDomains(providerCookies ? providerCookiesList : cookiesList),
+                  timestamp: Date.now()
+                };
+                saveSessionFile(sessionFile, providerData);
+              } else {
+                console.log(`[CF] Cookie provider [${provider}] non trovati per ${originalHost}; non salvo cookie di ${finalHost || "dominio finale"} in ${path.basename(sessionFile)}.`);
+              }
+              if (cookiesList.length > 0) {
+                const domains = getCookieDomains(cookiesList);
+                for (const domain of domains) {
+                  const domainProvider = domain.replace("www.", "").split(".")[0];
+                  if (!domainProvider || domainProvider === provider) continue;
+                  const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
+                  const domainCookiesList = filterCookiesForHost(cookiesList, domain);
+                  const domainCookies = serializeCookies(domainCookiesList);
+                  if (!domainCookies) continue;
+                  const domainData = {
+                    userAgent: solution.userAgent,
+                    cookies: domainCookies,
+                    cf_clearance: findCfClearance(domainCookiesList),
+                    url: solution.url,
+                    cookieDomains: getCookieDomains(domainCookiesList),
+                    timestamp: Date.now()
+                  };
+                  saveSessionFile(domainSessionFile, domainData);
+                  console.log(`[CF] Salvata sessione extra per dominio: ${domain} -> ${domainProvider}`);
+                }
+              }
+              console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
+              return data;
+            }
+            const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
+            throw new Error(errorMsg);
+          } catch (error) {
+            console.error(`[CF] Errore FlareSolverr: ${error.message}`);
+            if (error.code === "ECONNREFUSED") {
+              console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${flareUrl}`);
+            }
+            throw error;
+          }
+        } finally {
+          yield destroySessionIfNeeded(flareUrl, provider);
+          releaseSlot();
+          scheduleIdleProcessCleanup();
+        }
+      });
+    }
     function getClearance(_0) {
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
         const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
-          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
+          console.log(`[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
           return activeBypasses.get(provider);
         }
-        const bypassPromise = (() => __async(null, null, function* () {
-          var _a, _b;
-          while (activeGlobalRequests >= MAX_GLOBAL_CONCURRENT) {
-            yield new Promise((resolve) => setTimeout(resolve, 1e3));
-          }
-          activeGlobalRequests++;
-          try {
-            const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
-            console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}]: ${url}`);
-            try {
-              yield axios2.post(FLARE_URL, { cmd: "sessions.create", session: provider }, { timeout: 5e3 }).catch(() => {
-              });
-            } catch (e) {
-            }
-            const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
-            const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
-            const payload = {
-              cmd: options.method === "POST" ? "request.post" : "request.get",
-              url,
-              session: provider,
-              maxTimeout
-            };
-            if (options.method === "POST" && options.body) {
-              payload.postData = options.body;
-            }
-            try {
-              const response = yield axios2.post(FLARE_URL, payload, {
-                timeout: requestTimeout,
-                headers: { "Content-Type": "application/json" }
-              });
-              if (response.data && response.data.status === "ok") {
-                const solution = response.data.solution;
-                const cookiesCount = (solution.cookies || []).length;
-                const cookies = (solution.cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
-                const cf_clearance = (_a = (solution.cookies || []).find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
-                console.log(`[CF] FlareSolverr ha restituito ${cookiesCount} cookie.`);
-                if (!cookies && !solution.response) {
-                  throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
-                }
-                const data = {
-                  userAgent: solution.userAgent,
-                  cookies: cookies || "",
-                  cf_clearance: cf_clearance || null,
-                  url: solution.url,
-                  response: solution.response,
-                  timestamp: Date.now()
-                };
-                fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
-                if (solution.cookies && solution.cookies.length > 0) {
-                  const domains = [...new Set(solution.cookies.map((c) => c.domain.replace(/^\./, "")))];
-                  for (const d of domains) {
-                    const domainProvider = d.replace("www.", "").split(".")[0];
-                    if (domainProvider && domainProvider !== provider) {
-                      const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
-                      const domainCookies = solution.cookies.filter((c) => c.domain.includes(d)).map((c) => `${c.name}=${c.value}`).join("; ");
-                      if (domainCookies) {
-                        const domainData = {
-                          userAgent: solution.userAgent,
-                          cookies: domainCookies,
-                          cf_clearance: ((_b = solution.cookies.find((c) => c.domain.includes(d) && c.name === "cf_clearance")) == null ? void 0 : _b.value) || null,
-                          url: solution.url,
-                          timestamp: Date.now()
-                        };
-                        fs.writeFileSync(domainSessionFile, JSON.stringify(domainData, null, 2));
-                        console.log(`[CF] Salvata sessione extra per dominio: ${d} -> ${domainProvider}`);
-                      }
-                    }
-                  }
-                }
-                console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
-                return data;
-              } else {
-                const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
-                throw new Error(errorMsg);
-              }
-            } catch (error) {
-              console.error(`[CF] Errore FlareSolverr: ${error.message}`);
-              if (error.code === "ECONNREFUSED") {
-                console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
-              }
-              throw error;
-            }
-          } finally {
-            activeGlobalRequests--;
-            activeBypasses.delete(provider);
-          }
-        }))();
+        const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
+          activeBypasses.delete(provider);
+        });
         activeBypasses.set(provider, bypassPromise);
         return bypassPromise;
       });
     }
-    module2.exports = { getClearance };
+    module2.exports = { getClearance, getStats };
   }
 });
 
@@ -7626,6 +7943,17 @@ var require_cf_handler = __commonJS({
             return u;
           }
         };
+        const normalizeHost = (value) => String(value || "").trim().toLowerCase().replace(/^www\./, "").replace(/^\./, "");
+        const rootDomain = (host) => {
+          const parts = normalizeHost(host).split(".").filter(Boolean);
+          return parts.length >= 2 ? parts.slice(-2).join(".") : parts.join(".");
+        };
+        const domainMatchesHost = (domainValue, hostValue) => {
+          const cookieDomain = normalizeHost(domainValue);
+          const host = normalizeHost(hostValue);
+          if (!cookieDomain || !host) return false;
+          return host === cookieDomain || host.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${host}`);
+        };
         const urlHost = getHost(url);
         const domainHost = getHost(domain);
         const provider = urlHost !== domainHost ? urlHost.split(".")[0] : options.provider || domainHost.split(".")[0];
@@ -7645,6 +7973,24 @@ var require_cf_handler = __commonJS({
                   } catch (e) {
                   }
                   return {};
+                }
+                if (data.url) {
+                  try {
+                    const sessionHost = getHost(data.url);
+                    const sessionRoot = rootDomain(sessionHost);
+                    const currentRoot = rootDomain(urlHost);
+                    const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
+                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, urlHost));
+                    if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
+                      console.log(`[CF-HANDLER][${provider}] Sessione su dominio diverso (${sessionHost}) non valida per ${urlHost}, forzo refresh.`);
+                      try {
+                        fs.unlinkSync(sessionFile);
+                      } catch (e) {
+                      }
+                      return {};
+                    }
+                  } catch (e) {
+                  }
                 }
                 console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
                 return data;
