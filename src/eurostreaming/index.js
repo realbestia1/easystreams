@@ -2,6 +2,8 @@ const { formatStream } = require('../formatter');
 const { checkQualityFromPlaylist } = require('../quality_helper');
 const { smartFetch } = require('../utils/cf_handler');
 const { extractMixDrop, extractMaxStream, extractDeltaBit } = require('../extractors');
+const fs = require('fs');
+const path = require('path');
 
 const IS_SERVER = typeof process !== 'undefined' && process.versions && process.versions.node;
 
@@ -482,7 +484,7 @@ function extractAnchors(html) {
 
 function isHostLink(anchor) {
     const value = `${anchor.text} ${anchor.href}`.toLowerCase();
-    return /(maxstream|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
+    return /(maxstream|stayonline|uprot|deltabit|clicka\.cc\/(?:adelta|delta|mix)|mixdrop|m1xdrop)/i.test(value);
 }
 
 function detectHost(anchorOrUrl) {
@@ -492,13 +494,64 @@ function detectHost(anchorOrUrl) {
     const lower = String(value || '').toLowerCase();
     if (lower.includes('deltabit') || lower.includes('clicka.cc/delta') || lower.includes('clicka.cc/adelta')) return 'deltabit';
     if (lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('clicka.cc/mix')) return 'mixdrop';
-    if (lower.includes('maxstream') || lower.includes('uprot.net')) return 'maxstream';
+    if (lower.includes('maxstream') || lower.includes('stayonline.pro') || lower.includes('uprot.net')) return 'maxstream';
     return null;
 }
 
 function isRedirectorUrl(url) {
     const lower = String(url || '').toLowerCase();
     return lower.includes('uprot.net') || lower.includes('clicka.cc') || lower.includes('safego.cc');
+}
+
+function getUrlHost(url) {
+    try {
+        return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+        return '';
+    }
+}
+
+function getRootDomain(host) {
+    const parts = String(host || '').toLowerCase().replace(/^www\./, '').split('.').filter(Boolean);
+    return parts.length >= 2 ? parts.slice(-2).join('.') : parts.join('.');
+}
+
+function domainMatchesHost(domain, host) {
+    const cookieDomain = String(domain || '').toLowerCase().replace(/^\./, '').replace(/^www\./, '');
+    const targetHost = String(host || '').toLowerCase().replace(/^www\./, '');
+    if (!cookieDomain || !targetHost) return false;
+    return targetHost === cookieDomain ||
+        targetHost.endsWith(`.${cookieDomain}`) ||
+        cookieDomain.endsWith(`.${targetHost}`);
+}
+
+function getWarmupFinalHostProvider(url) {
+    const lower = String(url || '').toLowerCase();
+    if (lower.includes('maxstream.video')) return 'maxstream';
+    if (lower.includes('stayonline.pro')) return 'stayonline';
+    return null;
+}
+
+async function warmupFinalHostSession(url) {
+    const normalizedUrl = normalizeHostUrl(url);
+    const provider = getWarmupFinalHostProvider(normalizedUrl);
+    if (!normalizedUrl || !provider) {
+        return { attempted: false, ok: true, provider: null };
+    }
+
+    try {
+        await smartFetch(normalizedUrl, provider, {
+            provider,
+            timeout: 30000,
+            headers: {
+                'Referer': `${BASE_URL}/`,
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
+        });
+        return { attempted: true, ok: true, provider };
+    } catch (e) {
+        return { attempted: true, ok: false, provider, error: e.message };
+    }
 }
 
 function findRedirectorOrHostUrl(text) {
@@ -907,10 +960,35 @@ async function warmupRedirectors(urls = []) {
     const results = [];
     for (const rawUrl of targets) {
         const url = normalizeHostUrl(rawUrl);
-        if (!url || !isRedirectorUrl(url)) continue;
+        if (!url) continue;
+        if (!isRedirectorUrl(url)) {
+            const hostWarmup = await warmupFinalHostSession(url);
+            if (hostWarmup.attempted) {
+                results.push({
+                    url,
+                    resolvedUrl: url,
+                    ok: hostWarmup.ok,
+                    hostWarmupProvider: hostWarmup.provider,
+                    hostWarmupOk: hostWarmup.ok,
+                    error: hostWarmup.error
+                });
+            }
+            continue;
+        }
         try {
             const resolvedUrl = await resolveShortlink(url);
-            results.push({ url, resolvedUrl, ok: Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl)) });
+            const resolvedOk = Boolean(resolvedUrl && resolvedUrl !== url && !isRedirectorUrl(resolvedUrl));
+            const hostWarmup = resolvedOk
+                ? await warmupFinalHostSession(resolvedUrl)
+                : { attempted: false, ok: true, provider: null };
+            results.push({
+                url,
+                resolvedUrl,
+                ok: resolvedOk && hostWarmup.ok,
+                hostWarmupProvider: hostWarmup.provider,
+                hostWarmupOk: hostWarmup.attempted ? hostWarmup.ok : undefined,
+                error: hostWarmup.error
+            });
         } catch (e) {
             results.push({ url, error: e.message, ok: false });
         }
@@ -918,15 +996,76 @@ async function warmupRedirectors(urls = []) {
     return results;
 }
 
+function extractWarmupRedirectorUrlsFromHtml(html, limit = 5) {
+    const max = Math.max(1, Number.parseInt(String(limit || 5), 10) || 5);
+    const urls = [];
+    const addUrl = (rawUrl) => {
+        const url = normalizeHostUrl(rawUrl);
+        if (url && isRedirectorUrl(url) && !urls.includes(url)) urls.push(url);
+    };
+
+    for (const anchor of extractAnchors(html)) {
+        addUrl(anchor.href);
+    }
+
+    const regex = /https?:\/\/(?:[^"'<>\\\s]+\.)?(?:uprot\.net|clicka\.cc|safego\.cc)\/[^"'<>\\\s]+/ig;
+    let match;
+    while ((match = regex.exec(String(html || ''))) !== null) {
+        addUrl(decodeEntitiesBasic(match[0]).replace(/[),.;]+$/, ''));
+    }
+
+    return urls
+        .sort((a, b) => {
+            const score = (url) => {
+                const lower = String(url || '').toLowerCase();
+                if (lower.includes('uprot.net')) return 0;
+                if (lower.includes('safego.cc')) return 1;
+                return 2;
+            };
+            return score(a) - score(b);
+        })
+        .slice(0, max);
+}
+
+function loadSavedDiscoveryHtml(providerNames, targetUrl) {
+    const targetHost = getUrlHost(targetUrl);
+    const targetRoot = getRootDomain(targetHost);
+    const maxAgeMs = 2 * 60 * 60 * 1000;
+
+    for (const providerName of providerNames) {
+        const sessionFile = path.join(process.cwd(), `cf-session-${providerName}.json`);
+        if (!fs.existsSync(sessionFile)) continue;
+
+        try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+            const ageMs = Date.now() - (data.timestamp || 0);
+            if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) continue;
+
+            const response = typeof data.response === 'string' ? data.response : '';
+            if (response.length < 500) continue;
+            if (!/(?:uprot\.net|clicka\.cc|safego\.cc)/i.test(response)) continue;
+
+            const sessionHost = getUrlHost(data.url);
+            const sessionRoot = getRootDomain(sessionHost);
+            const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
+            const matchesTarget = (targetRoot && sessionRoot && targetRoot === sessionRoot) ||
+                cookieDomains.some((domain) => domainMatchesHost(domain, targetHost));
+            if (!matchesTarget) continue;
+
+            console.log(`[EuroStreaming] Discovery redirector da HTML sessione salvata (${providerName}, ${Math.round(ageMs / 60000)} min fa).`);
+            return response;
+        } catch {}
+    }
+
+    return null;
+}
+
 async function discoverRedirectorWarmupUrls(pageUrl, limit = 5) {
     const normalizedPageUrl = normalizeHostUrl(pageUrl);
     if (!normalizedPageUrl) return [];
-    const html = await fetchHtml(normalizedPageUrl);
-    return extractAnchors(html)
-        .map((anchor) => normalizeHostUrl(anchor.href))
-        .filter((url) => url && isRedirectorUrl(url))
-        .filter((url, index, list) => list.indexOf(url) === index)
-        .slice(0, Math.max(1, Number.parseInt(String(limit || 5), 10) || 5));
+    const savedHtml = loadSavedDiscoveryHtml(['eurostreaming', 'eurostreamings'], normalizedPageUrl);
+    const html = savedHtml || await fetchHtml(normalizedPageUrl);
+    return extractWarmupRedirectorUrlsFromHtml(html, limit);
 }
 
 module.exports = { getStreams, warmupRedirectors, discoverRedirectorWarmupUrls };

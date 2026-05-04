@@ -96,7 +96,7 @@ function readPositiveIntEnv(name, fallback) {
     const value = Number.parseInt(String(process.env[name] || ''), 10);
     return Number.isInteger(value) && value > 0 ? value : fallback;
 }
-const WARMUP_MAX_BLOCK_MS = readPositiveIntEnv('WARMUP_MAX_BLOCK_MS', 45000);
+const WARMUP_MAX_BLOCK_MS = readPositiveIntEnv('WARMUP_MAX_BLOCK_MS', 120000);
 function isWarmupBypassPath(pathname) {
     const value = String(pathname || '');
     return value.startsWith('/ocr')
@@ -2452,16 +2452,17 @@ async function warmupProviders() {
         .filter((url) => /^https?:\/\//i.test(url));
 
     const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
-    const redirectorSessionsReady = hasAnyValidCfSession(['clicka']) && hasAnyValidCfSession(['safego']);
+    const redirectorWarmupLimit = readPositiveIntEnv('EUROSTREAMING_REDIRECTOR_WARMUP_LIMIT', 5);
+    const redirectorSessionsReady = hasAnyValidCfSession(['maxstream', 'stayonline']);
     const eurostreamingWarmupFailed = failedWarmupSessions.has('eurostreaming') || failedWarmupSessions.has('eurostreamings');
     if (!forceWarmup && redirectorSessionsReady) {
-        console.log('[Warmup] Redirector EuroStreaming saltati: sessioni CF clicka/safego valide gia presenti.');
+        console.log('[Warmup] Redirector EuroStreaming saltati: sessione CF maxstream/stayonline valida gia presente.');
     } else if (!forceWarmup && eurostreamingWarmupFailed && redirectorWarmupUrls.length === 0) {
         console.log('[Warmup] Discovery redirector EuroStreaming saltata: warmup EuroStreaming appena fallito.');
     } else if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
         try {
             console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);
-            redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, 5);
+            redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, redirectorWarmupLimit);
             console.log(`[Warmup] Link redirector trovati: ${redirectorWarmupUrls.length}`);
         } catch (e) {
             console.error(`[Warmup] Errore ricerca redirector EuroStreaming: ${e.message}`);
@@ -2474,7 +2475,8 @@ async function warmupProviders() {
             const results = await providers.eurostreaming.warmupRedirectors(redirectorWarmupUrls);
             for (const result of results) {
                 if (result.ok) {
-                    console.log(`[Warmup] Redirector pronto: ${result.url} -> ${result.resolvedUrl}`);
+                    const hostWarmupLabel = result.hostWarmupProvider ? ` [${result.hostWarmupProvider}]` : '';
+                    console.log(`[Warmup] Redirector pronto${hostWarmupLabel}: ${result.url} -> ${result.resolvedUrl}`);
                 } else {
                     console.error(`[Warmup] Redirector non risolto: ${result.url}${result.error ? ` (${result.error})` : ''}`);
                 }
