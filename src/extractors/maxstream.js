@@ -1,4 +1,4 @@
-const { USER_AGENT, unPack } = require('./common');
+const { USER_AGENT, unPack, isFlareSolverrBlockedError } = require('./common');
 const { smartFetch } = require('../utils/cf_handler');
 const axios = require('axios');
 
@@ -78,11 +78,6 @@ function hasUprotCaptcha(html) {
   const text = String(html || '');
   return /data:image\/[^;]+;base64,/i.test(text) &&
     /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
-}
-
-function isFlareSolverrBlockedError(error) {
-  const message = String(error && error.message || error || '');
-  return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
 }
 
 async function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {

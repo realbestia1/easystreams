@@ -2,6 +2,7 @@ const { formatStream } = require('../formatter');
 const { checkQualityFromPlaylist } = require('../quality_helper');
 const { smartFetch } = require('../utils/cf_handler');
 const { extractMixDrop, extractMaxStream, extractDeltaBit } = require('../extractors');
+const { isFlareSolverrBlockedError } = require('../extractors/common');
 const fs = require('fs');
 const path = require('path');
 
@@ -792,7 +793,11 @@ async function resolveShortlink(url) {
             break;
         } catch (e) {
             traceRedirect('error', { hop: hops, currentUrl, message: e.message });
-            console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+            if (isFlareSolverrBlockedError(e)) {
+                console.warn(`[EuroStreaming] Risoluzione shortlink saltata per cooldown/blocco bypass ${currentUrl}:`, e.message);
+            } else {
+                console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+            }
             break;
         }
     }

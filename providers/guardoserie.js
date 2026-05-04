@@ -1104,10 +1104,15 @@ var require_common = __commonJS({
       }
       return p;
     }
+    function isFlareSolverrBlockedError(error) {
+      const message = String(error && error.message || error || "");
+      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+    }
     module2.exports = {
       USER_AGENT: USER_AGENT2,
       unPack,
-      getProxiedUrl: getProxiedUrl2
+      getProxiedUrl: getProxiedUrl2,
+      isFlareSolverrBlockedError
     };
   }
 });
@@ -8323,7 +8328,7 @@ var require_ocr = __commonJS({
 // src/extractors/maxstream.js
 var require_maxstream = __commonJS({
   "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, isFlareSolverrBlockedError } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
     var axios = require("axios");
     var solveNumericCaptcha = null;
@@ -8393,10 +8398,6 @@ var require_maxstream = __commonJS({
     function hasUprotCaptcha(html) {
       const text = String(html || "");
       return /data:image\/[^;]+;base64,/i.test(text) && /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
-    }
-    function isFlareSolverrBlockedError(error) {
-      const message = String(error && error.message || error || "");
-      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
     }
     function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
       return __async(this, null, function* () {
@@ -8634,7 +8635,7 @@ var require_maxstream = __commonJS({
 // src/extractors/deltabit.js
 var require_deltabit = __commonJS({
   "src/extractors/deltabit.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { USER_AGENT: USER_AGENT2, isFlareSolverrBlockedError } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
     var { solveNumericCaptcha } = require_ocr();
     function isDeadDeltaBitRedirectUrl(url) {
@@ -8776,6 +8777,10 @@ var require_deltabit = __commonJS({
         } catch (e) {
           if (e && e.response && e.response.status === 404) {
             console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
+            return null;
+          }
+          if (isFlareSolverrBlockedError(e)) {
+            console.warn("[Extractors] DeltaBit extraction skipped:", e && e.message ? e.message : e);
             return null;
           }
           console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);

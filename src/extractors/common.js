@@ -47,8 +47,14 @@ function unPack(p, a, c, k, e, d) {
   return p;
 }
 
+function isFlareSolverrBlockedError(error) {
+  const message = String(error && error.message || error || '');
+  return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+}
+
 module.exports = {
   USER_AGENT,
   unPack,
-  getProxiedUrl
+  getProxiedUrl,
+  isFlareSolverrBlockedError
 };

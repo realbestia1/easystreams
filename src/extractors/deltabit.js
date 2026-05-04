@@ -1,4 +1,4 @@
-const { USER_AGENT } = require('./common');
+const { USER_AGENT, isFlareSolverrBlockedError } = require('./common');
 const { smartFetch } = require('../utils/cf_handler');
 const { solveNumericCaptcha } = require('../utils/ocr');
 
@@ -179,6 +179,10 @@ async function extractDeltaBit(url, refererBase = 'https://eurostreamings.help/'
   } catch (e) {
     if (e && e.response && e.response.status === 404) {
       console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
+      return null;
+    }
+    if (isFlareSolverrBlockedError(e)) {
+      console.warn("[Extractors] DeltaBit extraction skipped:", e && e.message ? e.message : e);
       return null;
     }
     console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);

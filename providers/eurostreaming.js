@@ -1104,10 +1104,15 @@ var require_common = __commonJS({
       }
       return p;
     }
+    function isFlareSolverrBlockedError2(error) {
+      const message = String(error && error.message || error || "");
+      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+    }
     module2.exports = {
       USER_AGENT,
       unPack,
-      getProxiedUrl
+      getProxiedUrl,
+      isFlareSolverrBlockedError: isFlareSolverrBlockedError2
     };
   }
 });
@@ -8323,7 +8328,7 @@ var require_ocr = __commonJS({
 // src/extractors/maxstream.js
 var require_maxstream = __commonJS({
   "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT, unPack, isFlareSolverrBlockedError: isFlareSolverrBlockedError2 } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
     var axios = require("axios");
     var solveNumericCaptcha2 = null;
@@ -8393,10 +8398,6 @@ var require_maxstream = __commonJS({
     function hasUprotCaptcha(html) {
       const text = String(html || "");
       return /data:image\/[^;]+;base64,/i.test(text) && /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
-    }
-    function isFlareSolverrBlockedError(error) {
-      const message = String(error && error.message || error || "");
-      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
     }
     function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
       return __async(this, null, function* () {
@@ -8557,7 +8558,7 @@ var require_maxstream = __commonJS({
           }));
           if (smartRedirect) return smartRedirect;
         } catch (e) {
-          if (isFlareSolverrBlockedError(e)) {
+          if (isFlareSolverrBlockedError2(e)) {
             console.warn("[Extractors] Uprot smart captcha resolution skipped:", e.message);
           } else {
             console.error("[Extractors] Uprot smart captcha resolution failed:", e.message);
@@ -8586,7 +8587,7 @@ var require_maxstream = __commonJS({
                   headers: { "User-Agent": USER_AGENT, "Referer": refererBase }
                 });
               } catch (e) {
-                if (isFlareSolverrBlockedError(e)) {
+                if (isFlareSolverrBlockedError2(e)) {
                   console.warn("[Extractors] Uprot redirect fetch skipped:", e.message);
                   return null;
                 }
@@ -8634,7 +8635,7 @@ var require_maxstream = __commonJS({
 // src/extractors/deltabit.js
 var require_deltabit = __commonJS({
   "src/extractors/deltabit.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT, isFlareSolverrBlockedError: isFlareSolverrBlockedError2 } = require_common();
     var { smartFetch: smartFetch2 } = require_cf_handler();
     var { solveNumericCaptcha: solveNumericCaptcha2 } = require_ocr();
     function isDeadDeltaBitRedirectUrl(url) {
@@ -8778,6 +8779,10 @@ var require_deltabit = __commonJS({
             console.warn(`[DeltaBit] Link non trovato: ${e.response.url || url}`);
             return null;
           }
+          if (isFlareSolverrBlockedError2(e)) {
+            console.warn("[Extractors] DeltaBit extraction skipped:", e && e.message ? e.message : e);
+            return null;
+          }
           console.error("[Extractors] DeltaBit extraction error:", e && e.message ? e.message : e);
           return null;
         }
@@ -8827,6 +8832,7 @@ var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { smartFetch } = require_cf_handler();
 var { extractMixDrop, extractMaxStream, extractDeltaBit } = require_extractors();
+var { isFlareSolverrBlockedError } = require_common();
 var fs = require("fs");
 var path = require("path");
 var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
@@ -9498,7 +9504,11 @@ function resolveShortlink(url) {
         break;
       } catch (e) {
         traceRedirect("error", { hop: hops, currentUrl, message: e.message });
-        console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+        if (isFlareSolverrBlockedError(e)) {
+          console.warn(`[EuroStreaming] Risoluzione shortlink saltata per cooldown/blocco bypass ${currentUrl}:`, e.message);
+        } else {
+          console.error(`[EuroStreaming] Errore risoluzione shortlink ${currentUrl}:`, e.message);
+        }
         break;
       }
     }
