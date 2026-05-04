@@ -835,15 +835,17 @@ async function extractStreamFromHost(link, displayName) {
         const items = Array.isArray(extracted) ? extracted : (extracted ? [extracted] : []);
         let quality = '720p';
         let proxySourceUrl = hostUrl;
+        let playbackUrl = hostUrl;
         let directStreamHeaders = null;
         for (const item of items) {
             const streamUrl = typeof item === 'string' ? item : item.url;
             if (!streamUrl) continue;
             const headers = typeof item === 'object' ? item.headers : null;
             const referer = headers && (headers.Referer || headers.referer || headers.Referrer || headers.referrer);
+            playbackUrl = streamUrl;
+            directStreamHeaders = headers || null;
             if (host === 'maxstream' && item && typeof item === 'object' && item.sourceUrl) {
                 proxySourceUrl = item.sourceUrl;
-                directStreamHeaders = null;
             }
             if (host === 'deltabit' && referer && String(referer).toLowerCase().includes('deltabit')) {
                 proxySourceUrl = referer;
@@ -864,7 +866,7 @@ async function extractStreamFromHost(link, displayName) {
         }
 
         return [formatStream({
-            url: proxySourceUrl,
+            url: playbackUrl,
             easyProxySourceUrl: proxySourceUrl,
             host,
             headers: directStreamHeaders,
