@@ -1,6 +1,15 @@
 node_modules/
 package-lock.json
+__pycache__/
 /flaresolverr-bin
 /scratch
+cf-session-*.json
 cf-session-cinemacity.json
+cf-session-clicka.json
+cf-session-deltabit.json
+cf-session-eurostreaming.json
+cf-session-eurostreamings.json
 cf-session-guardoserie.json
+cf-session-safego.json
+cf-session-uprot.json
+cf-session-maxstream.json
