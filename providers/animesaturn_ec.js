@@ -290,7 +290,6 @@ var require_quality_helper = __commonJS({
 var require_animesaturn = __commonJS({
   "src/animesaturn/index.js"(exports2, module2) {
     "use strict";
-    var cheerio = require("cheerio");
     var { formatStream } = require_formatter();
     var { checkQualityFromPlaylist } = require_quality_helper();
     var { createTimeoutSignal } = require_fetch_helper();
@@ -431,6 +430,45 @@ var require_animesaturn = __commonJS({
       text = text.replace(/^\s*AnimeSaturn\s*-\s*/i, "").replace(/\s*-\s*AnimeSaturn.*$/i, "").replace(/\s+Streaming.*$/i, "").replace(/\s+Episodi.*$/i, "").replace(/\s+episodio\s*\d+(?:[.,]\d+)?\b/gi, "").replace(/\s+episode\s*\d+(?:[.,]\d+)?\b/gi, "").trim();
       text = text.replace(/\s*[\[(]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*[\])]\s*/gi, " ").replace(/\s*[-–_|:]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*$/gi, "").replace(/\s{2,}/g, " ").replace(/\s*[-–_|:]\s*$/g, "").trim();
       return text || null;
+    }
+    function decodeHtmlEntities(value) {
+      return String(value || "").replace(/&quot;/gi, '"').replace(/&#34;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/gi, "'").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ");
+    }
+    function stripHtmlTags(value) {
+      return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+    }
+    function getTagAttribute(tag, attrName) {
+      const escaped = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i");
+      const match = String(tag || "").match(regex);
+      return match ? decodeHtmlEntities(match[2]) : null;
+    }
+    function getFirstTagText(html, tagName) {
+      const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+      const match = String(html || "").match(regex);
+      return match ? stripHtmlTags(match[1]) : "";
+    }
+    function getMetaContent(html, propertyValue) {
+      const escaped = String(propertyValue || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`<meta\\b(?=[^>]*(?:property|name)\\s*=\\s*["']${escaped}["'])[\\s\\S]*?>`, "i");
+      const match = String(html || "").match(regex);
+      return match ? getTagAttribute(match[0], "content") : null;
+    }
+    function collectAnchorMatches(html, hrefNeedle) {
+      const anchors = [];
+      const regex = /<a\b[^>]*href\s*=\s*(["'])([\s\S]*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while ((match = regex.exec(String(html || ""))) !== null) {
+        const tag = match[0];
+        const href = decodeHtmlEntities(match[2]);
+        if (!String(href || "").includes(hrefNeedle)) continue;
+        anchors.push({
+          href,
+          title: getTagAttribute(tag, "title") || "",
+          text: stripHtmlTags(match[3])
+        });
+      }
+      return anchors;
     }
     function parseEpisodeNumber(value, fallbackNum) {
       const raw = String(value || "").trim();
@@ -607,19 +645,17 @@ var require_animesaturn = __commonJS({
       return out;
     }
     function parseAnimeSaturnPage(html, fallback = {}) {
-      const $ = cheerio.load(html);
-      const pageTitle = $("h1").first().text().trim() || $("meta[property='og:title']").attr("content") || $("title").first().text().trim() || null;
+      const pageTitle = getFirstTagText(html, "h1") || getMetaContent(html, "og:title") || getFirstTagText(html, "title") || null;
       const title = sanitizeAnimeTitle(fallback.title) || sanitizeAnimeTitle(pageTitle) || null;
       const animePath = normalizeAnimeSaturnPath(fallback.animePath || null);
       const sourceTag = inferSourceTag(title, animePath);
       const episodes = [];
       const seenEpisodePath = /* @__PURE__ */ new Set();
-      $("a[href*='/ep/']").each((index, element) => {
-        const anchor = $(element);
-        const href = normalizeEpisodePath(anchor.attr("href"));
+      collectAnchorMatches(html, "/ep/").forEach((anchor, index) => {
+        const href = normalizeEpisodePath(anchor.href);
         if (!href || seenEpisodePath.has(href)) return;
         seenEpisodePath.add(href);
-        const probe = `${href} ${anchor.text() || ""} ${anchor.attr("title") || ""}`;
+        const probe = `${href} ${anchor.text || ""} ${anchor.title || ""}`;
         const num = parseEpisodeNumber(probe, index + 1);
         episodes.push({
           num,
@@ -641,12 +677,11 @@ var require_animesaturn = __commonJS({
       }
       const relatedAnimePaths = [];
       const seenRelated = /* @__PURE__ */ new Set();
-      $("a[href*='/anime/']").each((_, element) => {
-        const anchor = $(element);
-        const relatedPath = normalizeAnimeSaturnPath(anchor.attr("href"));
+      collectAnchorMatches(html, "/anime/").forEach((anchor) => {
+        const relatedPath = normalizeAnimeSaturnPath(anchor.href);
         if (!relatedPath || seenRelated.has(relatedPath)) return;
         if (animePath && relatedPath === animePath) return;
-        const probe = `${anchor.text() || ""} ${anchor.attr("title") || ""} ${relatedPath}`.toLowerCase();
+        const probe = `${anchor.text || ""} ${anchor.title || ""} ${relatedPath}`.toLowerCase();
         if (!probe.includes("ita")) return;
         seenRelated.add(relatedPath);
         relatedAnimePaths.push(relatedPath);
@@ -709,7 +744,6 @@ var require_animesaturn = __commonJS({
       return null;
     }
     function collectMediaLinksFromWatchHtml(html) {
-      const $ = cheerio.load(String(html || ""));
       const links = [];
       const seen = /* @__PURE__ */ new Set();
       function addLink(href, label) {
@@ -718,9 +752,11 @@ var require_animesaturn = __commonJS({
         seen.add(playable);
         links.push({ href: playable, label });
       }
-      $("source[src], video source[src]").each((_, element) => {
-        addLink($(element).attr("src"), "Player");
-      });
+      const sourceRegex = /<source\b[^>]*src\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi;
+      let sourceMatch;
+      while ((sourceMatch = sourceRegex.exec(String(html || ""))) !== null) {
+        addLink(decodeHtmlEntities(sourceMatch[2]), "Player");
+      }
       const rawHtml = String(html || "");
       const variants = [rawHtml, rawHtml.replace(/\\\//g, "/")];
       for (const text of variants) {
@@ -736,8 +772,8 @@ var require_animesaturn = __commonJS({
           } catch (e) {
           }
         }
-        const sourceRegex = /(?:file|src|url|link)\s*[:=]\s*["']([^"']+)["']/gi;
-        while ((match = sourceRegex.exec(text)) !== null) {
+        const sourceRegex2 = /(?:file|src|url|link)\s*[:=]\s*["']([^"']+)["']/gi;
+        while ((match = sourceRegex2.exec(text)) !== null) {
           addLink(match[1], "Player");
         }
       }

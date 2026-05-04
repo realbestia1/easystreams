@@ -96,10 +96,15 @@ var require_common = __commonJS({
       }
       return p;
     }
+    function isFlareSolverrBlockedError(error) {
+      const message = String(error && error.message || error || "");
+      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+    }
     module2.exports = {
       USER_AGENT: USER_AGENT2,
       unPack,
-      getProxiedUrl: getProxiedUrl2
+      getProxiedUrl: getProxiedUrl2,
+      isFlareSolverrBlockedError
     };
   }
 });
@@ -109,48 +114,86 @@ var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function isMixDropDisabled() {
-      if (typeof global !== "undefined" && global && global.DISABLE_MIXDROP === true) {
-        return true;
-      }
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
+    }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function extractPackedStream(html) {
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (!match) return null;
+      const p = match[1];
+      const a = parseInt(match[2]);
+      const c = parseInt(match[3]);
+      const k = match[4].split("|");
+      const unpacked = unPack(p, a, c, k, null, {});
+      const wurlMatch = unpacked.match(/wurl\s*=\s*["']([^"']+)["']/);
+      if (!wurlMatch) return null;
+      let streamUrl = wurlMatch[1];
+      if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+      return streamUrl;
+    }
+    function extractEmbedUrl(html, pageUrl) {
+      const match = String(html || "").match(/<iframe\b[^>]+src=["']([^"']*\/e\/[^"']+)["']/i);
+      if (match) return normalizeUrl(match[1], pageUrl);
+      const converted = String(pageUrl || "").replace(/\/f\//i, "/e/");
+      return converted !== pageUrl ? converted : null;
     }
     function extractMixDrop(url, refererBase = "https://m1xdrop.net/") {
       return __async(this, null, function* () {
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT2,
-              "Referer": refererBase
-            }
+          const fetchHtml = (targetUrl, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl, {
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": referer
+              }
+            });
+            if (!response.ok) return null;
+            return {
+              url: response.url || targetUrl,
+              html: yield response.text()
+            };
           });
-          if (!response.ok) return null;
-          const html = yield response.text();
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack(p, a, c, k, null, {});
-            const wurlMatch = unpacked.match(/wurl="([^"]+)"/);
-            if (wurlMatch) {
-              let streamUrl = wurlMatch[1];
-              if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-              return {
-                url: streamUrl,
-                headers: {
-                  "User-Agent": USER_AGENT2,
-                  "Referer": "https://m1xdrop.net/",
-                  "Origin": "https://m1xdrop.net"
-                }
-              };
+          let page = yield fetchHtml(url, refererBase);
+          if (!page) return null;
+          let streamUrl = extractPackedStream(page.html);
+          let pageUrl = page.url;
+          if (!streamUrl) {
+            const embedUrl = extractEmbedUrl(page.html, pageUrl);
+            if (embedUrl && embedUrl !== pageUrl) {
+              const embedPage = yield fetchHtml(embedUrl, pageUrl);
+              if (embedPage) {
+                page = embedPage;
+                pageUrl = embedPage.url;
+                streamUrl = extractPackedStream(embedPage.html);
+              }
             }
           }
-          return null;
+          if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "https://m1xdrop.net";
+            }
+          })();
+          return {
+            url: streamUrl,
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": pageUrl,
+              "Origin": origin
+            }
+          };
         } catch (e) {
           console.error("[Extractors] MixDrop extraction error:", e);
           return null;
@@ -7335,587 +7378,6 @@ var require_streamhg = __commonJS({
   }
 });
 
-// cf_bypass.js
-var require_cf_bypass = __commonJS({
-  "cf_bypass.js"(exports2, module2) {
-    var fs = require("fs");
-    var path = require("path");
-    var axios = require("axios");
-    var activeBypasses = /* @__PURE__ */ new Map();
-    var MAX_GLOBAL_CONCURRENT = 4;
-    var activeGlobalRequests = 0;
-    function getClearance(_0) {
-      return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        if (activeBypasses.has(provider)) {
-          console.log(`[CF] FlareSolverr bypass gi\xE0 in corso per il provider [${provider}], attendo...`);
-          return activeBypasses.get(provider);
-        }
-        const bypassPromise = (() => __async(null, null, function* () {
-          var _a, _b;
-          while (activeGlobalRequests >= MAX_GLOBAL_CONCURRENT) {
-            yield new Promise((resolve) => setTimeout(resolve, 1e3));
-          }
-          activeGlobalRequests++;
-          try {
-            const FLARE_URL = process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
-            console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}]: ${url}`);
-            try {
-              yield axios.post(FLARE_URL, { cmd: "sessions.create", session: provider }, { timeout: 5e3 }).catch(() => {
-              });
-            } catch (e) {
-            }
-            const payload = {
-              cmd: options.method === "POST" ? "request.post" : "request.get",
-              url,
-              session: provider,
-              maxTimeout: 35e3
-              // Ridotto per rientrare nei 40s del provider
-            };
-            if (options.method === "POST" && options.body) {
-              payload.postData = options.body;
-            }
-            try {
-              const response = yield axios.post(FLARE_URL, payload, {
-                timeout: 4e4,
-                // Leggermente più alto di maxTimeout (35s)
-                headers: { "Content-Type": "application/json" }
-              });
-              if (response.data && response.data.status === "ok") {
-                const solution = response.data.solution;
-                const cookiesCount = (solution.cookies || []).length;
-                const cookies = (solution.cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
-                const cf_clearance = (_a = (solution.cookies || []).find((c) => c.name === "cf_clearance")) == null ? void 0 : _a.value;
-                console.log(`[CF] FlareSolverr ha restituito ${cookiesCount} cookie.`);
-                if (!cookies && !solution.response) {
-                  throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
-                }
-                const data = {
-                  userAgent: solution.userAgent,
-                  cookies: cookies || "",
-                  cf_clearance: cf_clearance || null,
-                  url: solution.url,
-                  response: solution.response,
-                  timestamp: Date.now()
-                };
-                fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
-                if (solution.cookies && solution.cookies.length > 0) {
-                  const domains = [...new Set(solution.cookies.map((c) => c.domain.replace(/^\./, "")))];
-                  for (const d of domains) {
-                    const domainProvider = d.replace("www.", "").split(".")[0];
-                    if (domainProvider && domainProvider !== provider) {
-                      const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
-                      const domainCookies = solution.cookies.filter((c) => c.domain.includes(d)).map((c) => `${c.name}=${c.value}`).join("; ");
-                      if (domainCookies) {
-                        const domainData = {
-                          userAgent: solution.userAgent,
-                          cookies: domainCookies,
-                          cf_clearance: ((_b = solution.cookies.find((c) => c.domain.includes(d) && c.name === "cf_clearance")) == null ? void 0 : _b.value) || null,
-                          url: solution.url,
-                          timestamp: Date.now()
-                        };
-                        fs.writeFileSync(domainSessionFile, JSON.stringify(domainData, null, 2));
-                        console.log(`[CF] Salvata sessione extra per dominio: ${d} -> ${domainProvider}`);
-                      }
-                    }
-                  }
-                }
-                console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
-                return data;
-              } else {
-                const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
-                throw new Error(errorMsg);
-              }
-            } catch (error) {
-              console.error(`[CF] Errore FlareSolverr: ${error.message}`);
-              if (error.code === "ECONNREFUSED") {
-                console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${FLARE_URL}`);
-              }
-              throw error;
-            }
-          } finally {
-            activeGlobalRequests--;
-            activeBypasses.delete(provider);
-          }
-        }))();
-        activeBypasses.set(provider, bypassPromise);
-        return bypassPromise;
-      });
-    }
-    module2.exports = { getClearance };
-  }
-});
-
-// src/utils/cf_handler.js
-var require_cf_handler = __commonJS({
-  "src/utils/cf_handler.js"(exports2, module2) {
-    var axios = require("axios");
-    var fs = require("fs");
-    var path = require("path");
-    var { getClearance } = require_cf_bypass();
-    var https = require("https");
-    var http = require("http");
-    var agentOptions = {
-      keepAlive: true,
-      maxSockets: 250,
-      maxFreeSockets: 100,
-      timeout: 3e4,
-      keepAliveMsecs: 3e4
-    };
-    var httpsAgent = new https.Agent(agentOptions);
-    var httpAgent = new http.Agent(agentOptions);
-    function smartFetch(_0, _1) {
-      return __async(this, arguments, function* (url, domain, options = {}) {
-        const getHost = (u) => {
-          try {
-            return new URL(u).hostname.replace("www.", "");
-          } catch (e) {
-            return u;
-          }
-        };
-        const urlHost = getHost(url);
-        const domainHost = getHost(domain);
-        const provider = urlHost !== domainHost ? urlHost.split(".")[0] : options.provider || domainHost.split(".")[0];
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
-        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
-        const loadSession = () => {
-          if (fs.existsSync(sessionFile)) {
-            try {
-              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-              if (data && data.userAgent) {
-                const ageMs = Date.now() - (data.timestamp || 0);
-                const twoHours = 2 * 60 * 60 * 1e3;
-                if (ageMs > twoHours) {
-                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
-                  try {
-                    fs.unlinkSync(sessionFile);
-                  } catch (e) {
-                  }
-                  return {};
-                }
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
-                return data;
-              }
-            } catch (e) {
-              return {};
-            }
-          }
-          return {};
-        };
-        let session = loadSession();
-        let currentUrl = url;
-        if (session.url) {
-          try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            const currentHost = currentUrlObj.hostname.toLowerCase();
-            const sessionHost = sessionUrl.hostname.toLowerCase();
-            if (sessionHost !== currentHost) {
-              const sessionParts = sessionHost.split(".");
-              const currentParts = currentHost.split(".");
-              const sessionRoot = sessionParts.slice(-2).join(".");
-              const currentRoot = currentParts.slice(-2).join(".");
-              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
-                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
-                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
-              }
-            }
-          } catch (e) {
-          }
-        }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          const mergedHeaders = __spreadValues({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
-          if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-          }
-          if (sess.cookies) {
-            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
-          }
-          const response = yield axios(__spreadValues({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 2e4,
-            validateStatus: false,
-            responseType: options.responseType || "text"
-          }, options.axiosConfig));
-          const data = response.data;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data };
-            throw err;
-          }
-          return { data, status: response.status, headers: response.headers };
-        });
-        const isUsefulHtml = (value) => {
-          const text = typeof value === "string" ? value.trim() : "";
-          if (text.length < 200) return false;
-          if (/Just a moment|cf-browser-verification|challenge-platform|turnstile|cf-challenge/i.test(text)) return false;
-          return true;
-        };
-        try {
-          const res = yield doRequest(session);
-          if (res.status === 403 || res.status === 503) {
-            throw { response: res };
-          }
-          if (session.cookies) {
-            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
-          }
-          return res.data;
-        } catch (err) {
-          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-            if (fs.existsSync(sessionFile)) {
-              try {
-                fs.unlinkSync(sessionFile);
-              } catch (e) {
-              }
-            }
-            const newSession = yield getClearance(url, provider, options);
-            if (!newSession) {
-              throw new Error(`Bypass fallito per ${provider}`);
-            }
-            if (options.meta && newSession.url) {
-              options.meta.finalUrl = newSession.url;
-            }
-            if (isUsefulHtml(newSession.response)) {
-              return newSession.response;
-            }
-            let finalUrl = currentUrl;
-            if (newSession.url) {
-              try {
-                const oldUrlObj = new URL(url);
-                const newUrlObj = new URL(newSession.url);
-                if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  oldUrlObj.hostname = newUrlObj.hostname;
-                  oldUrlObj.protocol = newUrlObj.protocol;
-                  finalUrl = oldUrlObj.toString();
-                  if (options.meta) options.meta.finalUrl = finalUrl;
-                }
-              } catch (e) {
-              }
-            }
-            const res = yield doRequest(newSession, finalUrl);
-            return res.data;
-          }
-          throw err;
-        }
-      });
-    }
-    module2.exports = { smartFetch };
-  }
-});
-
-// src/extractors/maxstream.js
-var require_maxstream = __commonJS({
-  "src/extractors/maxstream.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
-    var { smartFetch } = require_cf_handler();
-    function extractMaxStream(url, refererBase = "https://uprot.net/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
-          if (targetUrl.includes("uprot.net")) {
-            targetUrl = targetUrl.replace("/msf/", "/mse/");
-            const html2 = yield smartFetch(targetUrl, "uprot", {
-              headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
-            });
-            if (!html2) return null;
-            const redirectMatch = html2.match(/https?:\/\/(?:www\.)?(?:stayonline\.pro|maxstream\.video)[^"'\s<>\\ ]+/);
-            if (redirectMatch) {
-              targetUrl = redirectMatch[0].replace(/\\/g, "");
-            } else {
-              const jsMatch = html2.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/);
-              if (jsMatch) {
-                targetUrl = jsMatch[1];
-              } else {
-                const btnMatch = html2.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
-                if (btnMatch) targetUrl = btnMatch[1];
-                else return null;
-              }
-            }
-          }
-          const provider = targetUrl.includes("stayonline") ? "stayonline" : "maxstream";
-          const html = yield smartFetch(targetUrl, provider, {
-            headers: {
-              "User-Agent": USER_AGENT2,
-              "Referer": "https://uprot.net/",
-              "Accept-Language": "en-US,en;q=0.5"
-            }
-          });
-          if (!html) return null;
-          let canonicalUrl = null;
-          const fileCodeMatch = html.match(/[?&]file_code=([a-z0-9]+)/i) || html.match(/\bfile_code["']?\s*[:=]\s*["']?([a-z0-9]+)/i) || html.match(/\$\.cookie\(['"]file_id['"],\s*['"]([a-z0-9]+)['"]/i);
-          if (fileCodeMatch) {
-            canonicalUrl = `https://maxstream.video/emhuih/${fileCodeMatch[1]}`;
-          }
-          const directMatch = html.match(/sources:\s*\[\{src:\s*"([^"]+)"/);
-          if (directMatch) {
-            return {
-              url: directMatch[1],
-              sourceUrl: canonicalUrl || targetUrl,
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": targetUrl
-              }
-            };
-          }
-          const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-          const match = packedRegex.exec(html);
-          if (match) {
-            const p = match[1];
-            const a = parseInt(match[2]);
-            const c = parseInt(match[3]);
-            const k = match[4].split("|");
-            const unpacked = unPack(p, a, c, k, null, {});
-            const srcMatch = unpacked.match(/src:["']([^"']+)["']/);
-            if (srcMatch) {
-              return {
-                url: srcMatch[1],
-                sourceUrl: canonicalUrl || targetUrl,
-                headers: {
-                  "User-Agent": USER_AGENT2,
-                  "Referer": targetUrl
-                }
-              };
-            }
-            try {
-              const urlsetIdx = k.indexOf("urlset");
-              const hlsIdx = k.indexOf("hls");
-              const sourcesIdx = k.indexOf("sources");
-              if (urlsetIdx !== -1 && hlsIdx !== -1 && sourcesIdx !== -1) {
-                const result = k.slice(urlsetIdx + 1, hlsIdx);
-                const reversedElements = result.reverse();
-                const firstPartTerms = k.slice(hlsIdx + 1, sourcesIdx);
-                const reversedFirstPart = firstPartTerms.reverse();
-                let firstUrlPart = "";
-                for (const fp of reversedFirstPart) {
-                  if (fp.includes("0")) {
-                    firstUrlPart += fp;
-                  } else {
-                    firstUrlPart += fp + "-";
-                  }
-                }
-                const baseUrl = `https://${firstUrlPart.replace(/-$/, "")}.host-cdn.net/hls/`;
-                let finalUrl = "";
-                if (reversedElements.length === 1) {
-                  finalUrl = baseUrl + "," + reversedElements[0] + ".urlset/master.m3u8";
-                } else {
-                  finalUrl = baseUrl + reversedElements.join(",") + ".urlset/master.m3u8";
-                }
-                return {
-                  url: finalUrl,
-                  sourceUrl: canonicalUrl || targetUrl,
-                  headers: {
-                    "User-Agent": USER_AGENT2,
-                    "Referer": targetUrl
-                  }
-                };
-              }
-            } catch (e) {
-              console.error("[Extractors] MaxStream manual reconstruction failed:", e);
-            }
-          }
-          return null;
-        } catch (e) {
-          console.error("[Extractors] MaxStream extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractMaxStream };
-  }
-});
-
-// src/utils/ocr.js
-var require_ocr = __commonJS({
-  "src/utils/ocr.js"(exports2, module2) {
-    function solveNumericCaptcha(imgBase64) {
-      return __async(this, null, function* () {
-        const { spawn } = require("child_process");
-        const candidates = [
-          process.env.PYTHON_BIN,
-          process.platform === "win32" ? "python" : "python3",
-          process.platform === "win32" ? "py" : "python"
-        ].filter(Boolean);
-        const trySolve = (pythonBin, allowFallback) => new Promise((resolve, reject) => {
-          try {
-            const cleanBase64 = imgBase64.includes(",") ? imgBase64.split(",")[1] : imgBase64;
-            const python = spawn(pythonBin, ["ocr_helper.py"]);
-            let result = "";
-            let error = "";
-            python.stdin.write(cleanBase64);
-            python.stdin.end();
-            python.stdout.on("data", (data) => {
-              result += data.toString();
-            });
-            python.stderr.on("data", (data) => {
-              error += data.toString();
-            });
-            python.on("close", (code) => {
-              if (code !== 0) {
-                console.error(`[OCR] Errore processo Python (${pythonBin}):`, error);
-                return reject(new Error("OCR engine error"));
-              }
-              const solved = result.trim();
-              resolve(solved);
-            });
-            python.on("error", (err) => {
-              if (!allowFallback) console.error(`[OCR] Errore avvio Python (${pythonBin}):`, err.message);
-              reject(err);
-            });
-          } catch (e) {
-            reject(e);
-          }
-        });
-        let lastError = null;
-        for (let i = 0; i < candidates.length; i++) {
-          try {
-            return yield trySolve(candidates[i], i < candidates.length - 1);
-          } catch (e) {
-            lastError = e;
-            if (e && e.code && e.code !== "ENOENT") break;
-          }
-        }
-        throw lastError || new Error("OCR engine error");
-      });
-    }
-    module2.exports = { solveNumericCaptcha };
-  }
-});
-
-// src/extractors/deltabit.js
-var require_deltabit = __commonJS({
-  "src/extractors/deltabit.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
-    var { smartFetch } = require_cf_handler();
-    var { solveNumericCaptcha } = require_ocr();
-    function extractDeltaBit(url, refererBase = "https://eurostreamings.help/") {
-      return __async(this, null, function* () {
-        try {
-          let targetUrl = url;
-          if (targetUrl.startsWith("//")) targetUrl = "https:" + targetUrl;
-          let redirectLoopCount = 0;
-          while (redirectLoopCount < 3 && (targetUrl.includes("safego.cc") || targetUrl.includes("clicka.cc"))) {
-            redirectLoopCount++;
-            const html2 = yield smartFetch(targetUrl, "clicka", {
-              headers: { "User-Agent": USER_AGENT2, "Referer": refererBase }
-            });
-            if (!html2) break;
-            const nextMatch = html2.match(/https?:\/\/(?:deltabit|safego|clicka)\.[a-z]+\/[a-zA-Z0-9?=_&%-]+/i);
-            if (nextMatch) {
-              targetUrl = nextMatch[0].replace(/&amp;/g, "&");
-              if (targetUrl.includes("deltabit.")) break;
-            } else {
-              const refreshMatch = html2.match(/url=(https?:\/\/[^"']+)/i);
-              if (refreshMatch) {
-                targetUrl = refreshMatch[1].replace(/&amp;/g, "&");
-              } else {
-                break;
-              }
-            }
-          }
-          const html = yield smartFetch(targetUrl, "deltabit", {
-            headers: {
-              "User-Agent": USER_AGENT2,
-              "Referer": refererBase
-            }
-          });
-          if (!html) return null;
-          const directMatch = html.match(/sources:\s*\["([^"]+)"/);
-          if (directMatch) {
-            return {
-              url: directMatch[1],
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": targetUrl
-              }
-            };
-          }
-          const opMatch = html.match(/name="op" value="([^"]+)"/);
-          const idMatch = html.match(/name="id" value="([^"]+)"/);
-          if (opMatch && idMatch) {
-            const op = opMatch[1];
-            const id = idMatch[1];
-            const formData = new URLSearchParams();
-            const hiddenRegex = /<input type="hidden" name="([^"]+)" value="([^"]*)"/g;
-            let match;
-            const allFields = {};
-            while ((match = hiddenRegex.exec(html)) !== null) {
-              allFields[match[1]] = match[2];
-            }
-            allFields["op"] = allFields["op"] || op;
-            allFields["id"] = allFields["id"] || id;
-            allFields["imhuman"] = "";
-            allFields["referer"] = targetUrl;
-            for (const key in allFields) {
-              formData.append(key, allFields[key]);
-            }
-            const captchaMatch = html.match(/<img[^>]+src=["']([^"']*captcha[^"']*)["']/i);
-            if (captchaMatch) {
-              let captchaUrl = captchaMatch[1];
-              if (captchaUrl.startsWith("/")) {
-                const urlObj = new URL(targetUrl);
-                captchaUrl = `${urlObj.origin}${captchaUrl}`;
-              }
-              try {
-                const imgData = yield smartFetch(captchaUrl, "deltabit", {
-                  headers: { "Referer": targetUrl },
-                  responseType: "arraybuffer"
-                });
-                const base64 = Buffer.isBuffer(imgData) ? imgData.toString("base64") : Buffer.from(imgData).toString("base64");
-                const captchaCode = yield solveNumericCaptcha(base64);
-                if (captchaCode) {
-                  console.log(`[DeltaBit] Captcha risolto (locale): ${captchaCode}`);
-                  formData.set("code", captchaCode);
-                }
-              } catch (ocrErr) {
-                console.error("[DeltaBit] Errore OCR locale:", ocrErr.message);
-              }
-            }
-            yield new Promise((resolve) => setTimeout(resolve, 3500));
-            const postHtml = yield smartFetch(targetUrl, "deltabit", {
-              method: "POST",
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": targetUrl,
-                "Content-Type": "application/x-www-form-urlencoded"
-              },
-              body: formData.toString()
-            });
-            if (!postHtml) return null;
-            const finalMatch = postHtml.match(/sources:\s*\["([^"]+)"/);
-            if (finalMatch) {
-              return {
-                url: finalMatch[1],
-                headers: {
-                  "User-Agent": USER_AGENT2,
-                  "Referer": targetUrl
-                }
-              };
-            }
-          }
-          return null;
-        } catch (e) {
-          console.error("[Extractors] DeltaBit extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractDeltaBit };
-  }
-});
-
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -7929,8 +7391,6 @@ var require_extractors = __commonJS({
     var { extractVixCloud: extractVixCloud2 } = require_vixcloud();
     var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
-    var { extractMaxStream } = require_maxstream();
-    var { extractDeltaBit } = require_deltabit();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
@@ -7943,8 +7403,6 @@ var require_extractors = __commonJS({
       extractVixCloud: extractVixCloud2,
       extractLoadm,
       extractStreamHG,
-      extractMaxStream,
-      extractDeltaBit,
       USER_AGENT: USER_AGENT2,
       unPack
     };
@@ -8065,7 +7523,6 @@ var require_formatter = __commonJS({
 });
 
 // src/animeunity/index.js
-var cheerio = require("cheerio");
 var { extractVixCloud } = require_extractors();
 var { getProxiedUrl } = require_common();
 var { formatStream } = require_formatter();
@@ -8292,6 +7749,33 @@ function sanitizeAnimeTitle(rawTitle) {
   text = text.replace(/\s*-\s*AnimeUnity.*$/i, "").replace(/\s+Streaming.*$/i, "").trim();
   text = text.replace(/\s*[\[(]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*[\])]\s*/gi, " ").replace(/\s*[-\u2013_|:]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*$/gi, "").replace(/\s{2,}/g, " ").replace(/\s*[-\u2013_|:]\s*$/g, "").trim();
   return text || null;
+}
+function decodeHtmlEntities(value) {
+  return String(value || "").replace(/&quot;/gi, '"').replace(/&#34;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/gi, "'").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ");
+}
+function stripHtmlTags(value) {
+  return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+}
+function getTagAttribute(tag, attrName) {
+  const escaped = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i");
+  const match = String(tag || "").match(regex);
+  return match ? decodeHtmlEntities(match[2]) : null;
+}
+function findFirstTag(html, tagName, attrPattern = "") {
+  const regex = new RegExp(`<${tagName}\\b${attrPattern}[\\s\\S]*?>`, "i");
+  const match = String(html || "").match(regex);
+  return match ? match[0] : "";
+}
+function getMetaContent(html, propertyValue) {
+  const escaped = String(propertyValue || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tag = findFirstTag(html, "meta", `(?=[^>]*(?:property|name)\\s*=\\s*["']${escaped}["'])`);
+  return getTagAttribute(tag, "content");
+}
+function getFirstTagText(html, tagName) {
+  const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+  const match = String(html || "").match(regex);
+  return match ? stripHtmlTags(match[1]) : "";
 }
 function parseVideoPlayerJson(rawValue, fallback) {
   const text = String(rawValue || "").trim();
@@ -8552,12 +8036,11 @@ function fetchResource(_0) {
   });
 }
 function parseAnimePage(html, fallback = {}) {
-  const $ = cheerio.load(html);
-  const vp = $("video-player").first();
-  const animeData = parseVideoPlayerJson(vp.attr("anime"), {});
-  const episodeData = parseVideoPlayerJson(vp.attr("episode"), null);
-  const episodesData = parseVideoPlayerJson(vp.attr("episodes"), []);
-  const pageTitle = $("meta[property='og:title']").attr("content") || $("title").first().text().trim() || null;
+  const vp = findFirstTag(html, "video-player");
+  const animeData = parseVideoPlayerJson(getTagAttribute(vp, "anime"), {});
+  const episodeData = parseVideoPlayerJson(getTagAttribute(vp, "episode"), null);
+  const episodesData = parseVideoPlayerJson(getTagAttribute(vp, "episodes"), []);
+  const pageTitle = getMetaContent(html, "og:title") || getFirstTagText(html, "title") || null;
   const titleCandidates = [
     fallback.title,
     animeData == null ? void 0 : animeData.title_it,
@@ -8586,7 +8069,7 @@ function parseAnimePage(html, fallback = {}) {
       embedUrl: (entry == null ? void 0 : entry.embed_url) || null
     }))
   );
-  const currentEmbedUrl = toAbsoluteUrl(vp.attr("embed_url"));
+  const currentEmbedUrl = toAbsoluteUrl(getTagAttribute(vp, "embed_url"));
   if (currentEmbedUrl && episodes.length > 0) {
     if (episodeData == null ? void 0 : episodeData.id) {
       const currentId = parsePositiveInt(episodeData.id);

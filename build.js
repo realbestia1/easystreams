@@ -146,7 +146,7 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
                 // Bundle everything except potentially very large or platform-specific libs
                 // For React Native/Nuvio, we generally want to bundle crypto-js 
                 // but keep cheerio external if we want to avoid huge files (and we should avoid using it)
-                external: ['cheerio', 'cheerio-select', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'axios', 'child_process']
+                external: ['fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'axios', 'child_process']
             });
             console.log(`✅ Built ${provider}`);
         } catch (e) {

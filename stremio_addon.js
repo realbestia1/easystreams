@@ -1,5 +1,9 @@
-const { solveNumericCaptcha } = require('./src/utils/ocr');
 const { spawn } = require('child_process');
+const { sanitizeLogArgs } = require('./src/utils/log_sanitizer');
+
+try {
+    require('dns').setDefaultResultOrder('ipv4first');
+} catch {}
 
 // Polyfill fetch and related Web APIs
 if (typeof global.Blob === 'undefined') {
@@ -29,8 +33,6 @@ if (!global.fetch) {
 
 const https = require('https');
 const http = require('http');
-const flareManager = require('./flare_manager');
-const { getClearance } = require('./cf_bypass');
 
 const IS_PRODUCTION = false;
 const VERBOSE_LOGS = true;
@@ -48,15 +50,22 @@ const PROVIDER_LOG_PREFIXES = [
 ];
 
 const originalConsoleLog = console.log.bind(console);
-if (IS_PRODUCTION && !VERBOSE_LOGS && QUIET_PROVIDER_LOGS) {
-    console.log = (...args) => {
-        const first = typeof args[0] === 'string' ? args[0] : '';
-        if (first && PROVIDER_LOG_PREFIXES.some((prefix) => first.startsWith(prefix))) {
-            return;
-        }
-        originalConsoleLog(...args);
-    };
-}
+const originalConsoleWarn = console.warn.bind(console);
+const originalConsoleError = console.error.bind(console);
+
+console.log = (...args) => {
+    const first = typeof args[0] === 'string' ? args[0] : '';
+    if (IS_PRODUCTION && !VERBOSE_LOGS && QUIET_PROVIDER_LOGS && first && PROVIDER_LOG_PREFIXES.some((prefix) => first.startsWith(prefix))) {
+        return;
+    }
+    originalConsoleLog(...sanitizeLogArgs(args));
+};
+
+console.warn = (...args) => originalConsoleWarn(...sanitizeLogArgs(args));
+console.error = (...args) => originalConsoleError(...sanitizeLogArgs(args));
+
+const flareManager = require('./flare_manager');
+const { getClearance, getStats: getFlareStats } = require('./cf_bypass');
 
 function logInfo(...args) {
     console.log(...args);
@@ -86,21 +95,16 @@ const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
 const express = require('express');
 const app = express();
 const path = require('path');
-let isWarmingUp = true;
-const DISABLE_MIXDROP_ENV =
-    typeof process !== 'undefined' &&
-        process &&
-        process.env &&
-        typeof process.env.DISABLE_MIXDROP === 'string'
-        ? process.env.DISABLE_MIXDROP.trim().toLowerCase()
-        : '';
-const DISABLE_MIXDROP_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_MIXDROP_ENV);
-// Warmup middleware: reject requests during initialization
-app.use((req, res, next) => {
-    if (isWarmingUp && !req.path.startsWith('/ocr')) {
-        return res.status(503).set('Retry-After', '20').send('Server warming up... please wait 20 seconds.');
-    }
-    next();
+function readPositiveIntEnv(name, fallback) {
+    const value = Number.parseInt(String(process.env[name] || ''), 10);
+    return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+app.get('/health/flaresolverr', (req, res) => {
+    res.json({
+        ok: true,
+        flaresolverr: getFlareStats()
+    });
 });
 
 const DISABLE_UQLOAD_ENV =
@@ -445,7 +449,7 @@ function buildEasyProxyExtractorUrl(easyProxyUrl, easyProxyPassword, host, strea
 
 function isMixdropStreamUrl(streamUrl) {
     const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent') || lower.includes('clicka.cc/mix');
+    return lower.includes('mixdrop') || lower.includes('m1xdrop') || lower.includes('mxcontent');
 }
 
 function isMixdropStream(stream) {
@@ -457,41 +461,7 @@ function isMixdropStream(stream) {
         stream?.providerName
     ].filter(Boolean).join(' ').toLowerCase();
 
-    return text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent') || text.includes('clicka.cc/mix');
-}
-
-function isMaxstreamStreamUrl(streamUrl) {
-    const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('maxstream') || lower.includes('uprot.net') || lower.includes('stayonline.pro');
-}
-
-function isMaxstreamStream(stream) {
-    const text = [
-        stream?.url,
-        stream?.easyProxySourceUrl,
-        stream?.name,
-        stream?.title,
-        stream?.providerName
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return text.includes('maxstream') || text.includes('uprot.net') || text.includes('stayonline.pro');
-}
-
-function isDeltabitStreamUrl(streamUrl) {
-    const lower = String(streamUrl || '').toLowerCase();
-    return lower.includes('deltabit') || lower.includes('clicka.cc/delta');
-}
-
-function isDeltabitStream(stream) {
-    const text = [
-        stream?.url,
-        stream?.easyProxySourceUrl,
-        stream?.name,
-        stream?.title,
-        stream?.providerName
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return text.includes('deltabit') || text.includes('clicka.cc/delta');
+    return text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent');
 }
 
 function isStreamHgStream(stream) {
@@ -1253,7 +1223,6 @@ const providers = {
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
     cinemacity: require('./src/cinemacity/index.js'),
-    eurostreaming: require('./src/eurostreaming/index.js'),
 };
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
@@ -1323,16 +1292,16 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
             plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
-        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
+        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
     } else {
         if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming']
-                : ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
+                : ['streamingcommunity', 'guardoserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'eurostreaming'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'eurostreaming', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'cinemacity'];
         }
     }
 
@@ -1384,7 +1353,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const easyProxyUrl = resolveEasyProxyUrlFromConfig(config);
     const easyProxyPassword = resolveEasyProxyPasswordFromConfig(config);
     const disabledProviders = resolveDisabledProvidersFromConfig(config);
-    global.DISABLE_MIXDROP = DISABLE_MIXDROP_IN_ADDON && !easyProxyUrl;
     const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);
     const providerId = parsedRequest.providerId;
@@ -1596,30 +1564,13 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
-                            const mixdropExtension = ['eurostreaming', 'guardahd'].includes(name) ? 'mp4' : 'm3u8';
+                            const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
                             finalStreamUrl = buildEasyProxyExtractorUrl(
                                 easyProxyUrl,
                                 easyProxyPassword,
                                 'mixdrop',
                                 s.easyProxySourceUrl || s.url,
                                 mixdropExtension
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isMaxstreamStream(s)) {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'maxstream',
-                                s.easyProxySourceUrl || s.url
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isDeltabitStream(s)) {
-                            finalStreamUrl = buildEasyProxyExtractorUrl(
-                                easyProxyUrl,
-                                easyProxyPassword,
-                                'deltabit',
-                                s.easyProxySourceUrl || s.url,
-                                name === 'eurostreaming' ? 'mp4' : 'm3u8'
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
@@ -2309,23 +2260,6 @@ app.get('/', (req, res) => {
 
 app.use('/', addonRouter);
 
-// API per Nuvio / Client-side
-
-// API OCR per Nuvio (risoluzione captcha numerici)
-app.post('/ocr', express.text({ limit: '1mb' }), async (req, res) => {
-    const imgBase64 = req.body;
-    if (!imgBase64) return res.status(400).json({ error: 'Missing image data' });
-    console.log('[OCR] Richiesta risoluzione captcha...');
-    try {
-        const solved = await solveNumericCaptcha(imgBase64);
-        console.log('[OCR] Risultato:', solved);
-        res.json({ result: solved });
-    } catch (e) {
-        console.error('[OCR] Errore critico:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 app.get('/resolve/:provider', async (req, res) => {
     const { provider: providerName } = req.params;
     const { id, type, s, ep, format } = req.query;
@@ -2394,82 +2328,35 @@ function describeValidCfSession(providersToCheck) {
     return null;
 }
 
-async function warmupProviders() {
-    console.log('[Warmup] Avvio riscaldamento provider...');
+async function warmupGuardoserie() {
     const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
-    const targets = [
-        { name: 'Guardoserie', url: 'https://guardoserie.run/wp-admin/admin-ajax.php', sessions: ['guardoserie'] },
-        { name: 'CinemaCity', url: 'https://cinemacity.cc/movies/page/2/', sessions: ['cinemacity'], maxTimeout: 12000, requestTimeout: 17000 },
-        { name: 'EuroStreaming', url: 'https://eurostreamings.work/one-piece-2023/', sessions: ['eurostreaming', 'eurostreamings'] }
-    ];
-
-    for (const target of targets) {
-        try {
-            const validSession = describeValidCfSession(target.sessions || [target.name.toLowerCase()]);
-            if (!forceWarmup && validSession) {
-                console.log(`[Warmup] ${target.name} saltato: sessione CF valida gia presente (${validSession}).`);
-                continue;
-            }
-            console.log(`[Warmup] Riscaldamento ${target.name}...`);
-            await getClearance(target.url, target.name.toLowerCase(), {
-                maxTimeout: target.maxTimeout,
-                requestTimeout: target.requestTimeout
-            });
-            console.log(`[Warmup] ${target.name} pronto!`);
-            // Piccola pausa per lasciare respirare FlareSolverr
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (e) {
-            console.error(`[Warmup] Errore riscaldamento ${target.name}: ${e.message}`);
-        }
+    const validSession = describeValidCfSession(['guardoserie']);
+    if (!forceWarmup && validSession) {
+        console.log(`[Warmup] Guardoserie saltato: sessione CF valida gia presente (${validSession}).`);
+        return;
     }
 
-    let redirectorWarmupUrls = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_URLS || '')
-        .split(',')
-        .map((url) => url.trim())
-        .filter((url) => /^https?:\/\//i.test(url));
-
-    const redirectorWarmupPage = String(process.env.EUROSTREAMING_REDIRECTOR_WARMUP_PAGE || 'https://eurostreamings.work/one-piece-2023/').trim();
-    const redirectorSessionsReady = hasAnyValidCfSession(['clicka']) && hasAnyValidCfSession(['safego']);
-    if (!forceWarmup && redirectorSessionsReady) {
-        console.log('[Warmup] Redirector EuroStreaming saltati: sessioni CF clicka/safego valide gia presenti.');
-    } else if (redirectorWarmupUrls.length === 0 && providers.eurostreaming && typeof providers.eurostreaming.discoverRedirectorWarmupUrls === 'function') {
-        try {
-            console.log(`[Warmup] Cerco link redirector reali da ${redirectorWarmupPage}...`);
-            redirectorWarmupUrls = await providers.eurostreaming.discoverRedirectorWarmupUrls(redirectorWarmupPage, 5);
-            console.log(`[Warmup] Link redirector trovati: ${redirectorWarmupUrls.length}`);
-        } catch (e) {
-            console.error(`[Warmup] Errore ricerca redirector EuroStreaming: ${e.message}`);
-        }
+    try {
+        console.log('[Warmup] Riscaldamento Guardoserie...');
+        await getClearance('https://guardoserie.run/wp-admin/admin-ajax.php', 'guardoserie', {
+            maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
+            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000)
+        });
+        console.log('[Warmup] Guardoserie pronto!');
+    } catch (e) {
+        console.error(`[Warmup] Errore riscaldamento Guardoserie: ${e.message}`);
     }
-
-    if ((!redirectorSessionsReady || forceWarmup) && redirectorWarmupUrls.length > 0 && providers.eurostreaming && typeof providers.eurostreaming.warmupRedirectors === 'function') {
-        console.log(`[Warmup] Risoluzione redirector EuroStreaming (${redirectorWarmupUrls.length})...`);
-        try {
-            const results = await providers.eurostreaming.warmupRedirectors(redirectorWarmupUrls);
-            for (const result of results) {
-                if (result.ok) {
-                    console.log(`[Warmup] Redirector pronto: ${result.url} -> ${result.resolvedUrl}`);
-                } else {
-                    console.error(`[Warmup] Redirector non risolto: ${result.url}${result.error ? ` (${result.error})` : ''}`);
-                }
-            }
-        } catch (e) {
-            console.error(`[Warmup] Errore redirector EuroStreaming: ${e.message}`);
-        }
-    }
-
-    isWarmingUp = false;
-    console.log('[Warmup] Riscaldamento completato. Server pronto ad accettare richieste.');
 }
 
 let server;
 (async () => {
-    // Avvia FlareSolverr prima di accettare connessioni
+    // Avvia FlareSolverr come fallback runtime; warmup iniziale solo per Guardoserie.
     try {
         await flareManager.start();
         console.log('[FlareSolverr] Pronto.');
-        // Avvia riscaldamento in background
-        warmupProviders().catch(e => console.error('[Warmup] Errore critico:', e));
+        warmupGuardoserie().catch(e => {
+            console.error('[Warmup] Errore critico Guardoserie:', e);
+        });
     } catch (e) {
         console.error('[Addon] Errore avvio FlareSolverr:', e.message);
     }
