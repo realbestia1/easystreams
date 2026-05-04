@@ -37,6 +37,15 @@ for i in {1..20}; do
     sleep 2
 done
 
+# WARP puo ricreare route IPv6 dopo la connessione; per FlareSolverr vogliamo uscire solo IPv4.
+echo "[WARP] Forzo uscita IPv4-only..."
+for flag in /proc/sys/net/ipv6/conf/*/disable_ipv6; do
+    echo 1 > "$flag" 2>/dev/null || true
+done
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+ip -6 route flush table main >/dev/null 2>&1 || true
+
 # Verifica finale IP
 echo "[WARP] IP Pubblico finale IPv4:"
 curl -4 -s --connect-timeout 5 https://ifconfig.me || echo "Impossibile rilevare IPv4 (VPN potrebbe essere attiva ma DNS/Routing lenti)"

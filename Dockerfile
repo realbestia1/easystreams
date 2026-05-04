@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    iproute2 \
     python3 \
     python3-pip \
     python3-venv \
