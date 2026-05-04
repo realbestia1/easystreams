@@ -14,6 +14,44 @@ class FlareSolverrManager {
         this.port = '8191';
     }
 
+    getLocalExecutablePath() {
+        const isWin = process.platform === 'win32';
+        let exePath = isWin
+            ? path.join(this.fsDir, 'flaresolverr.exe')
+            : path.join(this.fsDir, 'flaresolverr');
+
+        if (!isWin && fs.existsSync(exePath) && fs.statSync(exePath).isDirectory()) {
+            exePath = path.join(exePath, 'flaresolverr');
+        }
+
+        if (isWin && !fs.existsSync(exePath)) {
+            exePath = path.join(this.fsDir, 'flaresolverr', 'flaresolverr.exe');
+        }
+
+        return exePath;
+    }
+
+    isLocalRuntimeValid() {
+        if (process.env.IN_DOCKER === 'true') return true;
+
+        const exePath = this.getLocalExecutablePath();
+        if (!fs.existsSync(exePath)) return false;
+
+        if (process.platform !== 'win32') return true;
+
+        const internalDir = path.join(path.dirname(exePath), '_internal');
+        if (!fs.existsSync(internalDir)) return false;
+
+        const hasPythonDll = fs.existsSync(path.join(internalDir, 'python313.dll'))
+            || fs.existsSync(path.join(internalDir, 'python312.dll'))
+            || fs.existsSync(path.join(internalDir, 'python311.dll'))
+            || fs.existsSync(path.join(internalDir, 'python310.dll'));
+        const hasPythonStdlib = fs.existsSync(path.join(internalDir, 'base_library.zip'))
+            || fs.existsSync(path.join(internalDir, 'encodings'));
+
+        return hasPythonDll && hasPythonStdlib;
+    }
+
     async execCommand(command, cwd = process.cwd()) {
         try {
             await execAsync(command, { cwd });
@@ -63,7 +101,16 @@ class FlareSolverrManager {
                 await this.cleanupWindowsDriverLocks();
             }
 
-            if (!fs.existsSync(this.fsDir) && process.env.IN_DOCKER !== 'true') {
+            const needsInstall = process.env.IN_DOCKER !== 'true' && (!fs.existsSync(this.fsDir) || !this.isLocalRuntimeValid());
+            if (needsInstall) {
+                if (fs.existsSync(this.fsDir)) {
+                    console.log('[FlareSolverr] Installazione locale corrotta o incompleta, reinstallazione in corso...');
+                    try {
+                        fs.rmSync(this.fsDir, { recursive: true, force: true });
+                    } catch (e) {
+                        console.error('[FlareSolverr] Impossibile rimuovere installazione corrotta:', e.message);
+                    }
+                }
                 console.log('[FlareSolverr] Installazione automatica in corso...');
                 let downloadUrl;
                 if (isWin) {
@@ -157,17 +204,7 @@ class FlareSolverrManager {
                 console.log('[FlareSolverr] Avvio da sorgenti Python (Docker Mode)...');
             } else {
                 // Su Windows o installazione locale manuale
-                exePath = isWin 
-                    ? path.join(this.fsDir, 'flaresolverr.exe')
-                    : path.join(this.fsDir, 'flaresolverr');
-                
-                if (!isWin && fs.existsSync(exePath) && fs.statSync(exePath).isDirectory()) {
-                    exePath = path.join(exePath, 'flaresolverr');
-                }
-
-                if (isWin && !fs.existsSync(exePath)) {
-                    exePath = path.join(this.fsDir, 'flaresolverr', 'flaresolverr.exe');
-                }
+                exePath = this.getLocalExecutablePath();
 
                 if (!fs.existsSync(exePath)) {
                     console.error('[FlareSolverr] Eseguibile non trovato in:', exePath);
