@@ -35,7 +35,7 @@ const FLARE_CAPTURE_ORIGIN_COOKIES = !['0', 'false', 'no', 'off'].includes(
     String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || '').trim().toLowerCase()
 );
 const FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
-    String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || 'clicka')
+    String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || '')
         .split(',')
         .map(value => value.trim().toLowerCase())
         .filter(Boolean)
@@ -43,6 +43,9 @@ const FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
 const FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv('FLARE_IDLE_CLEANUP_MS', 5000);
 const FLARE_IDLE_PROCESS_CLEANUP = !['0', 'false', 'no', 'off'].includes(
     String(process.env.FLARE_IDLE_PROCESS_CLEANUP || '').trim().toLowerCase()
+);
+const FLARE_KEEP_SESSIONS = !['0', 'false', 'no', 'off'].includes(
+    String(process.env.FLARE_KEEP_SESSIONS || '1').trim().toLowerCase()
 );
 let idleCleanupTimer = null;
 let lastFlareHealthOkAt = 0;
@@ -67,7 +70,8 @@ function getStats() {
         captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
         originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
-        idleCleanupMs: FLARE_IDLE_CLEANUP_MS
+        idleCleanupMs: FLARE_IDLE_CLEANUP_MS,
+        keepSessions: FLARE_KEEP_SESSIONS
     };
 }
 
@@ -206,6 +210,7 @@ function sleep(ms) {
 
 function runIdleProcessCleanup() {
     if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (FLARE_KEEP_SESSIONS) return;
     if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
 
     const command = process.platform === 'win32'
@@ -223,6 +228,7 @@ function runIdleProcessCleanup() {
 
 function scheduleIdleProcessCleanup() {
     if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (FLARE_KEEP_SESSIONS) return;
     if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
     clearIdleCleanupTimer();
     idleCleanupTimer = setTimeout(() => {
@@ -279,6 +285,15 @@ async function assertFlareSolverrReady(flareUrl) {
     } catch (error) {
         throw new Error(`FlareSolverr non disponibile su ${flareUrl}: ${error.message}`);
     }
+}
+
+async function listFlareSessions(flareUrl) {
+    const response = await axios.post(flareUrl, { cmd: 'sessions.list' }, {
+        timeout: FLARE_HEALTH_TIMEOUT,
+        headers: { 'Content-Type': 'application/json' }
+    });
+    const sessions = response.data && response.data.sessions;
+    return Array.isArray(sessions) ? sessions.map(value => String(value)) : [];
 }
 
 function writeJsonAtomic(filePath, data) {
@@ -416,6 +431,13 @@ async function captureOriginCookies(flareUrl, provider, url) {
 
 async function createSessionIfNeeded(flareUrl, provider) {
     try {
+        if (FLARE_KEEP_SESSIONS) {
+            const sessions = await listFlareSessions(flareUrl);
+            if (sessions.includes(provider)) {
+                console.log(`[CF] Riutilizzo sessione FlareSolverr esistente [${provider}].`);
+                return;
+            }
+        }
         await axios.post(flareUrl, { cmd: 'sessions.create', session: provider }, {
             timeout: 5000,
             headers: { 'Content-Type': 'application/json' }
@@ -426,6 +448,10 @@ async function createSessionIfNeeded(flareUrl, provider) {
 }
 
 async function destroySessionIfNeeded(flareUrl, provider) {
+    if (FLARE_KEEP_SESSIONS) {
+        console.log(`[CF] Sessione FlareSolverr mantenuta per [${provider}].`);
+        return;
+    }
     try {
         await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
             timeout: 5000,

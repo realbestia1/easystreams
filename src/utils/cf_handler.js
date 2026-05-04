@@ -46,7 +46,7 @@ async function smartFetch(url, domain, options = {}) {
     const providerFromHost = (host) => normalizeHost(host).split('.')[0] || 'default';
     
     // Se l'URL è su un dominio diverso dal dominio base del provider, usiamo il dominio dell'URL come provider
-    // Questo permette di avere sessioni e lock separati per i vari host (es. clicka.cc, uprot.net)
+    // Questo permette di avere sessioni e lock separati per host diversi.
     const provider = (urlHost !== domainHost) ? providerFromHost(urlHost) : (options.provider || providerFromHost(domainHost));
     
     const sessionFileForProvider = (providerName) => path.join(process.cwd(), `cf-session-${providerName}.json`);

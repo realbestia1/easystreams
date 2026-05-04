@@ -315,11 +315,14 @@ var require_cf_bypass = __commonJS({
       String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || "").trim().toLowerCase()
     );
     var FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
-      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || "clicka").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean)
+      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean)
     );
     var FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv("FLARE_IDLE_CLEANUP_MS", 5e3);
     var FLARE_IDLE_PROCESS_CLEANUP = !["0", "false", "no", "off"].includes(
       String(process.env.FLARE_IDLE_PROCESS_CLEANUP || "").trim().toLowerCase()
+    );
+    var FLARE_KEEP_SESSIONS = !["0", "false", "no", "off"].includes(
+      String(process.env.FLARE_KEEP_SESSIONS || "1").trim().toLowerCase()
     );
     var idleCleanupTimer = null;
     var lastFlareHealthOkAt = 0;
@@ -342,7 +345,8 @@ var require_cf_bypass = __commonJS({
         captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
         originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
-        idleCleanupMs: FLARE_IDLE_CLEANUP_MS
+        idleCleanupMs: FLARE_IDLE_CLEANUP_MS,
+        keepSessions: FLARE_KEEP_SESSIONS
       };
     }
     function logThrottled(key, message, intervalMs = 5e3) {
@@ -462,6 +466,7 @@ var require_cf_bypass = __commonJS({
     }
     function runIdleProcessCleanup() {
       if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+      if (FLARE_KEEP_SESSIONS) return;
       if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
       const command = process.platform === "win32" ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"` : `sh -lc "pkill -f '[c]hromium|[c]hromedriver|--user-data-dir=/tmp/t[m]p' 2>/dev/null || true"`;
       exec(command, { timeout: 1e4 }, (error) => {
@@ -474,6 +479,7 @@ var require_cf_bypass = __commonJS({
     }
     function scheduleIdleProcessCleanup() {
       if (!FLARE_IDLE_PROCESS_CLEANUP) return;
+      if (FLARE_KEEP_SESSIONS) return;
       if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
       clearIdleCleanupTimer();
       idleCleanupTimer = setTimeout(() => {
@@ -521,6 +527,16 @@ var require_cf_bypass = __commonJS({
         } catch (error) {
           throw new Error(`FlareSolverr non disponibile su ${flareUrl}: ${error.message}`);
         }
+      });
+    }
+    function listFlareSessions(flareUrl) {
+      return __async(this, null, function* () {
+        const response = yield axios.post(flareUrl, { cmd: "sessions.list" }, {
+          timeout: FLARE_HEALTH_TIMEOUT,
+          headers: { "Content-Type": "application/json" }
+        });
+        const sessions = response.data && response.data.sessions;
+        return Array.isArray(sessions) ? sessions.map((value) => String(value)) : [];
       });
     }
     function writeJsonAtomic(filePath, data) {
@@ -635,6 +651,13 @@ var require_cf_bypass = __commonJS({
     function createSessionIfNeeded(flareUrl, provider) {
       return __async(this, null, function* () {
         try {
+          if (FLARE_KEEP_SESSIONS) {
+            const sessions = yield listFlareSessions(flareUrl);
+            if (sessions.includes(provider)) {
+              console.log(`[CF] Riutilizzo sessione FlareSolverr esistente [${provider}].`);
+              return;
+            }
+          }
           yield axios.post(flareUrl, { cmd: "sessions.create", session: provider }, {
             timeout: 5e3,
             headers: { "Content-Type": "application/json" }
@@ -645,6 +668,10 @@ var require_cf_bypass = __commonJS({
     }
     function destroySessionIfNeeded(flareUrl, provider) {
       return __async(this, null, function* () {
+        if (FLARE_KEEP_SESSIONS) {
+          console.log(`[CF] Sessione FlareSolverr mantenuta per [${provider}].`);
+          return;
+        }
         try {
           yield axios.post(flareUrl, { cmd: "sessions.destroy", session: provider }, {
             timeout: 5e3,
