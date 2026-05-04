@@ -8,7 +8,8 @@ const IS_SERVER = typeof process !== 'undefined' && !!(process.versions && proce
 let smartFetch = null;
 if (IS_SERVER) {
     try {
-        ({ smartFetch } = require('../utils/cf_handler.js'));
+        const nodeRequire = eval('require');
+        ({ smartFetch } = nodeRequire('../utils/cf_handler.js'));
     } catch (_) {
         smartFetch = null;
     }
@@ -912,7 +913,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         const proxyPassword = (providerContext && providerContext.proxyPassword) || "";
 
         let searchResult = await searchBySitemap(imdbId, providerType);
-        const allowLegacySearch = String(process.env.CINEMACITY_LEGACY_SEARCH || "").trim().toLowerCase() === "1";
+        const allowLegacySearch = IS_SERVER &&
+            typeof process !== "undefined" &&
+            String(process.env.CINEMACITY_LEGACY_SEARCH || "").trim().toLowerCase() === "1";
         if ((!searchResult || !searchResult.url) && allowLegacySearch) {
             searchResult = await searchByImdb(imdbId);
             if (!searchResult || !searchResult.url) {

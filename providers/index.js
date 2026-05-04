@@ -57,7 +57,7 @@ var __async = (__this, __arguments, generator) => {
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+    var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     function getProxiedUrl(url) {
       let proxyUrl = null;
       try {
@@ -100,7 +100,7 @@ var require_common = __commonJS({
       return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
     }
     module2.exports = {
-      USER_AGENT,
+      USER_AGENT: USER_AGENT2,
       unPack,
       getProxiedUrl,
       isFlareSolverrBlockedError
@@ -111,7 +111,7 @@ var require_common = __commonJS({
 // src/extractors/mixdrop.js
 var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function isMixDropDisabled() {
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
@@ -149,10 +149,10 @@ var require_mixdrop = __commonJS({
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const fetchHtml = (targetUrl, referer) => __async(null, null, function* () {
+          const fetchHtml2 = (targetUrl, referer) => __async(null, null, function* () {
             const response = yield fetch(targetUrl, {
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": referer
               }
             });
@@ -162,14 +162,14 @@ var require_mixdrop = __commonJS({
               html: yield response.text()
             };
           });
-          let page = yield fetchHtml(url, refererBase);
+          let page = yield fetchHtml2(url, refererBase);
           if (!page) return null;
           let streamUrl = extractPackedStream(page.html);
           let pageUrl = page.url;
           if (!streamUrl) {
             const embedUrl = extractEmbedUrl(page.html, pageUrl);
             if (embedUrl && embedUrl !== pageUrl) {
-              const embedPage = yield fetchHtml(embedUrl, pageUrl);
+              const embedPage = yield fetchHtml2(embedUrl, pageUrl);
               if (embedPage) {
                 page = embedPage;
                 pageUrl = embedPage.url;
@@ -188,7 +188,7 @@ var require_mixdrop = __commonJS({
           return {
             url: streamUrl,
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": pageUrl,
               "Origin": origin
             }
@@ -206,7 +206,7 @@ var require_mixdrop = __commonJS({
 // src/extractors/dropload.js
 var require_dropload = __commonJS({
   "src/extractors/dropload.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractDropLoad(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -217,7 +217,7 @@ var require_dropload = __commonJS({
           }
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -241,7 +241,7 @@ var require_dropload = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT,
+                  "User-Agent": USER_AGENT2,
                   "Referer": url,
                   "Origin": origin
                 }
@@ -264,7 +264,7 @@ var require_dropload = __commonJS({
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
     function extractSuperVideo(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -275,7 +275,7 @@ var require_supervideo = __commonJS({
           const proxiedUrl = getProxiedUrl(embedUrl);
           let response = yield fetch(proxiedUrl, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -324,7 +324,7 @@ var require_supervideo = __commonJS({
 // src/extractors/streamtape.js
 var require_streamtape = __commonJS({
   "src/extractors/streamtape.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractStreamTape(url) {
       return __async(this, null, function* () {
         try {
@@ -357,7 +357,7 @@ var require_streamtape = __commonJS({
 // src/extractors/uqload.js
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function isUqloadDisabled() {
       if (typeof global !== "undefined" && global && global.DISABLE_UQLOAD === true) {
         return true;
@@ -372,7 +372,7 @@ var require_uqload = __commonJS({
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -386,7 +386,7 @@ var require_uqload = __commonJS({
             return {
               url: streamUrl,
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": "https://uqload.io/"
               }
             };
@@ -405,14 +405,14 @@ var require_uqload = __commonJS({
 // src/extractors/upstream.js
 var require_upstream = __commonJS({
   "src/extractors/upstream.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractUpstream(url, refererBase = "https://upstream.to/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -433,7 +433,7 @@ var require_upstream = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT,
+                  "User-Agent": USER_AGENT2,
                   "Referer": "https://upstream.to/"
                 }
               };
@@ -483,7 +483,7 @@ var require_vidoza = __commonJS({
 // src/fetch_helper.js
 var require_fetch_helper = __commonJS({
   "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 3e4;
+    var FETCH_TIMEOUT2 = 3e4;
     function createTimeoutSignal2(timeoutMs) {
       const parsed = Number.parseInt(String(timeoutMs), 10);
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -505,13 +505,13 @@ var require_fetch_helper = __commonJS({
       }
       return { signal: void 0, cleanup: null, timed: false };
     }
-    function fetchWithTimeout(_0) {
+    function fetchWithTimeout2(_0) {
       return __async(this, arguments, function* (url, options = {}) {
         if (typeof fetch === "undefined") {
           throw new Error("No fetch implementation found!");
         }
         const _a = options, { timeout } = _a, fetchOptions = __objRest(_a, ["timeout"]);
-        const requestTimeout = timeout || FETCH_TIMEOUT;
+        const requestTimeout = timeout || FETCH_TIMEOUT2;
         const timeoutConfig = createTimeoutSignal2(requestTimeout);
         const requestOptions = __spreadValues({}, fetchOptions);
         if (timeoutConfig.signal) {
@@ -536,7 +536,7 @@ var require_fetch_helper = __commonJS({
         }
       });
     }
-    module2.exports = { fetchWithTimeout, createTimeoutSignal: createTimeoutSignal2 };
+    module2.exports = { fetchWithTimeout: fetchWithTimeout2, createTimeoutSignal: createTimeoutSignal2 };
   }
 });
 
@@ -544,14 +544,14 @@ var require_fetch_helper = __commonJS({
 var require_quality_helper = __commonJS({
   "src/quality_helper.js"(exports2, module2) {
     var { createTimeoutSignal: createTimeoutSignal2 } = require_fetch_helper();
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-    function checkQualityFromPlaylist(_0) {
+    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    function checkQualityFromPlaylist2(_0) {
       return __async(this, arguments, function* (url, headers = {}) {
         try {
           if (!url.includes(".m3u8")) return null;
           const finalHeaders = __spreadValues({}, headers);
           if (!finalHeaders["User-Agent"]) {
-            finalHeaders["User-Agent"] = USER_AGENT;
+            finalHeaders["User-Agent"] = USER_AGENT2;
           }
           const timeoutConfig = createTimeoutSignal2(3e3);
           try {
@@ -594,21 +594,21 @@ var require_quality_helper = __commonJS({
       if (urlPath.includes("360")) return "360p";
       return null;
     }
-    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText };
+    module2.exports = { checkQualityFromPlaylist: checkQualityFromPlaylist2, getQualityFromUrl, checkQualityFromText };
   }
 });
 
 // src/extractors/vixcloud.js
 var require_vixcloud = __commonJS({
   "src/extractors/vixcloud.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
-    var { checkQualityFromPlaylist } = require_quality_helper();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     function extractVixCloud(url) {
       return __async(this, null, function* () {
         try {
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
             }
           });
@@ -642,8 +642,8 @@ var require_vixcloud = __commonJS({
               finalUrl += "?" + parts.slice(1).join("?");
             }
             let quality = "Auto";
-            const detectedQuality = yield checkQualityFromPlaylist(finalUrl, {
-              "User-Agent": USER_AGENT,
+            const detectedQuality = yield checkQualityFromPlaylist2(finalUrl, {
+              "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
@@ -652,7 +652,7 @@ var require_vixcloud = __commonJS({
               quality,
               type: "m3u8",
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": "https://vixcloud.co/"
               }
             });
@@ -7223,7 +7223,7 @@ var require_crypto_js = __commonJS({
 var require_loadm = __commonJS({
   "src/extractors/loadm.js"(exports2, module2) {
     var CryptoJS = require_crypto_js();
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractLoadm(playerUrl, referer = "guardoserie.horse") {
       return __async(this, null, function* () {
         try {
@@ -7237,7 +7237,7 @@ var require_loadm = __commonJS({
           const queryParams = `id=${encodeURIComponent(id)}&w=2560&h=1440&r=${encodeURIComponent(referer)}`;
           const response = yield fetch(`${apiUrl}?${queryParams}`, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": baseUrl,
               "X-Requested-With": "XMLHttpRequest"
             }
@@ -7270,7 +7270,7 @@ var require_loadm = __commonJS({
           if (data.source) {
             const playbackHeaders = {
               "Referer": baseUrl,
-              "User-Agent": USER_AGENT
+              "User-Agent": USER_AGENT2
             };
             streams.push({
               name: "Loadm",
@@ -7299,7 +7299,7 @@ var require_loadm = __commonJS({
 // src/extractors/streamhg.js
 var require_streamhg = __commonJS({
   "src/extractors/streamhg.js"(exports2, module2) {
-    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
     function resolveAbsoluteUrl(candidate, baseUrl) {
       if (!candidate) return null;
       try {
@@ -7308,7 +7308,7 @@ var require_streamhg = __commonJS({
         return null;
       }
     }
-    function getOrigin(url) {
+    function getOrigin2(url) {
       try {
         return new URL(url).origin;
       } catch (_) {
@@ -7317,7 +7317,7 @@ var require_streamhg = __commonJS({
     }
     function getBaseHeaders(referer) {
       const headers = {
-        "User-Agent": USER_AGENT
+        "User-Agent": USER_AGENT2
       };
       if (referer) headers["Referer"] = referer;
       return headers;
@@ -7326,7 +7326,7 @@ var require_streamhg = __commonJS({
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const initialReferer = refererBase || `${getOrigin(url) || "https://dhcplay.com"}/`;
+          const initialReferer = refererBase || `${getOrigin2(url) || "https://dhcplay.com"}/`;
           const candidates = [url];
           try {
             const parsed = new URL(url);
@@ -7390,7 +7390,7 @@ var require_extractors = __commonJS({
     var { extractVixCloud } = require_vixcloud();
     var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
       extractDropLoad,
@@ -7402,7 +7402,7 @@ var require_extractors = __commonJS({
       extractVixCloud,
       extractLoadm,
       extractStreamHG,
-      USER_AGENT,
+      USER_AGENT: USER_AGENT2,
       unPack
     };
   }
@@ -7442,7 +7442,7 @@ var require_formatter = __commonJS({
       }
       return false;
     }
-    function formatStream(stream, providerName) {
+    function formatStream2(stream, providerName) {
       let quality = stream.quality || "";
       if (quality === "2160p") quality = "\u{1F525}4K UHD";
       else if (quality === "1440p") quality = "\u2728 QHD";
@@ -7517,7 +7517,7 @@ var require_formatter = __commonJS({
         headers: finalHeaders
       });
     }
-    module2.exports = { formatStream };
+    module2.exports = { formatStream: formatStream2 };
   }
 });
 
@@ -7547,12 +7547,12 @@ var require_guardahd = __commonJS({
     function getGuardaHdBaseUrl() {
       return "https://guardahd.stream";
     }
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var TMDB_API_KEY3 = "68e094699525b18a70bab2f86b1fa706";
+    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamHG } = require_extractors();
     require_fetch_helper();
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();
+    var { formatStream: formatStream2 } = require_formatter();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2, getQualityFromUrl } = require_quality_helper();
     function getQualityFromName(qualityStr) {
       if (!qualityStr) return "Unknown";
       const quality = qualityStr.toUpperCase();
@@ -7582,7 +7582,7 @@ var require_guardahd = __commonJS({
         try {
           const normalizedType = String(type).toLowerCase();
           const endpoint = normalizedType === "movie" ? "movie" : "tv";
-          const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}`;
+          const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}`;
           const response = yield fetch(url);
           if (!response.ok) return null;
           const data = yield response.json();
@@ -7590,7 +7590,7 @@ var require_guardahd = __commonJS({
             console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
             return data.imdb_id;
           }
-          const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
+          const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY3}`;
           const extResponse = yield fetch(externalUrl);
           if (extResponse.ok) {
             const extData = yield extResponse.json();
@@ -7614,10 +7614,10 @@ var require_guardahd = __commonJS({
           let queryId = id;
           let url;
           if (String(queryId).startsWith("tt")) {
-            url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=it-IT`;
+            url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY3}&external_source=imdb_id&language=it-IT`;
           } else {
             const endpoint = normalizedType === "movie" ? "movie" : "tv";
-            url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY2}&language=it-IT`;
+            url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY3}&language=it-IT`;
           }
           const response = yield fetch(url);
           if (!response.ok) return null;
@@ -7635,7 +7635,7 @@ var require_guardahd = __commonJS({
         }
       });
     }
-    function getStreams2(id, type, season, episode) {
+    function getStreams3(id, type, season, episode) {
       if (["series", "tv"].includes(String(type).toLowerCase())) return [];
       return __async2(this, null, function* () {
         const normalizedType = String(type).toLowerCase();
@@ -7666,7 +7666,7 @@ var require_guardahd = __commonJS({
         try {
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": baseUrl
             }
           });
@@ -7698,7 +7698,7 @@ var require_guardahd = __commonJS({
                 const extracted = yield extractMixDrop(streamUrl);
                 if (extracted && extracted.url) {
                   let quality = "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  const playlistQuality = yield checkQualityFromPlaylist2(extracted.url, extracted.headers);
                   if (playlistQuality) quality = playlistQuality;
                   const normalizedQuality = getQualityFromName(quality);
                   streams.push({
@@ -7716,7 +7716,7 @@ var require_guardahd = __commonJS({
                 const extracted = yield extractStreamHG(streamUrl);
                 if (extracted && extracted.url) {
                   let quality = getQualityFromUrl(extracted.url) || "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                  const playlistQuality = yield checkQualityFromPlaylist2(extracted.url, extracted.headers || {});
                   if (playlistQuality) quality = playlistQuality;
                   const normalizedQuality = getQualityFromName(quality);
                   streams.push({
@@ -7749,14 +7749,14 @@ var require_guardahd = __commonJS({
               uniqueStreams.push(s);
             }
           }
-          return uniqueStreams.map((s) => formatStream(s, "GuardaHD")).filter((s) => s !== null);
+          return uniqueStreams.map((s) => formatStream2(s, "GuardaHD")).filter((s) => s !== null);
         } catch (error) {
           console.error("[GuardaHD] Error:", error);
           return [];
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module2.exports = { getStreams: getStreams3 };
   }
 });
 
@@ -8305,7 +8305,7 @@ var require_cf_handler = __commonJS({
     };
     var httpsAgent = new https.Agent(agentOptions);
     var httpAgent = new http.Agent(agentOptions);
-    function smartFetch(_0, _1) {
+    function smartFetch2(_0, _1) {
       return __async(this, arguments, function* (url, domain, options = {}) {
         const getHost = (u) => {
           try {
@@ -8561,17 +8561,17 @@ var require_cf_handler = __commonJS({
         }
       });
     }
-    module2.exports = { smartFetch };
+    module2.exports = { smartFetch: smartFetch2 };
   }
 });
 
 // src/guardoserie/index.js
 var require_guardoserie = __commonJS({
   "src/guardoserie/index.js"(exports2, module2) {
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
-    var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
-    if (!IS_SERVER) {
+    var { formatStream: formatStream2 } = require_formatter();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
+    var IS_SERVER2 = typeof process !== "undefined" && process.versions && process.versions.node;
+    if (!IS_SERVER2) {
       module2.exports = {
         getStreams: (id, type, season, episode) => __async(null, null, function* () {
           try {
@@ -8588,16 +8588,16 @@ var require_guardoserie = __commonJS({
     } else {
       let getGuardoserieBaseUrl2 = function() {
         return "https://guardoserie.run";
-      }, getMappingApiUrl2 = function() {
+      }, getMappingApiUrl3 = function() {
         return "https://animemapping.realbestia.com";
-      }, normalizeConfigBoolean2 = function(value) {
+      }, normalizeConfigBoolean3 = function(value) {
         if (value === true) return true;
         const normalized = String(value || "").trim().toLowerCase();
         return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-      }, getMappingLanguage2 = function(providerContext = null) {
+      }, getMappingLanguage3 = function(providerContext = null) {
         const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
         if (explicit === "it") return "it";
-        return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+        return normalizeConfigBoolean3(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
       }, extractEpisodeUrlFromSeriesPage2 = function(pageHtml, season, episode) {
         if (!pageHtml) return null;
         const seasonIndex = parseInt(season, 10) - 1;
@@ -8735,7 +8735,7 @@ var require_guardoserie = __commonJS({
         return Array.from(new Map(results.map((item) => [item.url, item])).values());
       }, decodeEntitiesBasic2 = function(str) {
         return String(str || "").replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec)).replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#8211;/g, "-").replace(/&#8217;/g, "'");
-      }, normalizeTitle2 = function(str) {
+      }, normalizeTitle3 = function(str) {
         return decodeEntitiesBasic2(str).toLowerCase().replace(/[^a-z0-9]/g, "").replace("iltronodispade", "gameofthrones");
       }, slugifyTitle2 = function(value) {
         return String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "and").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -8749,21 +8749,21 @@ var require_guardoserie = __commonJS({
       }, htmlMatchesTitle2 = function(html, title, originalTitle) {
         const pageTitle = extractTitleFromHtml2(html);
         if (!pageTitle) return false;
-        const nPage = normalizeTitle2(pageTitle);
-        const nTitle = normalizeTitle2(title || "");
-        const nOrig = normalizeTitle2(originalTitle || "");
+        const nPage = normalizeTitle3(pageTitle);
+        const nTitle = normalizeTitle3(title || "");
+        const nOrig = normalizeTitle3(originalTitle || "");
         if (nPage === nTitle || nOrig && nPage === nOrig) return true;
         if (nTitle && nPage.includes(nTitle)) return true;
         if (nOrig && nPage.includes(nOrig)) return true;
         return false;
       };
-      getGuardoserieBaseUrl = getGuardoserieBaseUrl2, getMappingApiUrl = getMappingApiUrl2, normalizeConfigBoolean = normalizeConfigBoolean2, getMappingLanguage = getMappingLanguage2, extractEpisodeUrlFromSeriesPage = extractEpisodeUrlFromSeriesPage2, normalizePlayerLink = normalizePlayerLink2, extractPlayerLinksFromHtml = extractPlayerLinksFromHtml2, getQualityFromName = getQualityFromName2, normalizeBaseUrl = normalizeBaseUrl2, resolveCandidateUrl = resolveCandidateUrl2, isSameHost = isSameHost2, extractSearchResultsFromHtml = extractSearchResultsFromHtml2, decodeEntitiesBasic = decodeEntitiesBasic2, normalizeTitle = normalizeTitle2, slugifyTitle = slugifyTitle2, extractTitleFromHtml = extractTitleFromHtml2, htmlMatchesTitle = htmlMatchesTitle2;
-      const { smartFetch } = require_cf_handler();
-      const { USER_AGENT, getProxiedUrl } = require_common();
+      getGuardoserieBaseUrl = getGuardoserieBaseUrl2, getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, extractEpisodeUrlFromSeriesPage = extractEpisodeUrlFromSeriesPage2, normalizePlayerLink = normalizePlayerLink2, extractPlayerLinksFromHtml = extractPlayerLinksFromHtml2, getQualityFromName = getQualityFromName2, normalizeBaseUrl = normalizeBaseUrl2, resolveCandidateUrl = resolveCandidateUrl2, isSameHost = isSameHost2, extractSearchResultsFromHtml = extractSearchResultsFromHtml2, decodeEntitiesBasic = decodeEntitiesBasic2, normalizeTitle2 = normalizeTitle3, slugifyTitle = slugifyTitle2, extractTitleFromHtml = extractTitleFromHtml2, htmlMatchesTitle = htmlMatchesTitle2;
+      const { smartFetch: smartFetch2 } = require_cf_handler();
+      const { USER_AGENT: USER_AGENT2, getProxiedUrl } = require_common();
       const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
-      const TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-      function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
+      const TMDB_API_KEY3 = "68e094699525b18a70bab2f86b1fa706";
+      function getIdsFromKitsu2(kitsuId, season, episode, providerContext = null) {
         return __async(this, null, function* () {
           try {
             if (!kitsuId) return null;
@@ -8779,7 +8779,7 @@ var require_guardoserie = __commonJS({
               params.set("s", String(parsedSeason));
             }
             params.set("lang", "it");
-            const url = `${getMappingApiUrl2()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+            const url = `${getMappingApiUrl3()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
             const response = yield fetch(url);
             if (!response.ok) return null;
             const payload = yield response.json();
@@ -8812,7 +8812,7 @@ var require_guardoserie = __commonJS({
       function tryFetchPageHtml(url) {
         return __async(this, null, function* () {
           if (!url) return null;
-          const html = yield smartFetch(url, getGuardoserieBaseUrl2(), {
+          const html = yield smartFetch2(url, getGuardoserieBaseUrl2(), {
             headers: {
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
               "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -8855,7 +8855,7 @@ var require_guardoserie = __commonJS({
         return __async(this, null, function* () {
           try {
             const endpoint = type === "movie" ? "movie" : "tv";
-            const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}&language=it-IT`;
+            const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}&language=it-IT`;
             const response = yield fetch(url);
             if (!response.ok) return null;
             return yield response.json();
@@ -8865,7 +8865,7 @@ var require_guardoserie = __commonJS({
           }
         });
       }
-      function getStreams2(id, type, season, episode, providerContext = null) {
+      function getStreams3(id, type, season, episode, providerContext = null) {
         return __async(this, null, function* () {
           var _a, _b;
           const benchStart = Date.now();
@@ -8891,7 +8891,7 @@ var require_guardoserie = __commonJS({
             if (id.toString().startsWith("kitsu:") || contextKitsuId) {
               const kitsuId = contextKitsuId || ((id.toString().match(/^kitsu:(\d+)/i) || [])[1] || null);
               const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-              const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
+              const mapped = kitsuId ? yield getIdsFromKitsu2(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
               mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
               if (mapped && mapped.tmdbId) {
                 tmdbId = mapped.tmdbId;
@@ -8912,7 +8912,7 @@ var require_guardoserie = __commonJS({
                 tmdbId = contextTmdbId;
                 console.log(`[Guardoserie] Using prefetched TMDB ID ${tmdbId} for ${id}`);
               } else {
-                const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+                const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY3}&external_source=imdb_id`;
                 const response = yield fetch(url);
                 mark("imdb_to_tmdb_done", { ok: response.ok });
                 if (response.ok) {
@@ -8936,13 +8936,13 @@ var require_guardoserie = __commonJS({
               const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
               const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
               const [ajaxHtml, fallbackHtml] = yield Promise.all([
-                smartFetch(searchUrl, baseUrl, {
+                smartFetch2(searchUrl, baseUrl, {
                   method: "POST",
                   body,
                   headers: { "Content-Type": "application/x-www-form-urlencoded" },
                   provider: "guardoserie"
                 }).catch(() => ""),
-                smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, { provider: "guardoserie" }).catch(() => "")
+                smartFetch2(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, { provider: "guardoserie" }).catch(() => "")
               ]);
               const ajaxResults = ajaxHtml ? extractSearchResultsFromHtml2(ajaxHtml, baseUrl) : [];
               const fallbackResults = fallbackHtml ? extractSearchResultsFromHtml2(fallbackHtml, baseUrl) : [];
@@ -8956,9 +8956,9 @@ var require_guardoserie = __commonJS({
             let allResults = allResultsArray.flat();
             mark("search_phase_done", { queries: queries.length, results: allResults.length });
             allResults = Array.from(new Map(allResults.map((item) => [item.url, item])).values());
-            const nTitle = normalizeTitle2(title);
-            const nOrig = normalizeTitle2(originalTitle || "");
-            const scoreTitleMatch = (nResult) => {
+            const nTitle = normalizeTitle3(title);
+            const nOrig = normalizeTitle3(originalTitle || "");
+            const scoreTitleMatch2 = (nResult) => {
               if (!nResult) return 0;
               if (nResult === nTitle || nOrig && nResult === nOrig) return 3;
               const scorePartial = (a, b) => {
@@ -8974,8 +8974,8 @@ var require_guardoserie = __commonJS({
               return Math.max(scorePartial(nResult, nTitle), scorePartial(nResult, nOrig));
             };
             allResults.sort((a, b) => {
-              const nA = normalizeTitle2(a.title);
-              const nB = normalizeTitle2(b.title);
+              const nA = normalizeTitle3(a.title);
+              const nB = normalizeTitle3(b.title);
               const exactA = nA === nTitle || nA === nOrig;
               const exactB = nB === nTitle || nB === nOrig;
               if (exactA && !exactB) return -1;
@@ -8987,11 +8987,11 @@ var require_guardoserie = __commonJS({
             let bestNoYearScore = 0;
             const topResults = allResults.slice(0, 5);
             const verificationPromises = topResults.map((result) => __async(null, null, function* () {
-              const nResult = normalizeTitle2(result.title);
-              const matchScore = scoreTitleMatch(nResult);
+              const nResult = normalizeTitle3(result.title);
+              const matchScore = scoreTitleMatch2(nResult);
               if (matchScore < 1) return null;
               try {
-                const pageHtml = yield smartFetch(result.url, getGuardoserieBaseUrl2(), {
+                const pageHtml = yield smartFetch2(result.url, getGuardoserieBaseUrl2(), {
                   provider: "guardoserie"
                 });
                 let foundYear = null;
@@ -9041,7 +9041,7 @@ var require_guardoserie = __commonJS({
             if (type === "tv" || type === "series") {
               season = effectiveSeason;
               episode = effectiveEpisode;
-              const pageHtml = yield smartFetch(targetUrl, getGuardoserieBaseUrl2(), {
+              const pageHtml = yield smartFetch2(targetUrl, getGuardoserieBaseUrl2(), {
                 headers: {
                   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                   "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -9058,7 +9058,7 @@ var require_guardoserie = __commonJS({
               }
             }
             console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-            const finalHtml = yield smartFetch(episodeUrl, getGuardoserieBaseUrl2(), {
+            const finalHtml = yield smartFetch2(episodeUrl, getGuardoserieBaseUrl2(), {
               headers: {
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -9072,7 +9072,7 @@ var require_guardoserie = __commonJS({
               const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage2(finalHtml, season, episode);
               if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
                 console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-                const retryHtml = yield smartFetch(fallbackEpisodeUrl, getGuardoserieBaseUrl2(), {
+                const retryHtml = yield smartFetch2(fallbackEpisodeUrl, getGuardoserieBaseUrl2(), {
                   headers: {
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -9104,11 +9104,11 @@ var require_guardoserie = __commonJS({
                     const directLoadmUrl = s.url;
                     let quality = "HD";
                     if (s.url.includes(".m3u8")) {
-                      const detected = yield checkQualityFromPlaylist(directLoadmUrl, s.headers || {});
+                      const detected = yield checkQualityFromPlaylist2(directLoadmUrl, s.headers || {});
                       if (detected) quality = detected;
                     }
                     const normalizedQuality = getQualityFromName2(quality);
-                    localStreams.push(formatStream({
+                    localStreams.push(formatStream2({
                       url: directLoadmUrl,
                       headers: s.headers,
                       name: `Guardoserie - Loadm`,
@@ -9122,7 +9122,7 @@ var require_guardoserie = __commonJS({
                 } else if (playerLink.includes("uqload")) {
                   const extracted = yield extractUqload(playerLink);
                   if (extracted && extracted.url) {
-                    return [formatStream({
+                    return [formatStream2({
                       url: extracted.url,
                       headers: extracted.headers,
                       name: `Guardoserie - Uqload`,
@@ -9137,7 +9137,7 @@ var require_guardoserie = __commonJS({
                 } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
                   const extracted = yield extractMixDrop(playerLink);
                   if (extracted && extracted.url) {
-                    return [formatStream({
+                    return [formatStream2({
                       url: extracted.url,
                       easyProxySourceUrl: playerLink,
                       headers: extracted.headers,
@@ -9172,12 +9172,12 @@ var require_guardoserie = __commonJS({
           }
         });
       }
-      module2.exports = { getStreams: getStreams2 };
+      module2.exports = { getStreams: getStreams3 };
     }
     var getGuardoserieBaseUrl;
-    var getMappingApiUrl;
-    var normalizeConfigBoolean;
-    var getMappingLanguage;
+    var getMappingApiUrl2;
+    var normalizeConfigBoolean2;
+    var getMappingLanguage2;
     var extractEpisodeUrlFromSeriesPage;
     var normalizePlayerLink;
     var extractPlayerLinksFromHtml;
@@ -9187,7 +9187,7 @@ var require_guardoserie = __commonJS({
     var isSameHost;
     var extractSearchResultsFromHtml;
     var decodeEntitiesBasic;
-    var normalizeTitle;
+    var normalizeTitle2;
     var slugifyTitle;
     var extractTitleFromHtml;
     var htmlMatchesTitle;
@@ -9200,7 +9200,7 @@ var require_streamingcommunity = __commonJS({
     function getStreamingCommunityBaseUrl() {
       return "https://vixsrc.to";
     }
-    var { formatStream } = require_formatter();
+    var { formatStream: formatStream2 } = require_formatter();
     require_fetch_helper();
     var { checkQualityFromText } = require_quality_helper();
     function safeRequire(modulePath) {
@@ -9211,11 +9211,11 @@ var require_streamingcommunity = __commonJS({
       }
     }
     var guardahd2 = safeRequire("../guardahd/index");
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+    var TMDB_API_KEY3 = "68e094699525b18a70bab2f86b1fa706";
+    var USER_AGENT2 = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     function getCommonHeaders() {
       return {
-        "User-Agent": USER_AGENT,
+        "User-Agent": USER_AGENT2,
         "Referer": `${getStreamingCommunityBaseUrl()}/`,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -9228,7 +9228,7 @@ var require_streamingcommunity = __commonJS({
     }
     function getEmbedHeaders(embedUrl) {
       return {
-        "User-Agent": USER_AGENT,
+        "User-Agent": USER_AGENT2,
         "Referer": `${getStreamingCommunityBaseUrl()}/`,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -9236,7 +9236,7 @@ var require_streamingcommunity = __commonJS({
     }
     function getPlaylistHeaders(embedUrl) {
       return {
-        "User-Agent": USER_AGENT,
+        "User-Agent": USER_AGENT2,
         "Referer": embedUrl,
         "Origin": getStreamingCommunityBaseUrl(),
         "Accept": "*/*",
@@ -9296,7 +9296,7 @@ var require_streamingcommunity = __commonJS({
     function getTmdbId(imdbId, type) {
       return __async(this, null, function* () {
         const normalizedType = String(type).toLowerCase();
-        const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+        const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY3}&external_source=imdb_id`;
         try {
           const response = yield fetch(findUrl);
           if (!response.ok) return null;
@@ -9320,10 +9320,10 @@ var require_streamingcommunity = __commonJS({
           const normalizedType = String(type).toLowerCase();
           let url;
           if (String(id).startsWith("tt")) {
-            url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=it-IT`;
+            url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY3}&external_source=imdb_id&language=it-IT`;
           } else {
             const endpoint = normalizedType === "movie" ? "movie" : "tv";
-            url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY2}&language=it-IT`;
+            url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY3}&language=it-IT`;
           }
           const response = yield fetch(url);
           if (!response.ok) return null;
@@ -9358,7 +9358,7 @@ var require_streamingcommunity = __commonJS({
         return results.some(Boolean);
       });
     }
-    function getStreams2(id, type, season, episode, providerContext = null) {
+    function getStreams3(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
         const requestedType = String(type).toLowerCase();
         const normalizedType = requestedType === "series" ? "tv" : requestedType;
@@ -9430,7 +9430,7 @@ var require_streamingcommunity = __commonJS({
                 notWebReady: false
               }
             };
-            return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
+            return [formatStream2(result, "StreamingCommunity")].filter((s) => s !== null);
           }
           console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
           const embedResponse = yield fetch(embedUrl, {
@@ -9480,7 +9480,7 @@ var require_streamingcommunity = __commonJS({
                 notWebReady: false
               }
             };
-            return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
+            return [formatStream2(result, "StreamingCommunity")].filter((s) => s !== null);
           } else {
             console.log("[StreamingCommunity] Could not find playlist info in HTML");
             return [];
@@ -9491,7 +9491,7 @@ var require_streamingcommunity = __commonJS({
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module2.exports = { getStreams: getStreams3 };
   }
 });
 
@@ -9501,8 +9501,8 @@ var require_animeunity = __commonJS({
     "use strict";
     var { extractVixCloud } = require_extractors();
     var { getProxiedUrl } = require_common();
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
+    var { formatStream: formatStream2 } = require_formatter();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     var { createTimeoutSignal: createTimeoutSignal2 } = require_fetch_helper();
     function getUnityBaseUrl() {
       return "https://www.animeunity.so";
@@ -9510,8 +9510,8 @@ var require_animeunity = __commonJS({
     function getMappingApiBase() {
       return "https://animemapping.realbestia.com";
     }
-    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    var FETCH_TIMEOUT = 1e4;
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    var FETCH_TIMEOUT2 = 1e4;
     var TTL = {
       http: 5 * 60 * 1e3,
       animePage: 15 * 60 * 1e3,
@@ -9562,15 +9562,15 @@ var require_animeunity = __commonJS({
       const parsed = Number.parseInt(String(value || ""), 10);
       return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
     }
-    function normalizeConfigBoolean(value) {
+    function normalizeConfigBoolean2(value) {
       if (value === true) return true;
       const normalized = String(value || "").trim().toLowerCase();
       return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
     }
-    function getMappingLanguage(providerContext = null) {
+    function getMappingLanguage2(providerContext = null) {
       const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
       if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
     }
     function toAbsoluteUrl(href) {
       if (!href) return null;
@@ -9665,7 +9665,7 @@ var require_animeunity = __commonJS({
     }
     function buildAnimeUnityHeaders(url, headers = {}, as = "text") {
       const finalHeaders = __spreadValues({
-        "user-agent": USER_AGENT,
+        "user-agent": USER_AGENT2,
         "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
         accept: as === "json" ? "application/json, text/plain, */*" : "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "cache-control": "no-cache",
@@ -9726,17 +9726,17 @@ var require_animeunity = __commonJS({
       text = text.replace(/\s*[\[(]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*[\])]\s*/gi, " ").replace(/\s*[-\u2013_|:]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*$/gi, "").replace(/\s{2,}/g, " ").replace(/\s*[-\u2013_|:]\s*$/g, "").trim();
       return text || null;
     }
-    function decodeHtmlEntities(value) {
+    function decodeHtmlEntities2(value) {
       return String(value || "").replace(/&quot;/gi, '"').replace(/&#34;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/gi, "'").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ");
     }
     function stripHtmlTags(value) {
-      return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+      return decodeHtmlEntities2(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
     }
     function getTagAttribute(tag, attrName) {
       const escaped = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(`${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i");
       const match = String(tag || "").match(regex);
-      return match ? decodeHtmlEntities(match[2]) : null;
+      return match ? decodeHtmlEntities2(match[2]) : null;
     }
     function findFirstTag(html, tagName, attrPattern = "") {
       const regex = new RegExp(`<${tagName}\\b${attrPattern}[\\s\\S]*?>`, "i");
@@ -9845,8 +9845,8 @@ var require_animeunity = __commonJS({
       out.sort((a, b) => a.num - b.num);
       return out;
     }
-    function fetchWithTimeout(_0) {
-      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+    function fetchWithTimeout2(_0) {
+      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT2) {
         const timeoutConfig = createTimeoutSignal2(timeoutMs);
         const requestOptions = __spreadValues({}, options);
         if (timeoutConfig.signal) {
@@ -9867,10 +9867,10 @@ var require_animeunity = __commonJS({
       });
     }
     function warmAnimeUnitySession() {
-      return __async(this, arguments, function* (timeoutMs = FETCH_TIMEOUT, requestUrl = getUnityBaseUrl(), sourceUrl = getUnityBaseUrl()) {
+      return __async(this, arguments, function* (timeoutMs = FETCH_TIMEOUT2, requestUrl = getUnityBaseUrl(), sourceUrl = getUnityBaseUrl()) {
         if (animeUnitySessionWarmupPromise) return animeUnitySessionWarmupPromise;
         animeUnitySessionWarmupPromise = (() => __async(null, null, function* () {
-          const response = yield fetchWithTimeout(
+          const response = yield fetchWithTimeout2(
             requestUrl,
             {
               method: "GET",
@@ -9898,7 +9898,7 @@ var require_animeunity = __commonJS({
           method = "GET",
           headers = {},
           body = void 0,
-          timeoutMs = FETCH_TIMEOUT
+          timeoutMs = FETCH_TIMEOUT2
         } = options;
         const requestConfig = {
           method,
@@ -9909,7 +9909,7 @@ var require_animeunity = __commonJS({
         let directWarmupError = null;
         let proxyWarmupError = null;
         const doRequest = (_02, _1, ..._2) => __async(null, [_02, _1, ..._2], function* (targetUrl, requestHeaders, { storeCookies = false } = {}) {
-          const response2 = yield fetchWithTimeout(
+          const response2 = yield fetchWithTimeout2(
             targetUrl,
             __spreadProps(__spreadValues({}, requestConfig), {
               headers: requestHeaders
@@ -9978,7 +9978,7 @@ var require_animeunity = __commonJS({
           method = "GET",
           headers = {},
           body = void 0,
-          timeoutMs = FETCH_TIMEOUT
+          timeoutMs = FETCH_TIMEOUT2
         } = options;
         const key = `${as}:${method}:${cacheKey}:${typeof body === "string" ? body : ""}`;
         if (ttlMs > 0) {
@@ -10167,7 +10167,7 @@ var require_animeunity = __commonJS({
             const payload = yield fetchResource(`${getUnityBaseUrl()}/embed-url/${episodeEntry.episodeId}`, {
               ttlMs: TTL.streamPage,
               cacheKey: `embed-url:${episodeEntry.episodeId}`,
-              timeoutMs: FETCH_TIMEOUT
+              timeoutMs: FETCH_TIMEOUT2
             });
             const embedUrl = toAbsoluteUrl(String(payload || "").trim());
             if (embedUrl) return embedUrl;
@@ -10180,7 +10180,7 @@ var require_animeunity = __commonJS({
             const animeHtml = yield fetchResource(buildUnityUrl(source.animePath), {
               ttlMs: TTL.animePage,
               cacheKey: `anime-fallback:${source.animePath}`,
-              timeoutMs: FETCH_TIMEOUT
+              timeoutMs: FETCH_TIMEOUT2
             });
             const parsed = parseAnimePage(animeHtml, source);
             const candidate = normalizeEpisodesList(parsed.episodes).find((entry) => {
@@ -10210,7 +10210,7 @@ var require_animeunity = __commonJS({
             as: "json",
             ttlMs: TTL.animePage,
             cacheKey: `info-api:${numericAnimeId}:${startRange}:${endRange}`,
-            timeoutMs: FETCH_TIMEOUT,
+            timeoutMs: FETCH_TIMEOUT2,
             headers: {
               "x-requested-with": "XMLHttpRequest",
               referer: animeUrl
@@ -10348,7 +10348,7 @@ var require_animeunity = __commonJS({
         const requestedSeason = normalizeRequestedSeason(lookup.season);
         if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage2(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -10367,7 +10367,7 @@ var require_animeunity = __commonJS({
             as: "json",
             ttlMs: TTL.mapping,
             cacheKey,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
           setCached(caches.mapping, cacheKey, payload, TTL.mapping);
           return payload;
@@ -10439,7 +10439,7 @@ var require_animeunity = __commonJS({
           const html = yield fetchResource(animeUrl, {
             ttlMs: TTL.animePage,
             cacheKey: `anime:${normalizedPath}`,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
           parsedAnime = parseAnimePage(html, { animePath: normalizedPath });
         } catch (error) {
@@ -10481,8 +10481,8 @@ var require_animeunity = __commonJS({
             let quality = extractQualityHint(directUrl);
             if (quality === "Unknown") quality = extractQualityHint(selected.fileName);
             if (lowerLink.includes(".m3u8")) {
-              const detected = yield checkQualityFromPlaylist(directUrl, {
-                "User-Agent": USER_AGENT,
+              const detected = yield checkQualityFromPlaylist2(directUrl, {
+                "User-Agent": USER_AGENT2,
                 Referer: getUnityBaseUrl()
               });
               if (detected) quality = detected;
@@ -10496,7 +10496,7 @@ var require_animeunity = __commonJS({
               quality,
               type: "direct",
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 Referer: getUnityBaseUrl()
               }
             });
@@ -10509,7 +10509,7 @@ var require_animeunity = __commonJS({
               const embedPayload = yield fetchResource(`${getUnityBaseUrl()}/embed-url/${selected.episodeId}`, {
                 ttlMs: TTL.streamPage,
                 cacheKey: `embed-url:${selected.episodeId}`,
-                timeoutMs: FETCH_TIMEOUT,
+                timeoutMs: FETCH_TIMEOUT2,
                 headers: {
                   referer: animeUrl,
                   "x-requested-with": "XMLHttpRequest"
@@ -10550,7 +10550,7 @@ var require_animeunity = __commonJS({
           embedHtml = yield fetchResource(embedUrl, {
             ttlMs: TTL.streamPage,
             cacheKey: `embed:${embedUrl}`,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
         } catch (error) {
           console.error("[AnimeUnity] embed page failed:", error.message);
@@ -10564,8 +10564,8 @@ var require_animeunity = __commonJS({
           if (!mediaUrl) continue;
           let quality = extractQualityHint(mediaUrl);
           if (mediaUrl.toLowerCase().includes(".m3u8")) {
-            const detected = yield checkQualityFromPlaylist(mediaUrl, {
-              "User-Agent": USER_AGENT,
+            const detected = yield checkQualityFromPlaylist2(mediaUrl, {
+              "User-Agent": USER_AGENT2,
               Referer: getUnityBaseUrl()
             });
             if (detected) quality = detected;
@@ -10580,7 +10580,7 @@ var require_animeunity = __commonJS({
             quality,
             type: "direct",
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               Referer: getUnityBaseUrl()
             }
           });
@@ -10588,7 +10588,7 @@ var require_animeunity = __commonJS({
         return fallbackStreams;
       });
     }
-    function getStreams2(id, type, season, episode, providerContext = null) {
+    function getStreams3(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
         try {
           const lookup = resolveLookupRequest(id, season, episode, providerContext);
@@ -10631,14 +10631,14 @@ var require_animeunity = __commonJS({
             seen.add(normalizedUrl);
             deduped.push(__spreadProps(__spreadValues({}, stream), { url: normalizedUrl }));
           }
-          return deduped.map((stream) => formatStream(stream, "AnimeUnity")).filter(Boolean);
+          return deduped.map((stream) => formatStream2(stream, "AnimeUnity")).filter(Boolean);
         } catch (error) {
           console.error("[AnimeUnity] getStreams failed:", error.message);
           return [];
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module2.exports = { getStreams: getStreams3 };
   }
 });
 
@@ -10646,8 +10646,8 @@ var require_animeunity = __commonJS({
 var require_animeworld = __commonJS({
   "src/animeworld/index.js"(exports2, module2) {
     "use strict";
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
+    var { formatStream: formatStream2 } = require_formatter();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     var { createTimeoutSignal: createTimeoutSignal2 } = require_fetch_helper();
     function getWorldBaseUrl() {
       return "https://www.animeworld.ac";
@@ -10655,8 +10655,8 @@ var require_animeworld = __commonJS({
     function getMappingApiBase() {
       return "https://animemapping.realbestia.com";
     }
-    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    var FETCH_TIMEOUT = 1e4;
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    var FETCH_TIMEOUT2 = 1e4;
     var TTL = {
       http: 5 * 60 * 1e3,
       page: 15 * 60 * 1e3,
@@ -10698,17 +10698,17 @@ var require_animeworld = __commonJS({
       }
       return out;
     }
-    function normalizeConfigBoolean(value) {
+    function normalizeConfigBoolean2(value) {
       if (value === true) return true;
       const normalized = String(value || "").trim().toLowerCase();
       return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
     }
-    function getMappingLanguage(providerContext = null) {
+    function getMappingLanguage2(providerContext = null) {
       const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
       if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
     }
-    function decodeHtmlEntities(raw) {
+    function decodeHtmlEntities2(raw) {
       const decodedNumeric = String(raw || "").replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
         const codePoint = Number.parseInt(hex, 16);
         if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 1114111) return _;
@@ -10785,7 +10785,7 @@ var require_animeworld = __commonJS({
       return String(sourceTag || "").toUpperCase() === "ITA" ? "\u{1F1EE}\u{1F1F9}" : "\u{1F1EF}\u{1F1F5}";
     }
     function sanitizeAnimeTitle(rawTitle) {
-      let text = decodeHtmlEntities(rawTitle).trim();
+      let text = decodeHtmlEntities2(rawTitle).trim();
       if (!text) return null;
       text = text.replace(/\s*-\s*AnimeWorld.*$/i, "").replace(/\s*-\s*AnimeUnity.*$/i, "").replace(/\s+Streaming.*$/i, "").replace(/\s+episodio\s*\d+(?:[.,]\d+)?\b/gi, "").replace(/\s+episode\s*\d+(?:[.,]\d+)?\b/gi, "").trim();
       text = text.replace(/\s*[\[(]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*[\])]\s*/gi, " ").replace(/\s*[-–_|:]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*$/gi, "").replace(/\s{2,}/g, " ").replace(/\s*[-–_|:]\s*$/g, "").trim();
@@ -10798,7 +10798,7 @@ var require_animeworld = __commonJS({
       let match;
       while ((match = regex.exec(String(tag || ""))) !== null) {
         const key = String(match[1] || "").trim().toLowerCase();
-        const value = decodeHtmlEntities((_b = (_a = match[3]) != null ? _a : match[4]) != null ? _b : "").trim();
+        const value = decodeHtmlEntities2((_b = (_a = match[3]) != null ? _a : match[4]) != null ? _b : "").trim();
         if (!key) continue;
         attrs[key] = value;
       }
@@ -11018,8 +11018,8 @@ var require_animeworld = __commonJS({
       }
       return uniqueStrings(urls);
     }
-    function fetchWithTimeout(_0) {
-      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+    function fetchWithTimeout2(_0) {
+      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT2) {
         const timeoutConfig = createTimeoutSignal2(timeoutMs);
         const requestOptions = __spreadValues({}, options);
         if (timeoutConfig.signal) {
@@ -11047,7 +11047,7 @@ var require_animeworld = __commonJS({
           method = "GET",
           headers = {},
           body = void 0,
-          timeoutMs = FETCH_TIMEOUT
+          timeoutMs = FETCH_TIMEOUT2
         } = options;
         const key = `${as}:${method}:${cacheKey}:${typeof body === "string" ? body : ""}`;
         if (ttlMs > 0) {
@@ -11058,12 +11058,12 @@ var require_animeworld = __commonJS({
         const running = caches.inflight.get(inflightKey);
         if (running) return running;
         const task = (() => __async(null, null, function* () {
-          const response = yield fetchWithTimeout(
+          const response = yield fetchWithTimeout2(
             url,
             {
               method,
               headers: __spreadValues({
-                "user-agent": USER_AGENT,
+                "user-agent": USER_AGENT2,
                 "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
               }, headers),
               body,
@@ -11100,17 +11100,17 @@ var require_animeworld = __commonJS({
         const key = `anime-page-context:${cacheKey}`;
         const cached = getCached(caches.http, key);
         if (cached !== void 0) return cached;
-        const response = yield fetchWithTimeout(
+        const response = yield fetchWithTimeout2(
           animeUrl,
           {
             method: "GET",
             headers: {
-              "user-agent": USER_AGENT,
+              "user-agent": USER_AGENT2,
               "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
             },
             redirect: "follow"
           },
-          FETCH_TIMEOUT
+          FETCH_TIMEOUT2
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} ${response.statusText} for ${animeUrl}`);
@@ -11139,7 +11139,7 @@ var require_animeworld = __commonJS({
             as: "json",
             ttlMs: TTL.info,
             cacheKey: `episode-info:${token}:${csrfToken ? "csrf" : "nocsrf"}:${sessionCookie ? "cookie" : "nocookie"}`,
-            timeoutMs: FETCH_TIMEOUT,
+            timeoutMs: FETCH_TIMEOUT2,
             headers: __spreadValues({
               referer: refererUrl,
               "x-requested-with": "XMLHttpRequest"
@@ -11191,8 +11191,8 @@ var require_animeworld = __commonJS({
           seen.add(mediaUrl);
           let quality = extractQualityHint(mediaUrl);
           if (lowerLink.includes(".m3u8")) {
-            const detected = yield checkQualityFromPlaylist(mediaUrl, {
-              "User-Agent": USER_AGENT,
+            const detected = yield checkQualityFromPlaylist2(mediaUrl, {
+              "User-Agent": USER_AGENT2,
               Referer: animeUrl
             });
             if (detected) quality = detected;
@@ -11207,7 +11207,7 @@ var require_animeworld = __commonJS({
             language: streamLanguage,
             quality: normalizeAnimeWorldQuality(quality),
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               Referer: animeUrl
             }
           });
@@ -11224,7 +11224,7 @@ var require_animeworld = __commonJS({
               const targetHtml = yield fetchResource(targetUrl, {
                 ttlMs: TTL.info,
                 cacheKey: `server-target:${targetUrl}:${csrfToken ? "csrf" : "nocsrf"}:${sessionCookie ? "cookie" : "nocookie"}`,
-                timeoutMs: FETCH_TIMEOUT,
+                timeoutMs: FETCH_TIMEOUT2,
                 headers: __spreadValues({
                   referer: animeUrl,
                   "x-requested-with": "XMLHttpRequest"
@@ -11240,8 +11240,8 @@ var require_animeworld = __commonJS({
                 seen.add(mediaUrl);
                 let quality = extractQualityHint(mediaUrl);
                 if (lowerLink.includes(".m3u8")) {
-                  const detected = yield checkQualityFromPlaylist(mediaUrl, {
-                    "User-Agent": USER_AGENT,
+                  const detected = yield checkQualityFromPlaylist2(mediaUrl, {
+                    "User-Agent": USER_AGENT2,
                     Referer: animeUrl
                   });
                   if (detected) quality = detected;
@@ -11256,7 +11256,7 @@ var require_animeworld = __commonJS({
                   language: streamLanguage,
                   quality: normalizeAnimeWorldQuality(quality),
                   headers: {
-                    "User-Agent": USER_AGENT,
+                    "User-Agent": USER_AGENT2,
                     Referer: animeUrl
                   }
                 });
@@ -11383,7 +11383,7 @@ var require_animeworld = __commonJS({
         const requestedSeason = normalizeRequestedSeason(lookup.season);
         if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage2(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -11402,7 +11402,7 @@ var require_animeworld = __commonJS({
             as: "json",
             ttlMs: TTL.mapping,
             cacheKey,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
           setCached(caches.mapping, cacheKey, payload, TTL.mapping);
           return payload;
@@ -11463,7 +11463,7 @@ var require_animeworld = __commonJS({
         return output;
       });
     }
-    function getStreams2(id, type, season, episode, providerContext = null) {
+    function getStreams3(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
         try {
           const lookup = resolveLookupRequest(id, season, episode, providerContext);
@@ -11507,14 +11507,14 @@ var require_animeworld = __commonJS({
             seen.add(normalizedUrl);
             deduped.push(__spreadProps(__spreadValues({}, stream), { url: normalizedUrl }));
           }
-          return deduped.map((stream) => formatStream(stream, "AnimeWorld")).filter(Boolean);
+          return deduped.map((stream) => formatStream2(stream, "AnimeWorld")).filter(Boolean);
         } catch (error) {
           console.error("[AnimeWorld] getStreams failed:", error.message);
           return [];
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module2.exports = { getStreams: getStreams3 };
   }
 });
 
@@ -11522,8 +11522,8 @@ var require_animeworld = __commonJS({
 var require_animesaturn = __commonJS({
   "src/animesaturn/index.js"(exports2, module2) {
     "use strict";
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist } = require_quality_helper();
+    var { formatStream: formatStream2 } = require_formatter();
+    var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     var { createTimeoutSignal: createTimeoutSignal2 } = require_fetch_helper();
     function getSaturnBaseUrl() {
       return "https://www.animesaturn.cx";
@@ -11531,8 +11531,8 @@ var require_animesaturn = __commonJS({
     function getMappingApiBase() {
       return "https://animemapping.realbestia.com";
     }
-    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    var FETCH_TIMEOUT = 1e4;
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    var FETCH_TIMEOUT2 = 1e4;
     var TTL = {
       http: 5 * 60 * 1e3,
       page: 15 * 60 * 1e3,
@@ -11586,15 +11586,15 @@ var require_animesaturn = __commonJS({
       const parsed = Number.parseInt(String(value || ""), 10);
       return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
     }
-    function normalizeConfigBoolean(value) {
+    function normalizeConfigBoolean2(value) {
       if (value === true) return true;
       const normalized = String(value || "").trim().toLowerCase();
       return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
     }
-    function getMappingLanguage(providerContext = null) {
+    function getMappingLanguage2(providerContext = null) {
       const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
       if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
     }
     function toAbsoluteUrl(href, base = null) {
       if (!href) return null;
@@ -11663,17 +11663,17 @@ var require_animesaturn = __commonJS({
       text = text.replace(/\s*[\[(]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*[\])]\s*/gi, " ").replace(/\s*[-–_|:]\s*(?:SUB\s*ITA|ITA|SUB|DUB(?:BED)?|DOPPIATO)\s*$/gi, "").replace(/\s{2,}/g, " ").replace(/\s*[-–_|:]\s*$/g, "").trim();
       return text || null;
     }
-    function decodeHtmlEntities(value) {
+    function decodeHtmlEntities2(value) {
       return String(value || "").replace(/&quot;/gi, '"').replace(/&#34;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/gi, "'").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ");
     }
     function stripHtmlTags(value) {
-      return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+      return decodeHtmlEntities2(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
     }
     function getTagAttribute(tag, attrName) {
       const escaped = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(`${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i");
       const match = String(tag || "").match(regex);
-      return match ? decodeHtmlEntities(match[2]) : null;
+      return match ? decodeHtmlEntities2(match[2]) : null;
     }
     function getFirstTagText(html, tagName) {
       const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
@@ -11692,7 +11692,7 @@ var require_animesaturn = __commonJS({
       let match;
       while ((match = regex.exec(String(html || ""))) !== null) {
         const tag = match[0];
-        const href = decodeHtmlEntities(match[2]);
+        const href = decodeHtmlEntities2(match[2]);
         if (!String(href || "").includes(hrefNeedle)) continue;
         anchors.push({
           href,
@@ -11770,8 +11770,8 @@ var require_animesaturn = __commonJS({
       if (/^(?:unknown|unknow|auto)$/i.test(text)) return "720p";
       return text;
     }
-    function fetchWithTimeout(_0) {
-      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT) {
+    function fetchWithTimeout2(_0) {
+      return __async(this, arguments, function* (url, options = {}, timeoutMs = FETCH_TIMEOUT2) {
         const timeoutConfig = createTimeoutSignal2(timeoutMs);
         const requestOptions = __spreadValues({}, options);
         if (timeoutConfig.signal) {
@@ -11799,7 +11799,7 @@ var require_animesaturn = __commonJS({
           method = "GET",
           headers = {},
           body = void 0,
-          timeoutMs = FETCH_TIMEOUT
+          timeoutMs = FETCH_TIMEOUT2
         } = options;
         const key = `${as}:${method}:${cacheKey}:${typeof body === "string" ? body : ""}`;
         if (ttlMs > 0) {
@@ -11810,12 +11810,12 @@ var require_animesaturn = __commonJS({
         const running = caches.inflight.get(inflightKey);
         if (running) return running;
         const task = (() => __async(null, null, function* () {
-          const response = yield fetchWithTimeout(
+          const response = yield fetchWithTimeout2(
             url,
             {
               method,
               headers: __spreadValues({
-                "user-agent": USER_AGENT,
+                "user-agent": USER_AGENT2,
                 "accept-language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
               }, headers),
               body,
@@ -11987,7 +11987,7 @@ var require_animesaturn = __commonJS({
       const sourceRegex = /<source\b[^>]*src\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi;
       let sourceMatch;
       while ((sourceMatch = sourceRegex.exec(String(html || ""))) !== null) {
-        addLink(decodeHtmlEntities(sourceMatch[2]), "Player");
+        addLink(decodeHtmlEntities2(sourceMatch[2]), "Player");
       }
       const rawHtml = String(html || "");
       const variants = [rawHtml, rawHtml.replace(/\\\//g, "/")];
@@ -12035,7 +12035,7 @@ var require_animesaturn = __commonJS({
               const html = yield fetchResource(episodeUrl, {
                 ttlMs: TTL.watch,
                 cacheKey: `episode-page:${episodeEntry.episodePath}`,
-                timeoutMs: FETCH_TIMEOUT
+                timeoutMs: FETCH_TIMEOUT2
               });
               urls.push(...extractWatchUrlsFromHtml(html));
             } catch (error) {
@@ -12055,7 +12055,7 @@ var require_animesaturn = __commonJS({
               const html = yield fetchResource(animeUrl, {
                 ttlMs: TTL.watch,
                 cacheKey: `anime-watch-fallback:${source.animePath}`,
-                timeoutMs: FETCH_TIMEOUT
+                timeoutMs: FETCH_TIMEOUT2
               });
               urls.push(...extractWatchUrlsFromHtml(html));
             } catch (error) {
@@ -12101,7 +12101,7 @@ var require_animesaturn = __commonJS({
           const html = yield fetchResource(animeUrl, {
             ttlMs: TTL.page,
             cacheKey: `anime:${normalizedPath}`,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
           parsedPage = parseAnimeSaturnPage(html, { animePath: normalizedPath });
         } catch (error) {
@@ -12123,7 +12123,7 @@ var require_animesaturn = __commonJS({
               const html = yield fetchResource(relatedUrl, {
                 ttlMs: TTL.page,
                 cacheKey: `anime-related:${related}`,
-                timeoutMs: FETCH_TIMEOUT
+                timeoutMs: FETCH_TIMEOUT2
               });
               const relatedParsed = parseAnimeSaturnPage(html, { animePath: related, title: parsedPage.title });
               episodes = mergeEpisodeLists(episodes, relatedParsed.episodes);
@@ -12174,7 +12174,7 @@ var require_animesaturn = __commonJS({
             html = yield fetchResource(watchUrl, {
               ttlMs: TTL.watch,
               cacheKey: `watch:${watchUrl}`,
-              timeoutMs: FETCH_TIMEOUT
+              timeoutMs: FETCH_TIMEOUT2
             });
           } catch (error) {
             console.error("[AnimeSaturn] watch page request failed:", error.message);
@@ -12191,8 +12191,8 @@ var require_animesaturn = __commonJS({
             seenMedia.add(mediaUrl);
             let quality = extractQualityHint(mediaUrl);
             if (lowerLink.includes(".m3u8")) {
-              const detected = yield checkQualityFromPlaylist(mediaUrl, {
-                "User-Agent": USER_AGENT,
+              const detected = yield checkQualityFromPlaylist2(mediaUrl, {
+                "User-Agent": USER_AGENT2,
                 Referer: watchUrl
               });
               if (detected) quality = detected;
@@ -12207,7 +12207,7 @@ var require_animesaturn = __commonJS({
               language: streamLanguage,
               quality: normalizeAnimeSaturnQuality(quality),
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 Referer: watchUrl
               }
             });
@@ -12334,7 +12334,7 @@ var require_animesaturn = __commonJS({
         const requestedSeason = normalizeRequestedSeason(lookup.season);
         if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage2(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -12353,7 +12353,7 @@ var require_animesaturn = __commonJS({
             as: "json",
             ttlMs: TTL.mapping,
             cacheKey,
-            timeoutMs: FETCH_TIMEOUT
+            timeoutMs: FETCH_TIMEOUT2
           });
           setCached(caches.mapping, cacheKey, payload, TTL.mapping);
           return payload;
@@ -12394,7 +12394,7 @@ var require_animesaturn = __commonJS({
       if (fromTmdbRaw) return fromTmdbRaw;
       return normalizeRequestedEpisode(fallbackEpisode);
     }
-    function getStreams2(id, type, season, episode, providerContext = null) {
+    function getStreams3(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
         try {
           const lookup = resolveLookupRequest(id, season, episode, providerContext);
@@ -12439,20 +12439,20 @@ var require_animesaturn = __commonJS({
             seen.add(normalizedUrl);
             deduped.push(__spreadProps(__spreadValues({}, stream), { url: normalizedUrl }));
           }
-          return deduped.map((stream) => formatStream(stream, "AnimeSaturn")).filter(Boolean);
+          return deduped.map((stream) => formatStream2(stream, "AnimeSaturn")).filter(Boolean);
         } catch (error) {
           console.error("[AnimeSaturn] getStreams failed:", error.message);
           return [];
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module2.exports = { getStreams: getStreams3 };
   }
 });
 
 // src/cinemacity/index.js
 var require_cinemacity = __commonJS({
-  "src/cinemacity/index.js"(exports2, module2) {
+  "src/cinemacity/index.js"(exports, module) {
     "use strict";
     var { formatStream } = require_formatter();
     var { checkQualityFromPlaylist } = require_quality_helper();
@@ -12461,7 +12461,8 @@ var require_cinemacity = __commonJS({
     var smartFetch = null;
     if (IS_SERVER) {
       try {
-        ({ smartFetch } = require_cf_handler());
+        const nodeRequire = eval("require");
+        ({ smartFetch } = nodeRequire("../utils/cf_handler.js"));
       } catch (_) {
         smartFetch = null;
       }
@@ -12504,7 +12505,7 @@ var require_cinemacity = __commonJS({
     var BASE_URL = base64Decode("aHR0cHM6Ly9jaW5lbWFjaXR5LmNj");
     var USER_AGENT = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
     var FETCH_TIMEOUT = 1e4;
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
     var SITEMAP_URL = `${BASE_URL}/news_pages.xml`;
     var SITEMAP_CACHE_MS = 60 * 60 * 1e3;
     var sitemapCache = null;
@@ -12858,9 +12859,9 @@ var require_cinemacity = __commonJS({
           const normalizedId = String(id || "").trim();
           const normalizedType = providerType === "movie" ? "movie" : "tv";
           if (/^tt\d+$/i.test(normalizedId)) {
-            metadataUrl = `https://api.themoviedb.org/3/find/${encodeURIComponent(normalizedId)}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=en-US`;
+            metadataUrl = `https://api.themoviedb.org/3/find/${encodeURIComponent(normalizedId)}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=en-US`;
           } else if (/^\d+$/.test(normalizedId)) {
-            metadataUrl = `https://api.themoviedb.org/3/${normalizedType}/${normalizedId}?api_key=${TMDB_API_KEY2}&language=en-US`;
+            metadataUrl = `https://api.themoviedb.org/3/${normalizedType}/${normalizedId}?api_key=${TMDB_API_KEY}&language=en-US`;
           }
           if (!metadataUrl) return null;
           const response = yield fetchWithTimeout(metadataUrl, { timeout: FETCH_TIMEOUT });
@@ -13092,7 +13093,7 @@ var require_cinemacity = __commonJS({
       }
       return resolveUrl(pageUrl, iframeMatch[1]);
     }
-    function parseCompositeSeriesId2(rawId, season, episode) {
+    function parseCompositeSeriesId(rawId, season, episode) {
       const parsed = {
         normalizedId: String(rawId || "").trim(),
         season: Number.isInteger(season) ? season : Number.parseInt(season, 10) || 1,
@@ -13154,9 +13155,9 @@ var require_cinemacity = __commonJS({
       }
       return null;
     }
-    function getStreams2(id, type, season, episode, providerContext = null) {
+    function getStreams(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
-        const parsedRequest = parseCompositeSeriesId2(id, season, episode);
+        const parsedRequest = parseCompositeSeriesId(id, season, episode);
         id = parsedRequest.normalizedId;
         season = parsedRequest.season;
         episode = parsedRequest.episode;
@@ -13198,9 +13199,9 @@ var require_cinemacity = __commonJS({
               if (tmdbId) {
                 let externalUrl = "";
                 if (providerType === "movie") {
-                  externalUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY2}`;
+                  externalUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`;
                 } else {
-                  externalUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
+                  externalUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
                 }
                 const response = yield fetchWithTimeout(externalUrl, { timeout: FETCH_TIMEOUT });
                 if (response.ok) {
@@ -13223,7 +13224,7 @@ var require_cinemacity = __commonJS({
           const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
           const proxyPassword = providerContext && providerContext.proxyPassword || "";
           let searchResult = yield searchBySitemap(imdbId, providerType);
-          const allowLegacySearch = String(process.env.CINEMACITY_LEGACY_SEARCH || "").trim().toLowerCase() === "1";
+          const allowLegacySearch = IS_SERVER && typeof process !== "undefined" && String(process.env.CINEMACITY_LEGACY_SEARCH || "").trim().toLowerCase() === "1";
           if ((!searchResult || !searchResult.url) && allowLegacySearch) {
             searchResult = yield searchByImdb(imdbId);
             if (!searchResult || !searchResult.url) {
@@ -13352,7 +13353,7 @@ var require_cinemacity = __commonJS({
         }
       });
     }
-    module2.exports = { getStreams: getStreams2 };
+    module.exports = { getStreams };
   }
 });
 
@@ -13365,7 +13366,7 @@ var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
 var { createTimeoutSignal } = require_fetch_helper();
-var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
 function fetchJsonWithTimeout(_0) {
   return __async(this, arguments, function* (url, timeoutMs = CONTEXT_TIMEOUT) {
@@ -13386,8 +13387,8 @@ function fetchJsonWithTimeout(_0) {
 }
 function fetchTmdbIdFromImdb(imdbId, normalizedType) {
   return __async(this, null, function* () {
-    if (!TMDB_API_KEY || !imdbId) return null;
-    const url = `https://api.themoviedb.org/3/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+    if (!TMDB_API_KEY2 || !imdbId) return null;
+    const url = `https://api.themoviedb.org/3/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
     const payload = yield fetchJsonWithTimeout(url);
     if (!payload || typeof payload !== "object") return null;
     if (normalizedType === "movie") {
@@ -13474,7 +13475,7 @@ function buildProviderRequestContext(context) {
     imdbId: context.imdbId
   };
 }
-function parseCompositeSeriesId(rawId, type, season, episode) {
+function parseCompositeSeriesId2(rawId, type, season, episode) {
   const parsed = {
     id: String(rawId || "").trim(),
     season: Number.isInteger(season) ? season : Number.parseInt(String(season || ""), 10) || null,
@@ -13489,9 +13490,9 @@ function parseCompositeSeriesId(rawId, type, season, episode) {
   parsed.episode = Number.parseInt(match[3], 10);
   return parsed;
 }
-function getStreams(id, type, season, episode) {
+function getStreams2(id, type, season, episode) {
   return __async(this, null, function* () {
-    const parsedRequest = parseCompositeSeriesId(id, type, season, episode);
+    const parsedRequest = parseCompositeSeriesId2(id, type, season, episode);
     id = parsedRequest.id;
     season = parsedRequest.season;
     episode = parsedRequest.episode;
@@ -13583,7 +13584,7 @@ function getStreams(id, type, season, episode) {
     return streams;
   });
 }
-module.exports = { getStreams };
+module.exports = { getStreams: getStreams2 };
 /*! Bundled license information:
 
 crypto-js/ripemd160.js:
