@@ -183,10 +183,11 @@ class FlareSolverrManager {
             }
 
             try {
+                const browserTimeout = String(process.env.FLARE_BROWSER_TIMEOUT_MS || process.env.BROWSER_TIMEOUT || '40000');
                 this.process = spawn(exePath, spawnArgs, {
                     cwd: process.env.IN_DOCKER === 'true' ? '/app/flaresolverr-src' : path.dirname(exePath),
                     stdio: 'pipe',
-                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'debug', HEADLESS: 'true', BROWSER_TIMEOUT: '40000' },
+                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'debug', HEADLESS: 'true', BROWSER_TIMEOUT: browserTimeout },
                     shell: !isWin
                 });
             } catch (spawnError) {

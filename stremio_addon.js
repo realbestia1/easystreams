@@ -30,7 +30,7 @@ if (!global.fetch) {
 const https = require('https');
 const http = require('http');
 const flareManager = require('./flare_manager');
-const { getClearance } = require('./cf_bypass');
+const { getClearance, getStats: getFlareStats } = require('./cf_bypass');
 
 const IS_PRODUCTION = false;
 const VERBOSE_LOGS = true;
@@ -87,6 +87,12 @@ const express = require('express');
 const app = express();
 const path = require('path');
 let isWarmingUp = true;
+let warmupBlockTimer = null;
+function readPositiveIntEnv(name, fallback) {
+    const value = Number.parseInt(String(process.env[name] || ''), 10);
+    return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+const WARMUP_MAX_BLOCK_MS = readPositiveIntEnv('WARMUP_MAX_BLOCK_MS', 45000);
 const DISABLE_MIXDROP_ENV =
     typeof process !== 'undefined' &&
         process &&
@@ -95,12 +101,27 @@ const DISABLE_MIXDROP_ENV =
         ? process.env.DISABLE_MIXDROP.trim().toLowerCase()
         : '';
 const DISABLE_MIXDROP_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_MIXDROP_ENV);
+function isWarmupBypassPath(pathname) {
+    const value = String(pathname || '');
+    return value.startsWith('/ocr')
+        || value.startsWith('/health')
+        || value === '/manifest.json'
+        || value.endsWith('/manifest.json');
+}
+
 // Warmup middleware: reject requests during initialization
 app.use((req, res, next) => {
-    if (isWarmingUp && !req.path.startsWith('/ocr')) {
+    if (isWarmingUp && !isWarmupBypassPath(req.path)) {
         return res.status(503).set('Retry-After', '20').send('Server warming up... please wait 20 seconds.');
     }
     next();
+});
+
+app.get('/health/flaresolverr', (req, res) => {
+    res.json({
+        ok: true,
+        flaresolverr: getFlareStats()
+    });
 });
 
 const DISABLE_UQLOAD_ENV =
@@ -2469,9 +2490,26 @@ let server;
     try {
         await flareManager.start();
         console.log('[FlareSolverr] Pronto.');
+        warmupBlockTimer = setTimeout(() => {
+            if (!isWarmingUp) return;
+            isWarmingUp = false;
+            console.warn(`[Warmup] Timeout blocco iniziale dopo ${WARMUP_MAX_BLOCK_MS}ms. Il warmup continua in background.`);
+        }, WARMUP_MAX_BLOCK_MS);
+        if (typeof warmupBlockTimer.unref === 'function') warmupBlockTimer.unref();
         // Avvia riscaldamento in background
-        warmupProviders().catch(e => console.error('[Warmup] Errore critico:', e));
+        warmupProviders()
+            .catch(e => {
+                isWarmingUp = false;
+                console.error('[Warmup] Errore critico:', e);
+            })
+            .finally(() => {
+                if (warmupBlockTimer) {
+                    clearTimeout(warmupBlockTimer);
+                    warmupBlockTimer = null;
+                }
+            });
     } catch (e) {
+        isWarmingUp = false;
         console.error('[Addon] Errore avvio FlareSolverr:', e.message);
     }
 
