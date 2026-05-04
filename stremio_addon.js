@@ -1,5 +1,6 @@
 const { solveNumericCaptcha } = require('./src/utils/ocr');
 const { spawn } = require('child_process');
+const { sanitizeLogArgs } = require('./src/utils/log_sanitizer');
 
 try {
     require('dns').setDefaultResultOrder('ipv4first');
@@ -33,8 +34,6 @@ if (!global.fetch) {
 
 const https = require('https');
 const http = require('http');
-const flareManager = require('./flare_manager');
-const { getClearance, getStats: getFlareStats } = require('./cf_bypass');
 
 const IS_PRODUCTION = false;
 const VERBOSE_LOGS = true;
@@ -52,15 +51,22 @@ const PROVIDER_LOG_PREFIXES = [
 ];
 
 const originalConsoleLog = console.log.bind(console);
-if (IS_PRODUCTION && !VERBOSE_LOGS && QUIET_PROVIDER_LOGS) {
-    console.log = (...args) => {
-        const first = typeof args[0] === 'string' ? args[0] : '';
-        if (first && PROVIDER_LOG_PREFIXES.some((prefix) => first.startsWith(prefix))) {
-            return;
-        }
-        originalConsoleLog(...args);
-    };
-}
+const originalConsoleWarn = console.warn.bind(console);
+const originalConsoleError = console.error.bind(console);
+
+console.log = (...args) => {
+    const first = typeof args[0] === 'string' ? args[0] : '';
+    if (IS_PRODUCTION && !VERBOSE_LOGS && QUIET_PROVIDER_LOGS && first && PROVIDER_LOG_PREFIXES.some((prefix) => first.startsWith(prefix))) {
+        return;
+    }
+    originalConsoleLog(...sanitizeLogArgs(args));
+};
+
+console.warn = (...args) => originalConsoleWarn(...sanitizeLogArgs(args));
+console.error = (...args) => originalConsoleError(...sanitizeLogArgs(args));
+
+const flareManager = require('./flare_manager');
+const { getClearance, getStats: getFlareStats } = require('./cf_bypass');
 
 function logInfo(...args) {
     console.log(...args);

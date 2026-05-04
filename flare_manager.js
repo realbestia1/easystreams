@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const { sanitizeLogText } = require('./src/utils/log_sanitizer');
 
 class FlareSolverrManager {
     constructor() {
@@ -184,10 +185,11 @@ class FlareSolverrManager {
 
             try {
                 const browserTimeout = String(process.env.FLARE_BROWSER_TIMEOUT_MS || process.env.BROWSER_TIMEOUT || '40000');
+                const logLevel = String(process.env.FLARE_LOG_LEVEL || 'info');
                 this.process = spawn(exePath, spawnArgs, {
                     cwd: process.env.IN_DOCKER === 'true' ? '/app/flaresolverr-src' : path.dirname(exePath),
                     stdio: 'pipe',
-                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: 'debug', HEADLESS: 'true', BROWSER_TIMEOUT: browserTimeout },
+                    env: { ...process.env, PORT: this.port, HOST: '0.0.0.0', LOG_LEVEL: logLevel, HEADLESS: 'true', BROWSER_TIMEOUT: browserTimeout },
                     shell: !isWin
                 });
             } catch (spawnError) {
@@ -231,12 +233,12 @@ class FlareSolverrManager {
                 this.isStarting = false;
                 resolve();
             }
-            console.log('[FlareSolverr-Log]', output.trim());
+            console.log('[FlareSolverr-Log]', sanitizeLogText(output.trim()));
         });
 
         this.process.stderr.on('data', (data) => {
             const output = data.toString();
-            console.error('[FlareSolverr-Stderr]', output.trim());
+            console.error('[FlareSolverr-Stderr]', sanitizeLogText(output.trim()));
             if (output.includes('address already in use')) {
                 console.log('[FlareSolverr] Porta 8191 già in uso (stderr), utilizzo istanza esistente.');
                 this.isStarting = false;

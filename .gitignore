@@ -3,6 +3,7 @@ package-lock.json
 __pycache__/
 /flaresolverr-bin
 /scratch
+cf-session-*.json
 cf-session-cinemacity.json
 cf-session-clicka.json
 cf-session-deltabit.json
