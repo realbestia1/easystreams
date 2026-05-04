@@ -7913,20 +7913,23 @@ var require_cf_handler = __commonJS({
         };
         const urlHost = getHost(url);
         const domainHost = getHost(domain);
-        const provider = urlHost !== domainHost ? urlHost.split(".")[0] : options.provider || domainHost.split(".")[0];
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        const providerFromHost = (host) => normalizeHost(host).split(".")[0] || "default";
+        const provider = urlHost !== domainHost ? providerFromHost(urlHost) : options.provider || providerFromHost(domainHost);
+        const sessionFileForProvider = (providerName) => path.join(process.cwd(), `cf-session-${providerName}.json`);
+        const sessionFile = sessionFileForProvider(provider);
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
-        const loadSession = () => {
-          if (fs.existsSync(sessionFile)) {
+        const loadSession = (providerName = provider, targetHost = urlHost) => {
+          const targetSessionFile = sessionFileForProvider(providerName);
+          if (fs.existsSync(targetSessionFile)) {
             try {
-              const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+              const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
               if (data && data.userAgent) {
                 const ageMs = Date.now() - (data.timestamp || 0);
                 const twoHours = 2 * 60 * 60 * 1e3;
                 if (ageMs > twoHours) {
-                  console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
+                  console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
                   try {
-                    fs.unlinkSync(sessionFile);
+                    fs.unlinkSync(targetSessionFile);
                   } catch (e) {
                   }
                   return {};
@@ -7935,13 +7938,13 @@ var require_cf_handler = __commonJS({
                   try {
                     const sessionHost = getHost(data.url);
                     const sessionRoot = rootDomain(sessionHost);
-                    const currentRoot = rootDomain(urlHost);
+                    const currentRoot = rootDomain(targetHost);
                     const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
-                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, urlHost));
+                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, targetHost));
                     if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
-                      console.log(`[CF-HANDLER][${provider}] Sessione su dominio diverso (${sessionHost}) non valida per ${urlHost}, forzo refresh.`);
+                      console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
                       try {
-                        fs.unlinkSync(sessionFile);
+                        fs.unlinkSync(targetSessionFile);
                       } catch (e) {
                       }
                       return {};
@@ -7949,7 +7952,7 @@ var require_cf_handler = __commonJS({
                   } catch (e) {
                   }
                 }
-                console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
                 return data;
               }
             } catch (e) {
@@ -8010,10 +8013,10 @@ var require_cf_handler = __commonJS({
           if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
             const quietHttpErrors = options.quietHttpErrors === true || Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status);
             if (!quietHttpErrors) {
-              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
             }
             const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: targetUrl };
+            err.response = { status: response.status, data, url: responseUrl };
             throw err;
           }
           return { data, status: response.status, headers: response.headers, url: responseUrl };
@@ -8032,6 +8035,45 @@ var require_cf_handler = __commonJS({
           if (/Just a moment|cf-browser-verification|challenge-platform|turnstile|cf-challenge/i.test(text)) return false;
           return true;
         };
+        const isCfStatus = (errorOrResponse) => {
+          const status = errorOrResponse && errorOrResponse.response ? errorOrResponse.response.status : errorOrResponse && errorOrResponse.status;
+          return status === 403 || status === 503;
+        };
+        const retryWithRedirectedSession = (challengeUrl) => __async(null, null, function* () {
+          let challengeHost = "";
+          try {
+            challengeHost = getHost(challengeUrl);
+          } catch (e) {
+          }
+          if (!challengeHost || challengeHost === urlHost) return null;
+          const challengeProvider = providerFromHost(challengeHost);
+          if (!challengeProvider || challengeProvider === provider) return null;
+          const redirectedSession = loadSession(challengeProvider, challengeHost);
+          if (!redirectedSession || !redirectedSession.cookies) return null;
+          console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
+          try {
+            const redirectedRes = yield doRequest(redirectedSession, challengeUrl);
+            updateMetaFinalUrl(redirectedRes);
+            if (redirectedRes.status === 403 || redirectedRes.status === 503) {
+              try {
+                fs.unlinkSync(sessionFileForProvider(challengeProvider));
+              } catch (e) {
+              }
+              return null;
+            }
+            console.log(`[CF-HANDLER][${challengeProvider}] Redirect completato usando sessione esistente.`);
+            return redirectedRes.data;
+          } catch (retryErr) {
+            if (isCfStatus(retryErr)) {
+              try {
+                fs.unlinkSync(sessionFileForProvider(challengeProvider));
+              } catch (e) {
+              }
+              return null;
+            }
+            throw retryErr;
+          }
+        });
         try {
           const res = yield doRequest(session);
           updateMetaFinalUrl(res);
@@ -8043,19 +8085,35 @@ var require_cf_handler = __commonJS({
           }
           return res.data;
         } catch (err) {
-          if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+          if (isCfStatus(err)) {
             if (options.skipBypassOnFailure) {
               throw err;
             }
-            if (fs.existsSync(sessionFile)) {
+            const challengeUrl = err.response && err.response.url ? err.response.url : url;
+            const redirectedData = yield retryWithRedirectedSession(challengeUrl);
+            if (redirectedData !== null) {
+              return redirectedData;
+            }
+            let bypassUrl = url;
+            let bypassProvider = provider;
+            try {
+              const challengeHost = getHost(challengeUrl);
+              if (challengeHost && challengeHost !== urlHost) {
+                bypassUrl = challengeUrl;
+                bypassProvider = providerFromHost(challengeHost);
+              }
+            } catch (e) {
+            }
+            const bypassSessionFile = sessionFileForProvider(bypassProvider);
+            if (fs.existsSync(bypassSessionFile)) {
               try {
-                fs.unlinkSync(sessionFile);
+                fs.unlinkSync(bypassSessionFile);
               } catch (e) {
               }
             }
-            const newSession = yield getClearance(url, provider, options);
+            const newSession = yield getClearance(bypassUrl, bypassProvider, options);
             if (!newSession) {
-              throw new Error(`Bypass fallito per ${provider}`);
+              throw new Error(`Bypass fallito per ${bypassProvider}`);
             }
             if (options.meta && newSession.url) {
               options.meta.finalUrl = newSession.url;
@@ -8063,10 +8121,10 @@ var require_cf_handler = __commonJS({
             if (isUsefulHtml(newSession.response)) {
               return newSession.response;
             }
-            let finalUrl = currentUrl;
+            let finalUrl = bypassUrl === url ? currentUrl : bypassUrl;
             if (newSession.url) {
               try {
-                const oldUrlObj = new URL(url);
+                const oldUrlObj = new URL(bypassUrl);
                 const newUrlObj = new URL(newSession.url);
                 const newSessionHasSpecificTarget = newUrlObj.pathname !== "/" || Boolean(newUrlObj.search) || Boolean(newUrlObj.hash) || oldUrlObj.hostname === newUrlObj.hostname;
                 if (newSessionHasSpecificTarget) {

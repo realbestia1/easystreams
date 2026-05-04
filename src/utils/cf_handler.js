@@ -43,43 +43,46 @@ async function smartFetch(url, domain, options = {}) {
     };
     const urlHost = getHost(url);
     const domainHost = getHost(domain);
+    const providerFromHost = (host) => normalizeHost(host).split('.')[0] || 'default';
     
     // Se l'URL è su un dominio diverso dal dominio base del provider, usiamo il dominio dell'URL come provider
     // Questo permette di avere sessioni e lock separati per i vari host (es. clicka.cc, uprot.net)
-    const provider = (urlHost !== domainHost) ? urlHost.split('.')[0] : (options.provider || domainHost.split('.')[0]);
+    const provider = (urlHost !== domainHost) ? providerFromHost(urlHost) : (options.provider || providerFromHost(domainHost));
     
-    const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+    const sessionFileForProvider = (providerName) => path.join(process.cwd(), `cf-session-${providerName}.json`);
+    const sessionFile = sessionFileForProvider(provider);
     const cacheKey = `${options.method || 'GET'}:${url}:${options.body || ''}`;
 
     // No in-memory/disk cache: always fetch fresh
     
-    const loadSession = () => {
-        if (fs.existsSync(sessionFile)) {
+    const loadSession = (providerName = provider, targetHost = urlHost) => {
+        const targetSessionFile = sessionFileForProvider(providerName);
+        if (fs.existsSync(targetSessionFile)) {
             try {
-                const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+                const data = JSON.parse(fs.readFileSync(targetSessionFile, 'utf8'));
                 if (data && data.userAgent) {
                     const ageMs = Date.now() - (data.timestamp || 0);
                     const twoHours = 2 * 60 * 60 * 1000;
                     if (ageMs > twoHours) {
-                        console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs/60000)} min), forzo refresh.`);
-                        try { fs.unlinkSync(sessionFile); } catch (e) {}
+                        console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs/60000)} min), forzo refresh.`);
+                        try { fs.unlinkSync(targetSessionFile); } catch (e) {}
                         return {};
                     }
                     if (data.url) {
                         try {
                             const sessionHost = getHost(data.url);
                             const sessionRoot = rootDomain(sessionHost);
-                            const currentRoot = rootDomain(urlHost);
+                            const currentRoot = rootDomain(targetHost);
                             const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
-                            const hasCookieForCurrentHost = cookieDomains.some(cookieDomain => domainMatchesHost(cookieDomain, urlHost));
+                            const hasCookieForCurrentHost = cookieDomains.some(cookieDomain => domainMatchesHost(cookieDomain, targetHost));
                             if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
-                                console.log(`[CF-HANDLER][${provider}] Sessione su dominio diverso (${sessionHost}) non valida per ${urlHost}, forzo refresh.`);
-                                try { fs.unlinkSync(sessionFile); } catch (e) {}
+                                console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
+                                try { fs.unlinkSync(targetSessionFile); } catch (e) {}
                                 return {};
                             }
                         } catch (e) {}
                     }
-                    console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs/60000)} min fa).`);
+                    console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs/60000)} min fa).`);
                     return data;
                 }
             } catch (e) { return {}; }
@@ -157,10 +160,10 @@ async function smartFetch(url, domain, options = {}) {
             const quietHttpErrors = options.quietHttpErrors === true ||
                 (Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status));
             if (!quietHttpErrors) {
-                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
+                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
             }
             const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: targetUrl };
+            err.response = { status: response.status, data, url: responseUrl };
             throw err;
         }
 
@@ -182,6 +185,45 @@ async function smartFetch(url, domain, options = {}) {
         return true;
     };
 
+    const isCfStatus = (errorOrResponse) => {
+        const status = errorOrResponse && errorOrResponse.response
+            ? errorOrResponse.response.status
+            : errorOrResponse && errorOrResponse.status;
+        return status === 403 || status === 503;
+    };
+
+    const retryWithRedirectedSession = async (challengeUrl) => {
+        let challengeHost = '';
+        try {
+            challengeHost = getHost(challengeUrl);
+        } catch {}
+        if (!challengeHost || challengeHost === urlHost) return null;
+
+        const challengeProvider = providerFromHost(challengeHost);
+        if (!challengeProvider || challengeProvider === provider) return null;
+
+        const redirectedSession = loadSession(challengeProvider, challengeHost);
+        if (!redirectedSession || !redirectedSession.cookies) return null;
+
+        console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
+        try {
+            const redirectedRes = await doRequest(redirectedSession, challengeUrl);
+            updateMetaFinalUrl(redirectedRes);
+            if (redirectedRes.status === 403 || redirectedRes.status === 503) {
+                try { fs.unlinkSync(sessionFileForProvider(challengeProvider)); } catch (e) {}
+                return null;
+            }
+            console.log(`[CF-HANDLER][${challengeProvider}] Redirect completato usando sessione esistente.`);
+            return redirectedRes.data;
+        } catch (retryErr) {
+            if (isCfStatus(retryErr)) {
+                try { fs.unlinkSync(sessionFileForProvider(challengeProvider)); } catch (e) {}
+                return null;
+            }
+            throw retryErr;
+        }
+    };
+
     try {
         const res = await doRequest(session);
         updateMetaFinalUrl(res);
@@ -194,19 +236,36 @@ async function smartFetch(url, domain, options = {}) {
           // caching disabled
         return res.data;
     } catch (err) {
-        if (err.response && (err.response.status === 403 || err.response.status === 503)) {
+        if (isCfStatus(err)) {
             if (options.skipBypassOnFailure) {
                 throw err;
             }
 
-            // Usiamo direttamente getClearance che ha già il suo sistema di lock interno
-            if (fs.existsSync(sessionFile)) {
-                try { fs.unlinkSync(sessionFile); } catch (e) {}
+            const challengeUrl = err.response && err.response.url ? err.response.url : url;
+            const redirectedData = await retryWithRedirectedSession(challengeUrl);
+            if (redirectedData !== null) {
+                return redirectedData;
             }
 
-            const newSession = await getClearance(url, provider, options);
+            let bypassUrl = url;
+            let bypassProvider = provider;
+            try {
+                const challengeHost = getHost(challengeUrl);
+                if (challengeHost && challengeHost !== urlHost) {
+                    bypassUrl = challengeUrl;
+                    bypassProvider = providerFromHost(challengeHost);
+                }
+            } catch {}
+            const bypassSessionFile = sessionFileForProvider(bypassProvider);
+
+            // Usiamo direttamente getClearance che ha già il suo sistema di lock interno
+            if (fs.existsSync(bypassSessionFile)) {
+                try { fs.unlinkSync(bypassSessionFile); } catch (e) {}
+            }
+
+            const newSession = await getClearance(bypassUrl, bypassProvider, options);
             if (!newSession) {
-                throw new Error(`Bypass fallito per ${provider}`);
+                throw new Error(`Bypass fallito per ${bypassProvider}`);
             }
 
             if (options.meta && newSession.url) {
@@ -219,10 +278,10 @@ async function smartFetch(url, domain, options = {}) {
             }
 
             // Altrimenti procediamo con una nuova richiesta usando i cookie (se presenti)
-            let finalUrl = currentUrl;
+            let finalUrl = bypassUrl === url ? currentUrl : bypassUrl;
             if (newSession.url) {
                 try {
-                    const oldUrlObj = new URL(url);
+                    const oldUrlObj = new URL(bypassUrl);
                     const newUrlObj = new URL(newSession.url);
                     const newSessionHasSpecificTarget = newUrlObj.pathname !== '/' ||
                         Boolean(newUrlObj.search) ||
