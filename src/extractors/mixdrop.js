@@ -1,10 +1,6 @@
 const { USER_AGENT, unPack } = require('./common');
 
 function isMixDropDisabled() {
-  if (typeof global !== 'undefined' && global && global.DISABLE_MIXDROP === true) {
-    return true;
-  }
-
   const rawEnv =
     typeof process !== 'undefined' &&
     process &&

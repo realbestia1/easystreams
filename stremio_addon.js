@@ -93,14 +93,6 @@ function readPositiveIntEnv(name, fallback) {
     return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 const WARMUP_MAX_BLOCK_MS = readPositiveIntEnv('WARMUP_MAX_BLOCK_MS', 45000);
-const DISABLE_MIXDROP_ENV =
-    typeof process !== 'undefined' &&
-        process &&
-        process.env &&
-        typeof process.env.DISABLE_MIXDROP === 'string'
-        ? process.env.DISABLE_MIXDROP.trim().toLowerCase()
-        : '';
-const DISABLE_MIXDROP_IN_ADDON = !['0', 'false', 'no', 'off'].includes(DISABLE_MIXDROP_ENV);
 function isWarmupBypassPath(pathname) {
     const value = String(pathname || '');
     return value.startsWith('/ocr')
@@ -1406,7 +1398,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const easyProxyUrl = resolveEasyProxyUrlFromConfig(config);
     const easyProxyPassword = resolveEasyProxyPasswordFromConfig(config);
     const disabledProviders = resolveDisabledProvidersFromConfig(config);
-    global.DISABLE_MIXDROP = DISABLE_MIXDROP_IN_ADDON && !easyProxyUrl;
     const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyToken(easyProxyUrl, easyProxyPassword)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);
     const providerId = parsedRequest.providerId;

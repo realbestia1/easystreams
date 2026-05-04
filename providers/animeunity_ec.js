@@ -109,9 +109,6 @@ var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
     var { USER_AGENT, unPack } = require_common();
     function isMixDropDisabled() {
-      if (typeof global !== "undefined" && global && global.DISABLE_MIXDROP === true) {
-        return true;
-      }
       const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
       return ["1", "true", "yes", "on"].includes(rawEnv);
     }
