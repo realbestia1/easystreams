@@ -20,8 +20,7 @@ if (!IS_SERVER) {
         }
     };
     // Interrompiamo l'esecuzione qui per il client, il resto è logica server-only
-    return;
-}
+} else {
 
 // SIAMO SU SERVER: carichiamo le librerie pesanti
 const { smartFetch } = require('../utils/cf_handler');
@@ -741,3 +740,4 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 }
 
 module.exports = { getStreams };
+}

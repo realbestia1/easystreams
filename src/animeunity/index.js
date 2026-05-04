@@ -1,6 +1,5 @@
 "use strict";
 
-const cheerio = require("cheerio");
 const { extractVixCloud } = require("../extractors");
 const { getProxiedUrl } = require("../extractors/common.js");
 const { formatStream } = require("../formatter.js");
@@ -285,6 +284,47 @@ function sanitizeAnimeTitle(rawTitle) {
     .trim();
 
   return text || null;
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&nbsp;/gi, " ");
+}
+
+function stripHtmlTags(value) {
+  return decodeHtmlEntities(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function getTagAttribute(tag, attrName) {
+  const escaped = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`${escaped}\\s*=\\s*([\"'])([\\s\\S]*?)\\1`, "i");
+  const match = String(tag || "").match(regex);
+  return match ? decodeHtmlEntities(match[2]) : null;
+}
+
+function findFirstTag(html, tagName, attrPattern = "") {
+  const regex = new RegExp(`<${tagName}\\b${attrPattern}[\\s\\S]*?>`, "i");
+  const match = String(html || "").match(regex);
+  return match ? match[0] : "";
+}
+
+function getMetaContent(html, propertyValue) {
+  const escaped = String(propertyValue || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tag = findFirstTag(html, "meta", `(?=[^>]*(?:property|name)\\s*=\\s*["']${escaped}["'])`);
+  return getTagAttribute(tag, "content");
+}
+
+function getFirstTagText(html, tagName) {
+  const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+  const match = String(html || "").match(regex);
+  return match ? stripHtmlTags(match[1]) : "";
 }
 
 function parseVideoPlayerJson(rawValue, fallback) {
@@ -601,16 +641,15 @@ async function fetchResource(url, options = {}) {
 }
 
 function parseAnimePage(html, fallback = {}) {
-  const $ = cheerio.load(html);
-  const vp = $("video-player").first();
+  const vp = findFirstTag(html, "video-player");
 
-  const animeData = parseVideoPlayerJson(vp.attr("anime"), {});
-  const episodeData = parseVideoPlayerJson(vp.attr("episode"), null);
-  const episodesData = parseVideoPlayerJson(vp.attr("episodes"), []);
+  const animeData = parseVideoPlayerJson(getTagAttribute(vp, "anime"), {});
+  const episodeData = parseVideoPlayerJson(getTagAttribute(vp, "episode"), null);
+  const episodesData = parseVideoPlayerJson(getTagAttribute(vp, "episodes"), []);
 
   const pageTitle =
-    $("meta[property='og:title']").attr("content") ||
-    $("title").first().text().trim() ||
+    getMetaContent(html, "og:title") ||
+    getFirstTagText(html, "title") ||
     null;
 
   const titleCandidates = [
@@ -651,7 +690,7 @@ function parseAnimePage(html, fallback = {}) {
     }))
   );
 
-  const currentEmbedUrl = toAbsoluteUrl(vp.attr("embed_url"));
+  const currentEmbedUrl = toAbsoluteUrl(getTagAttribute(vp, "embed_url"));
   if (currentEmbedUrl && episodes.length > 0) {
     if (episodeData?.id) {
       const currentId = parsePositiveInt(episodeData.id);
