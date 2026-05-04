@@ -148,6 +148,11 @@ async function smartFetch(url, domain, options = {}) {
         });
 
         const data = response.data;
+        const responseUrl =
+            response.request?.res?.responseUrl ||
+            response.request?._redirectable?._currentUrl ||
+            response.config?.url ||
+            targetUrl;
         if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
             console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
             const err = new Error(`HTTP ${response.status}`);
@@ -155,7 +160,15 @@ async function smartFetch(url, domain, options = {}) {
             throw err;
         }
 
-        return { data, status: response.status, headers: response.headers };
+        return { data, status: response.status, headers: response.headers, url: responseUrl };
+    };
+
+    const updateMetaFinalUrl = (res) => {
+        if (!options.meta || !res || !res.url) return;
+        try {
+            const finalUrl = new URL(res.url).toString();
+            if (finalUrl) options.meta.finalUrl = finalUrl;
+        } catch {}
     };
 
     const isUsefulHtml = (value) => {
@@ -167,6 +180,7 @@ async function smartFetch(url, domain, options = {}) {
 
     try {
         const res = await doRequest(session);
+        updateMetaFinalUrl(res);
         if (res.status === 403 || res.status === 503) {
             throw { response: res };
         }
@@ -216,6 +230,7 @@ async function smartFetch(url, domain, options = {}) {
             }
 
             const res = await doRequest(newSession, finalUrl);
+            updateMetaFinalUrl(res);
             return res.data;
         }
         throw err;

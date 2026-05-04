@@ -7599,7 +7599,7 @@ var require_cf_bypass = __commonJS({
     function runIdleProcessCleanup() {
       if (!FLARE_IDLE_PROCESS_CLEANUP) return;
       if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
-      const command = process.platform === "win32" ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"` : `sh -lc "pkill -f '/usr/bin/chromium|/usr/bin/chromedriver|chromedriver|--user-data-dir=/tmp/tmp' 2>/dev/null || true"`;
+      const command = process.platform === "win32" ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"` : `sh -lc "pkill -f '[c]hromium|[c]hromedriver|--user-data-dir=/tmp/t[m]p' 2>/dev/null || true"`;
       exec(command, { timeout: 1e4 }, (error) => {
         if (error) {
           console.error(`[CF] Idle cleanup browser fallito: ${error.message}`);
@@ -8020,6 +8020,7 @@ var require_cf_handler = __commonJS({
           }
         }
         const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
+          var _a, _b, _c, _d, _e;
           const mergedHeaders = __spreadValues({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -8045,14 +8046,23 @@ var require_cf_handler = __commonJS({
             responseType: options.responseType || "text"
           }, options.axiosConfig));
           const data = response.data;
+          const responseUrl = ((_b = (_a = response.request) == null ? void 0 : _a.res) == null ? void 0 : _b.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
           if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
             console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${targetUrl}`);
             const err = new Error(`HTTP ${response.status}`);
             err.response = { status: response.status, data };
             throw err;
           }
-          return { data, status: response.status, headers: response.headers };
+          return { data, status: response.status, headers: response.headers, url: responseUrl };
         });
+        const updateMetaFinalUrl = (res) => {
+          if (!options.meta || !res || !res.url) return;
+          try {
+            const finalUrl = new URL(res.url).toString();
+            if (finalUrl) options.meta.finalUrl = finalUrl;
+          } catch (e) {
+          }
+        };
         const isUsefulHtml = (value) => {
           const text = typeof value === "string" ? value.trim() : "";
           if (text.length < 200) return false;
@@ -8061,6 +8071,7 @@ var require_cf_handler = __commonJS({
         };
         try {
           const res = yield doRequest(session);
+          updateMetaFinalUrl(res);
           if (res.status === 403 || res.status === 503) {
             throw { response: res };
           }
@@ -8104,6 +8115,7 @@ var require_cf_handler = __commonJS({
               }
             }
             const res = yield doRequest(newSession, finalUrl);
+            updateMetaFinalUrl(res);
             return res.data;
           }
           throw err;

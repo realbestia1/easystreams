@@ -140,7 +140,7 @@ function runIdleProcessCleanup() {
 
     const command = process.platform === 'win32'
         ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`
-        : `sh -lc "pkill -f '/usr/bin/chromium|/usr/bin/chromedriver|chromedriver|--user-data-dir=/tmp/tmp' 2>/dev/null || true"`;
+        : `sh -lc "pkill -f '[c]hromium|[c]hromedriver|--user-data-dir=/tmp/t[m]p' 2>/dev/null || true"`;
 
     exec(command, { timeout: 10000 }, (error) => {
         if (error) {
