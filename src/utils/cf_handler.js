@@ -28,6 +28,19 @@ async function smartFetch(url, domain, options = {}) {
     const getHost = (u) => {
         try { return new URL(u).hostname.replace('www.', ''); } catch (e) { return u; }
     };
+    const normalizeHost = (value) => String(value || '').trim().toLowerCase().replace(/^www\./, '').replace(/^\./, '');
+    const rootDomain = (host) => {
+        const parts = normalizeHost(host).split('.').filter(Boolean);
+        return parts.length >= 2 ? parts.slice(-2).join('.') : parts.join('.');
+    };
+    const domainMatchesHost = (domainValue, hostValue) => {
+        const cookieDomain = normalizeHost(domainValue);
+        const host = normalizeHost(hostValue);
+        if (!cookieDomain || !host) return false;
+        return host === cookieDomain ||
+            host.endsWith(`.${cookieDomain}`) ||
+            cookieDomain.endsWith(`.${host}`);
+    };
     const urlHost = getHost(url);
     const domainHost = getHost(domain);
     
@@ -51,6 +64,20 @@ async function smartFetch(url, domain, options = {}) {
                         console.log(`[CF-HANDLER][${provider}] Sessione su file troppo vecchia (${Math.round(ageMs/60000)} min), forzo refresh.`);
                         try { fs.unlinkSync(sessionFile); } catch (e) {}
                         return {};
+                    }
+                    if (data.url) {
+                        try {
+                            const sessionHost = getHost(data.url);
+                            const sessionRoot = rootDomain(sessionHost);
+                            const currentRoot = rootDomain(urlHost);
+                            const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
+                            const hasCookieForCurrentHost = cookieDomains.some(cookieDomain => domainMatchesHost(cookieDomain, urlHost));
+                            if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
+                                console.log(`[CF-HANDLER][${provider}] Sessione su dominio diverso (${sessionHost}) non valida per ${urlHost}, forzo refresh.`);
+                                try { fs.unlinkSync(sessionFile); } catch (e) {}
+                                return {};
+                            }
+                        } catch (e) {}
                     }
                     console.log(`[CF-HANDLER][${provider}] Sessione caricata da file (${Math.round(ageMs/60000)} min fa).`);
                     return data;

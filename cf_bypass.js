@@ -26,22 +26,21 @@ const GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv('FLARE_QUEUE_TIMEOUT_MS', 45000)
 const FLARE_HEALTH_TIMEOUT = readPositiveIntEnv('FLARE_HEALTH_TIMEOUT_MS', 3000);
 const FLARE_HEALTH_CACHE_MS = readPositiveIntEnv('FLARE_HEALTH_CACHE_MS', 10000);
 const FLARE_RETRIES = readPositiveIntEnv('FLARE_RETRIES', 1);
-const FLARE_KEEP_SESSIONS = ['1', 'true', 'yes', 'on'].includes(
-    String(process.env.FLARE_KEEP_SESSIONS || '').trim().toLowerCase()
+const FLARE_ORIGIN_COOKIE_TIMEOUT = readPositiveIntEnv('FLARE_ORIGIN_COOKIE_TIMEOUT_MS', 10000);
+const FLARE_CAPTURE_ORIGIN_COOKIES = !['0', 'false', 'no', 'off'].includes(
+    String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || '').trim().toLowerCase()
 );
-const FLARE_KEEP_SESSION_PROVIDERS = new Set(
-    String(process.env.FLARE_KEEP_SESSION_PROVIDERS || 'clicka')
+const FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
+    String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || 'clicka')
         .split(',')
         .map(value => value.trim().toLowerCase())
         .filter(Boolean)
 );
-const FLARE_KEEP_SESSION_IDLE_MS = readPositiveIntEnv('FLARE_KEEP_SESSION_IDLE_MS', 300000);
 const FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv('FLARE_IDLE_CLEANUP_MS', 5000);
 const FLARE_IDLE_PROCESS_CLEANUP = !['0', 'false', 'no', 'off'].includes(
     String(process.env.FLARE_IDLE_PROCESS_CLEANUP || '').trim().toLowerCase()
 );
 let idleCleanupTimer = null;
-const keptSessionTimers = new Map();
 let lastFlareHealthOkAt = 0;
 
 function getFlareUrl() {
@@ -57,10 +56,9 @@ function getStats() {
         maxQueue: MAX_GLOBAL_QUEUE,
         queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
         healthCacheMs: FLARE_HEALTH_CACHE_MS,
-        keepSessions: FLARE_KEEP_SESSIONS,
-        keepSessionProviders: Array.from(FLARE_KEEP_SESSION_PROVIDERS),
-        keepSessionIdleMs: FLARE_KEEP_SESSION_IDLE_MS,
-        keptSessions: Array.from(keptSessionTimers.keys()),
+        captureOriginCookies: FLARE_CAPTURE_ORIGIN_COOKIES,
+        captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
+        originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
         idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
         idleCleanupMs: FLARE_IDLE_CLEANUP_MS
     };
@@ -136,40 +134,9 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function shouldKeepFlareSession(provider) {
-    return FLARE_KEEP_SESSIONS || FLARE_KEEP_SESSION_PROVIDERS.has(String(provider || '').toLowerCase());
-}
-
-function touchKeptSession(flareUrl, provider) {
-    const key = String(provider || '').toLowerCase();
-    if (!key) return;
-
-    const existing = keptSessionTimers.get(key);
-    if (existing) clearTimeout(existing);
-
-    const timer = setTimeout(async () => {
-        keptSessionTimers.delete(key);
-        try {
-            await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
-                timeout: 5000,
-                headers: { 'Content-Type': 'application/json' }
-            });
-            console.log(`[CF] Sessione FlareSolverr idle chiusa per [${provider}] dopo ${FLARE_KEEP_SESSION_IDLE_MS}ms.`);
-        } catch {
-            // Sessione gia chiusa o non esistente.
-        } finally {
-            scheduleIdleProcessCleanup();
-        }
-    }, FLARE_KEEP_SESSION_IDLE_MS);
-
-    if (typeof timer.unref === 'function') timer.unref();
-    keptSessionTimers.set(key, timer);
-}
-
 function runIdleProcessCleanup() {
-    if (FLARE_KEEP_SESSIONS || !FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (!FLARE_IDLE_PROCESS_CLEANUP) return;
     if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
-    if (keptSessionTimers.size > 0) return;
 
     const command = process.platform === 'win32'
         ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"`
@@ -185,7 +152,7 @@ function runIdleProcessCleanup() {
 }
 
 function scheduleIdleProcessCleanup() {
-    if (FLARE_KEEP_SESSIONS || !FLARE_IDLE_PROCESS_CLEANUP) return;
+    if (!FLARE_IDLE_PROCESS_CLEANUP) return;
     if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
     clearIdleCleanupTimer();
     idleCleanupTimer = setTimeout(() => {
@@ -258,6 +225,125 @@ function saveSessionFile(sessionFile, data) {
     }
 }
 
+function normalizeHost(host) {
+    return String(host || '').trim().toLowerCase().replace(/^www\./, '').replace(/^\./, '');
+}
+
+function getHostFromUrl(url) {
+    try {
+        return normalizeHost(new URL(url).hostname);
+    } catch {
+        return '';
+    }
+}
+
+function getOriginFromUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return `${parsed.protocol}//${parsed.hostname}`;
+    } catch {
+        return null;
+    }
+}
+
+function normalizeCookieDomain(domain) {
+    return normalizeHost(domain);
+}
+
+function cookieMatchesHost(cookie, host) {
+    const cookieDomain = normalizeCookieDomain(cookie && cookie.domain);
+    const targetHost = normalizeHost(host);
+    if (!cookieDomain || !targetHost) return false;
+    return targetHost === cookieDomain ||
+        targetHost.endsWith(`.${cookieDomain}`) ||
+        cookieDomain.endsWith(`.${targetHost}`);
+}
+
+function filterCookiesForHost(cookiesList, host) {
+    return cookiesList.filter(cookie => cookieMatchesHost(cookie, host));
+}
+
+function uniqueCookies(cookiesList) {
+    const byKey = new Map();
+    for (const cookie of cookiesList) {
+        if (!cookie || !cookie.name) continue;
+        const key = [
+            normalizeCookieDomain(cookie.domain),
+            cookie.path || '/',
+            cookie.name
+        ].join('|');
+        byKey.set(key, cookie);
+    }
+    return Array.from(byKey.values());
+}
+
+function serializeCookies(cookiesList) {
+    return uniqueCookies(cookiesList)
+        .map(cookie => `${cookie.name}=${cookie.value}`)
+        .join('; ');
+}
+
+function getCookieDomains(cookiesList) {
+    return [...new Set(
+        uniqueCookies(cookiesList)
+            .map(cookie => normalizeCookieDomain(cookie.domain))
+            .filter(Boolean)
+    )];
+}
+
+function findCfClearance(cookiesList) {
+    return cookiesList.find(cookie => cookie && cookie.name === 'cf_clearance')?.value || null;
+}
+
+function shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList) {
+    if (!FLARE_CAPTURE_ORIGIN_COOKIES) return false;
+    if (!originalHost || !finalHost || originalHost === finalHost) return false;
+    if (providerCookiesList.length > 0) return false;
+    const key = String(provider || '').toLowerCase();
+    return FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has('*') ||
+        FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has(key);
+}
+
+async function captureOriginCookies(flareUrl, provider, url) {
+    const originalHost = getHostFromUrl(url);
+    const origin = getOriginFromUrl(url);
+    if (!origin || !originalHost) return [];
+
+    const probeUrls = [
+        `${origin}/cdn-cgi/trace`,
+        `${origin}/favicon.ico`,
+        `${origin}/`
+    ];
+
+    for (const probeUrl of probeUrls) {
+        try {
+            const response = await postFlare(flareUrl, {
+                cmd: 'request.get',
+                url: probeUrl,
+                session: provider,
+                maxTimeout: FLARE_ORIGIN_COOKIE_TIMEOUT
+            }, FLARE_ORIGIN_COOKIE_TIMEOUT + 5000, `origin-cookie ${provider}`);
+
+            if (!response.data || response.data.status !== 'ok') continue;
+
+            const solution = response.data.solution || {};
+            const cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
+            const originCookies = filterCookiesForHost(cookiesList, originalHost);
+            if (originCookies.length > 0) {
+                console.log(`[CF] Cookie dominio originale catturati per [${provider}] da ${probeUrl}: ${originCookies.length}`);
+                return originCookies;
+            }
+
+            const returnedHost = getHostFromUrl(solution.url);
+            console.log(`[CF] Nessun cookie ${originalHost} da ${probeUrl} (finale: ${returnedHost || 'n/d'}).`);
+        } catch (error) {
+            console.error(`[CF] Cattura cookie dominio originale fallita per [${provider}] ${probeUrl}: ${error.message}`);
+        }
+    }
+
+    return [];
+}
+
 async function createSessionIfNeeded(flareUrl, provider) {
     try {
         await axios.post(flareUrl, { cmd: 'sessions.create', session: provider }, {
@@ -270,17 +356,12 @@ async function createSessionIfNeeded(flareUrl, provider) {
 }
 
 async function destroySessionIfNeeded(flareUrl, provider) {
-    if (shouldKeepFlareSession(provider)) {
-        touchKeptSession(flareUrl, provider);
-        console.log(`[CF] Sessione FlareSolverr mantenuta per [${provider}] (idle ${FLARE_KEEP_SESSION_IDLE_MS}ms).`);
-        return;
-    }
     try {
         await axios.post(flareUrl, { cmd: 'sessions.destroy', session: provider }, {
             timeout: 5000,
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log(`[CF] Sessione FlareSolverr chiusa per [${provider}] dopo salvataggio cookie.`);
+        console.log(`[CF] Sessione FlareSolverr chiusa per [${provider}].`);
     } catch {
         // La sessione puo essere gia chiusa o inesistente: non e un errore operativo.
     }
@@ -319,11 +400,23 @@ async function runBypass(url, provider, options, sessionFile) {
 
             if (response.data && response.data.status === 'ok') {
                 const solution = response.data.solution || {};
-                const cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
-                const cookies = cookiesList.map(c => `${c.name}=${c.value}`).join('; ');
-                const cfClearance = cookiesList.find(c => c.name === 'cf_clearance')?.value;
+                let cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
+                const originalHost = getHostFromUrl(url);
+                const finalHost = getHostFromUrl(solution.url);
+                let providerCookiesList = filterCookiesForHost(cookiesList, originalHost);
 
                 console.log(`[CF] FlareSolverr ha restituito ${cookiesList.length} cookie.`);
+
+                if (shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList)) {
+                    const originCookies = await captureOriginCookies(flareUrl, provider, url);
+                    if (originCookies.length > 0) {
+                        cookiesList = uniqueCookies([...cookiesList, ...originCookies]);
+                        providerCookiesList = uniqueCookies([...providerCookiesList, ...originCookies]);
+                    }
+                }
+
+                const cookies = serializeCookies(cookiesList);
+                const cfClearance = findCfClearance(cookiesList);
 
                 if (!cookies && !solution.response) {
                     throw new Error('FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.');
@@ -335,30 +428,44 @@ async function runBypass(url, provider, options, sessionFile) {
                     cf_clearance: cfClearance || null,
                     url: solution.url,
                     response: solution.response,
+                    cookieDomains: getCookieDomains(cookiesList),
                     timestamp: Date.now()
                 };
 
-                saveSessionFile(sessionFile, data);
+                const providerCookies = serializeCookies(providerCookiesList);
+                if (providerCookies || !originalHost || originalHost === finalHost) {
+                    const providerData = {
+                        userAgent: solution.userAgent,
+                        cookies: providerCookies || cookies || '',
+                        cf_clearance: findCfClearance(providerCookiesList) || cfClearance || null,
+                        url: providerCookies ? url : solution.url,
+                        response: solution.response,
+                        cookieDomains: getCookieDomains(providerCookies ? providerCookiesList : cookiesList),
+                        timestamp: Date.now()
+                    };
+                    saveSessionFile(sessionFile, providerData);
+                } else {
+                    console.log(`[CF] Cookie provider [${provider}] non trovati per ${originalHost}; non salvo cookie di ${finalHost || 'dominio finale'} in ${path.basename(sessionFile)}.`);
+                }
 
                 if (cookiesList.length > 0) {
-                    const domains = [...new Set(cookiesList.map(c => String(c.domain || '').replace(/^\./, '')).filter(Boolean))];
+                    const domains = getCookieDomains(cookiesList);
                     for (const domain of domains) {
                         const domainProvider = domain.replace('www.', '').split('.')[0];
                         if (!domainProvider || domainProvider === provider) continue;
 
                         const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
-                        const domainCookies = cookiesList
-                            .filter(c => String(c.domain || '').includes(domain))
-                            .map(c => `${c.name}=${c.value}`)
-                            .join('; ');
+                        const domainCookiesList = filterCookiesForHost(cookiesList, domain);
+                        const domainCookies = serializeCookies(domainCookiesList);
 
                         if (!domainCookies) continue;
 
                         const domainData = {
                             userAgent: solution.userAgent,
                             cookies: domainCookies,
-                            cf_clearance: cookiesList.find(c => String(c.domain || '').includes(domain) && c.name === 'cf_clearance')?.value || null,
+                            cf_clearance: findCfClearance(domainCookiesList),
                             url: solution.url,
+                            cookieDomains: getCookieDomains(domainCookiesList),
                             timestamp: Date.now()
                         };
                         saveSessionFile(domainSessionFile, domainData);
