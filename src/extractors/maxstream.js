@@ -39,6 +39,68 @@ function extractUprotRedirect(html) {
   return btnMatch ? btnMatch[1].replace(/\\/g, '') : null;
 }
 
+function extractInputFields(html) {
+  const fields = {};
+  const inputRegex = /<input\b[^>]*>/gi;
+  let match;
+  while ((match = inputRegex.exec(String(html || ''))) !== null) {
+    const inputHtml = match[0] || '';
+    const name = inputHtml.match(/\bname=["']([^"']+)["']/i)?.[1];
+    if (!name) continue;
+    const value = inputHtml.match(/\bvalue=["']([^"']*)["']/i)?.[1] || '';
+    fields[name] = value.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+  }
+  return fields;
+}
+
+function findCaptchaFieldName(html, fields) {
+  const names = Object.keys(fields || {});
+  const explicit = names.find(name => /capt|captcha|code/i.test(name));
+  if (explicit) return explicit;
+
+  const inputRegex = /<input\b[^>]*>/gi;
+  let match;
+  while ((match = inputRegex.exec(String(html || ''))) !== null) {
+    const inputHtml = match[0] || '';
+    const name = inputHtml.match(/\bname=["']([^"']+)["']/i)?.[1];
+    if (!name) continue;
+    const type = inputHtml.match(/\btype=["']([^"']+)["']/i)?.[1] || 'text';
+    const placeholder = inputHtml.match(/\bplaceholder=["']([^"']+)["']/i)?.[1] || '';
+    if (!/hidden|submit|button/i.test(type) && /number|capt|code|insert/i.test(placeholder)) {
+      return name;
+    }
+  }
+
+  return 'captcha';
+}
+
+function hasUprotCaptcha(html) {
+  const text = String(html || '');
+  return /data:image\/[^;]+;base64,/i.test(text) &&
+    /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
+}
+
+async function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
+  const directRedirect = extractUprotRedirect(html);
+  if (directRedirect && !hasUprotCaptcha(html)) return directRedirect;
+
+  const captchaMatch = String(html || '').match(/<img[^>]+src=["']data:image\/[^;]+;base64,([^"']+)["'][^>]*>/i);
+  if (!captchaMatch || !solveNumericCaptcha) return directRedirect || null;
+
+  const captchaCode = await solveNumericCaptcha(captchaMatch[1]);
+  if (!/^\d{3,6}$/.test(String(captchaCode || ''))) return directRedirect || null;
+
+  const formFields = extractInputFields(html);
+  const captchaFieldName = findCaptchaFieldName(html, formFields);
+  formFields[captchaFieldName] = captchaCode;
+
+  const postResult = await postRequest(new URLSearchParams(formFields).toString());
+  const postRedirect = postResult && postResult.location
+    ? normalizeUrl(postResult.location, targetUrl)
+    : extractUprotRedirect(postResult && postResult.data);
+  return postRedirect || directRedirect || null;
+}
+
 function extractEmbedUrl(html, targetUrl) {
   const targetEmbed = String(targetUrl || '').match(/^https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)/i);
   if (targetEmbed) return `https://maxstream.video/emhuih/${targetEmbed[1]}`;
@@ -153,39 +215,59 @@ async function resolveUprotProtectedUrl(targetUrl, refererBase) {
       const html = String(response.data || '');
       const directRedirect = extractUprotRedirect(html);
       if (directRedirect) lastDirectRedirect = directRedirect;
-      if (directRedirect && !/name=["']captcha["']/i.test(html)) return directRedirect;
 
-      const captchaMatch = html.match(/<img[^>]+src=["']data:image\/png;base64,([^"']+)["'][^>]*>/i);
-      if (!captchaMatch || !solveNumericCaptcha) return directRedirect || null;
-
-      const captchaCode = await solveNumericCaptcha(captchaMatch[1]);
-      if (!/^\d{3}$/.test(String(captchaCode || ''))) continue;
-
-      const postHeaders = {
-        ...headers,
-        'Referer': targetUrl,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      };
       const cookieHeader = getCookieHeader(response.headers && response.headers['set-cookie']);
-      if (cookieHeader) postHeaders.Cookie = cookieHeader;
+      const postRedirect = await solveUprotCaptchaRedirect(html, targetUrl, async (body) => {
+        const postHeaders = {
+          ...headers,
+          'Referer': targetUrl,
+          'Origin': new URL(targetUrl).origin,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        };
+        if (cookieHeader) postHeaders.Cookie = cookieHeader;
 
-      const postResponse = await axios({
-        url: targetUrl,
-        method: 'POST',
-        data: new URLSearchParams({ captcha: captchaCode }).toString(),
-        headers: postHeaders,
-        maxRedirects: 0,
-        timeout: 20000,
-        validateStatus: false
+        const postResponse = await axios({
+          url: targetUrl,
+          method: 'POST',
+          data: body,
+          headers: postHeaders,
+          maxRedirects: 0,
+          timeout: 20000,
+          validateStatus: false
+        });
+        return {
+          location: postResponse.headers && postResponse.headers.location,
+          data: postResponse.data
+        };
       });
-
-      const postRedirect = postResponse.headers && postResponse.headers.location
-        ? normalizeUrl(postResponse.headers.location, targetUrl)
-        : extractUprotRedirect(postResponse.data);
       if (postRedirect) return postRedirect;
     } catch (e) {
       if (attempt === 2) console.error('[Extractors] Uprot captcha resolution failed:', e.message);
     }
+  }
+
+  try {
+    const html = await smartFetch(targetUrl, 'uprot', {
+      provider: 'uprot',
+      headers
+    });
+    const smartRedirect = await solveUprotCaptchaRedirect(html, targetUrl, async (body) => {
+      const postHtml = await smartFetch(targetUrl, 'uprot', {
+        provider: 'uprot',
+        method: 'POST',
+        body,
+        headers: {
+          ...headers,
+          'Referer': targetUrl,
+          'Origin': new URL(targetUrl).origin,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      return { data: postHtml };
+    });
+    if (smartRedirect) return smartRedirect;
+  } catch (e) {
+    console.error('[Extractors] Uprot smart captcha resolution failed:', e.message);
   }
 
   return lastDirectRedirect || null;
@@ -198,7 +280,7 @@ async function extractMaxStream(url, refererBase = 'https://uprot.net/') {
 
     if (targetUrl.includes('uprot.net')) {
       targetUrl = targetUrl.replace('/msf/', '/mse/');
-      const isProtectedUprot = /\/(?:msei|msfi|mseild|msefd)\//i.test(targetUrl);
+      const isProtectedUprot = /\/(?:msd|msei|msfi|mseild|msefd)\//i.test(targetUrl);
 
       const protectedRedirect = await resolveUprotProtectedUrl(targetUrl, refererBase);
       if (protectedRedirect) {

@@ -8299,6 +8299,59 @@ var require_maxstream = __commonJS({
       const btnMatch = text.match(/href=["']([^"']+(?:maxstream|stayonline)[^"']*)["']/i);
       return btnMatch ? btnMatch[1].replace(/\\/g, "") : null;
     }
+    function extractInputFields(html) {
+      var _a, _b;
+      const fields = {};
+      const inputRegex = /<input\b[^>]*>/gi;
+      let match;
+      while ((match = inputRegex.exec(String(html || ""))) !== null) {
+        const inputHtml = match[0] || "";
+        const name = (_a = inputHtml.match(/\bname=["']([^"']+)["']/i)) == null ? void 0 : _a[1];
+        if (!name) continue;
+        const value = ((_b = inputHtml.match(/\bvalue=["']([^"']*)["']/i)) == null ? void 0 : _b[1]) || "";
+        fields[name] = value.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&");
+      }
+      return fields;
+    }
+    function findCaptchaFieldName(html, fields) {
+      var _a, _b, _c;
+      const names = Object.keys(fields || {});
+      const explicit = names.find((name) => /capt|captcha|code/i.test(name));
+      if (explicit) return explicit;
+      const inputRegex = /<input\b[^>]*>/gi;
+      let match;
+      while ((match = inputRegex.exec(String(html || ""))) !== null) {
+        const inputHtml = match[0] || "";
+        const name = (_a = inputHtml.match(/\bname=["']([^"']+)["']/i)) == null ? void 0 : _a[1];
+        if (!name) continue;
+        const type = ((_b = inputHtml.match(/\btype=["']([^"']+)["']/i)) == null ? void 0 : _b[1]) || "text";
+        const placeholder = ((_c = inputHtml.match(/\bplaceholder=["']([^"']+)["']/i)) == null ? void 0 : _c[1]) || "";
+        if (!/hidden|submit|button/i.test(type) && /number|capt|code|insert/i.test(placeholder)) {
+          return name;
+        }
+      }
+      return "captcha";
+    }
+    function hasUprotCaptcha(html) {
+      const text = String(html || "");
+      return /data:image\/[^;]+;base64,/i.test(text) && /<input\b[^>]*\bname=["'][^"']*(?:capt|captcha|code)[^"']*["']/i.test(text);
+    }
+    function solveUprotCaptchaRedirect(html, targetUrl, postRequest) {
+      return __async(this, null, function* () {
+        const directRedirect = extractUprotRedirect(html);
+        if (directRedirect && !hasUprotCaptcha(html)) return directRedirect;
+        const captchaMatch = String(html || "").match(/<img[^>]+src=["']data:image\/[^;]+;base64,([^"']+)["'][^>]*>/i);
+        if (!captchaMatch || !solveNumericCaptcha2) return directRedirect || null;
+        const captchaCode = yield solveNumericCaptcha2(captchaMatch[1]);
+        if (!/^\d{3,6}$/.test(String(captchaCode || ""))) return directRedirect || null;
+        const formFields = extractInputFields(html);
+        const captchaFieldName = findCaptchaFieldName(html, formFields);
+        formFields[captchaFieldName] = captchaCode;
+        const postResult = yield postRequest(new URLSearchParams(formFields).toString());
+        const postRedirect = postResult && postResult.location ? normalizeUrl(postResult.location, targetUrl) : extractUprotRedirect(postResult && postResult.data);
+        return postRedirect || directRedirect || null;
+      });
+    }
     function extractEmbedUrl(html, targetUrl) {
       const targetEmbed = String(targetUrl || "").match(/^https?:\/\/(?:www\.)?maxstream\.video\/emhuih\/([a-z0-9]+)/i);
       if (targetEmbed) return `https://maxstream.video/emhuih/${targetEmbed[1]}`;
@@ -8395,31 +8448,54 @@ var require_maxstream = __commonJS({
             const html = String(response.data || "");
             const directRedirect = extractUprotRedirect(html);
             if (directRedirect) lastDirectRedirect = directRedirect;
-            if (directRedirect && !/name=["']captcha["']/i.test(html)) return directRedirect;
-            const captchaMatch = html.match(/<img[^>]+src=["']data:image\/png;base64,([^"']+)["'][^>]*>/i);
-            if (!captchaMatch || !solveNumericCaptcha2) return directRedirect || null;
-            const captchaCode = yield solveNumericCaptcha2(captchaMatch[1]);
-            if (!/^\d{3}$/.test(String(captchaCode || ""))) continue;
-            const postHeaders = __spreadProps(__spreadValues({}, headers), {
-              "Referer": targetUrl,
-              "Content-Type": "application/x-www-form-urlencoded"
-            });
             const cookieHeader = getCookieHeader(response.headers && response.headers["set-cookie"]);
-            if (cookieHeader) postHeaders.Cookie = cookieHeader;
-            const postResponse = yield axios2({
-              url: targetUrl,
-              method: "POST",
-              data: new URLSearchParams({ captcha: captchaCode }).toString(),
-              headers: postHeaders,
-              maxRedirects: 0,
-              timeout: 2e4,
-              validateStatus: false
-            });
-            const postRedirect = postResponse.headers && postResponse.headers.location ? normalizeUrl(postResponse.headers.location, targetUrl) : extractUprotRedirect(postResponse.data);
+            const postRedirect = yield solveUprotCaptchaRedirect(html, targetUrl, (body) => __async(null, null, function* () {
+              const postHeaders = __spreadProps(__spreadValues({}, headers), {
+                "Referer": targetUrl,
+                "Origin": new URL(targetUrl).origin,
+                "Content-Type": "application/x-www-form-urlencoded"
+              });
+              if (cookieHeader) postHeaders.Cookie = cookieHeader;
+              const postResponse = yield axios2({
+                url: targetUrl,
+                method: "POST",
+                data: body,
+                headers: postHeaders,
+                maxRedirects: 0,
+                timeout: 2e4,
+                validateStatus: false
+              });
+              return {
+                location: postResponse.headers && postResponse.headers.location,
+                data: postResponse.data
+              };
+            }));
             if (postRedirect) return postRedirect;
           } catch (e) {
             if (attempt === 2) console.error("[Extractors] Uprot captcha resolution failed:", e.message);
           }
+        }
+        try {
+          const html = yield smartFetch2(targetUrl, "uprot", {
+            provider: "uprot",
+            headers
+          });
+          const smartRedirect = yield solveUprotCaptchaRedirect(html, targetUrl, (body) => __async(null, null, function* () {
+            const postHtml = yield smartFetch2(targetUrl, "uprot", {
+              provider: "uprot",
+              method: "POST",
+              body,
+              headers: __spreadProps(__spreadValues({}, headers), {
+                "Referer": targetUrl,
+                "Origin": new URL(targetUrl).origin,
+                "Content-Type": "application/x-www-form-urlencoded"
+              })
+            });
+            return { data: postHtml };
+          }));
+          if (smartRedirect) return smartRedirect;
+        } catch (e) {
+          console.error("[Extractors] Uprot smart captcha resolution failed:", e.message);
         }
         return lastDirectRedirect || null;
       });
@@ -8431,7 +8507,7 @@ var require_maxstream = __commonJS({
           if (targetUrl.startsWith("//")) targetUrl = `https:${targetUrl}`;
           if (targetUrl.includes("uprot.net")) {
             targetUrl = targetUrl.replace("/msf/", "/mse/");
-            const isProtectedUprot = /\/(?:msei|msfi|mseild|msefd)\//i.test(targetUrl);
+            const isProtectedUprot = /\/(?:msd|msei|msfi|mseild|msefd)\//i.test(targetUrl);
             const protectedRedirect = yield resolveUprotProtectedUrl(targetUrl, refererBase);
             if (protectedRedirect) {
               targetUrl = protectedRedirect;

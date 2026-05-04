@@ -59,10 +59,7 @@ def solve_uprot_components(ocr, img_data):
                 if area >= 25 and 5 <= w <= 42 and 8 <= h <= 42:
                     boxes.append((int(x), int(y), int(w), int(h), int(area)))
 
-            if len(boxes) > 3:
-                boxes = sorted(sorted(boxes, key=lambda item: item[4], reverse=True)[:3], key=lambda item: item[0])
-            else:
-                boxes = sorted(boxes, key=lambda item: item[0])
+            boxes = sorted(boxes, key=lambda item: item[0])
 
             code = ""
             for x, y, w, h, _area in boxes:
@@ -78,26 +75,91 @@ def solve_uprot_components(ocr, img_data):
                 if len(digit) == 1:
                     code += digit
 
-            if len(code) == 3:
+            if 3 <= len(code) <= 6:
                 return code
     except Exception:
         return ""
 
     return ""
 
+def solve_numeric_variants(ocr, img_data):
+    if cv2 is None or np is None or Image is None:
+        return ""
+
+    candidates = []
+
+    def add_candidate(image_array):
+        ok, encoded = cv2.imencode(".png", image_array)
+        if not ok:
+            return
+        value = normalize_numeric_captcha(ocr.classification(encoded.tobytes()))
+        if 3 <= len(value) <= 6:
+            candidates.append(value)
+
+    try:
+        image = Image.open(BytesIO(img_data)).convert("RGB")
+        arr = np.array(image)
+        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+
+        for threshold in range(80, 135, 10):
+            _, bw = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY_INV)
+            out = np.where(bw > 0, 0, 255).astype("uint8")
+            big = cv2.resize(out, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            add_candidate(big)
+
+        for threshold in range(90, 135, 10):
+            mask = (np.all(arr < threshold, axis=2)).astype("uint8") * 255
+            out = np.where(mask > 0, 0, 255).astype("uint8")
+            kernel = np.ones((2, 2), np.uint8)
+            variants = [
+                out,
+                cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel),
+                cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel),
+                cv2.dilate(out, kernel, iterations=1),
+            ]
+            for variant in variants:
+                big = cv2.resize(variant, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
+                add_candidate(big)
+
+        if not candidates:
+            return ""
+
+        counts = {}
+        for candidate in candidates:
+            counts[candidate] = counts.get(candidate, 0) + 1
+
+        return sorted(
+            counts,
+            key=lambda value: (counts[value], len(value)),
+            reverse=True
+        )[0]
+    except Exception:
+        return ""
+
 def solve_captcha(img_base64):
     try:
         ocr = ddddocr.DdddOcr(show_ad=False)
         img_data = base64.b64decode(img_base64)
         component_res = solve_uprot_components(ocr, img_data)
-        if component_res:
-            return component_res
+        variant_res = solve_numeric_variants(ocr, img_data)
 
         res = ocr.classification(img_data)
         
         # Normalizziamo il risultato
         final_res = normalize_numeric_captcha(res)
-        return final_res
+        candidates = [value for value in (component_res, variant_res, final_res) if 3 <= len(value) <= 6]
+        if not candidates:
+            return final_res
+
+        counts = {}
+        for candidate in candidates:
+            counts[candidate] = counts.get(candidate, 0) + 1
+
+        return sorted(
+            counts,
+            key=lambda value: (counts[value], len(value)),
+            reverse=True
+        )[0]
     except Exception as e:
         return ""
 
