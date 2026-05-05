@@ -41,7 +41,9 @@ done
 if [ "${FORCE_IPV4_ONLY:-1}" != "0" ]; then
     echo "[WARP] Forzo uscita IPv4-only..."
     for flag in /proc/sys/net/ipv6/conf/*/disable_ipv6; do
-        echo 1 > "$flag" 2>/dev/null || true
+        if [ -w "$flag" ]; then
+            printf '1' > "$flag" 2>/dev/null || true
+        fi
     done
     sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
     sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
