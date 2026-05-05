@@ -403,6 +403,7 @@
             Powered by <a href="https://github.com/realbestia1/" target="_blank">realbestia</a>
         </div>
 
+        <script id="initialConfig" type="application/json">{{initialConfigJson}}</script>
         <script>
             // Dynamic Install Link
             const currentHost = window.location.host;
@@ -418,6 +419,18 @@
             const providerCheckboxes = Array.from(document.querySelectorAll('.provider-checkbox'));
             let manifestUrl = '';
             let stremioUrl = '';
+
+            function readInitialConfig() {
+                const node = document.getElementById('initialConfig');
+                if (!node) return {};
+                try {
+                    return JSON.parse(node.textContent || '{}');
+                } catch {
+                    return {};
+                }
+            }
+
+            const initialConfig = readInitialConfig();
 
             function createEasyProxyRow(values = {}) {
                 const row = document.createElement('div');
@@ -454,6 +467,52 @@
                     .filter((entry) => entry.url);
             }
 
+            function normalizeInitialEasyProxyEntries(config) {
+                if (Array.isArray(config.easyProxies)) {
+                    return config.easyProxies
+                        .map((entry) => ({
+                            url: String(entry?.url || '').trim(),
+                            password: String(entry?.password || '').trim()
+                        }))
+                        .filter((entry) => entry.url);
+                }
+
+                const fallbackPassword = String(config.easyProxyPassword || '').trim();
+                return String(config.easyProxyUrls || config.easyProxyUrl || '')
+                    .split(/[\\s,]+/)
+                    .map((url) => ({ url: url.trim(), password: fallbackPassword }))
+                    .filter((entry) => entry.url);
+            }
+
+            function applyInitialConfig(config) {
+                if (easyCatalogsToggle) {
+                    easyCatalogsToggle.checked = ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(String(config.easyCatalogsLangIt || '').toLowerCase())
+                        || config.easyCatalogsLangIt === true;
+                }
+
+                if (easyProxyModeInput && config.easyProxyMode) {
+                    easyProxyModeInput.value = String(config.easyProxyMode);
+                }
+
+                const proxyEntries = normalizeInitialEasyProxyEntries(config);
+                if (easyProxyList) {
+                    easyProxyList.innerHTML = '';
+                    if (proxyEntries.length > 0) {
+                        proxyEntries.forEach((entry) => createEasyProxyRow(entry));
+                    } else {
+                        createEasyProxyRow();
+                    }
+                }
+
+                const disabledProviders = new Set(String(config.disabledProviders || '')
+                    .split(',')
+                    .map((name) => name.trim().toLowerCase())
+                    .filter(Boolean));
+                providerCheckboxes.forEach((input) => {
+                    input.checked = !disabledProviders.has(String(input.value || '').toLowerCase());
+                });
+            }
+
             function getConfigPath() {
                 const config = {};
                 if (easyCatalogsToggle && easyCatalogsToggle.checked) {
@@ -486,9 +545,6 @@
             if (easyCatalogsToggle) {
                 easyCatalogsToggle.addEventListener('change', updateInstallLinks);
             }
-            if (easyProxyList) {
-                createEasyProxyRow();
-            }
             if (addEasyProxyBtn) {
                 addEasyProxyBtn.addEventListener('click', () => {
                     createEasyProxyRow();
@@ -506,6 +562,7 @@
             providerCheckboxes.forEach((input) => {
                 input.addEventListener('change', updateInstallLinks);
             });
+            applyInitialConfig(initialConfig);
             updateInstallLinks();
             // Copy Link Logic
             copyBtn.addEventListener('click', async () => {

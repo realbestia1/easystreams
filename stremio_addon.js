@@ -1893,12 +1893,33 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
 const addonInterface = builder.getInterface();
 const addonRouter = getRouter(addonInterface);
 
-// Custom Landing Page
-app.get('/', (req, res) => {
+function parseConfigPathParam(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return {};
+    try {
+        const decoded = decodeURIComponent(raw);
+        const parsed = JSON.parse(decoded);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function sendConfigurePage(res, initialConfig = {}) {
     res.send(renderLandingPage({
         manifest: addonInterface.manifest,
-        providerNames: Object.keys(providers)
+        providerNames: Object.keys(providers),
+        initialConfig
     }));
+}
+
+// Custom Landing Page
+app.get('/', (req, res) => {
+    sendConfigurePage(res);
+});
+
+app.get('/:config/configure', (req, res) => {
+    sendConfigurePage(res, parseConfigPathParam(req.params.config));
 });
 
 app.use('/', addonRouter);
