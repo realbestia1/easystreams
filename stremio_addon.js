@@ -1449,6 +1449,7 @@ const builder = new addonBuilder({
             key: 'easyProxyMode',
             type: 'select',
             title: 'EasyProxy mode',
+            description: 'Failover: usa sempre il primo proxy della lista, passa al successivo solo se il primo è offline. Load-balance: alterna i proxy a ogni richiesta (Round Robin) per distribuire il carico.',
             options: ['failover', 'load-balance']
         },
         {
@@ -1462,9 +1463,12 @@ const builder = new addonBuilder({
 builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
     const easyProxyEntries = resolveEasyProxyEntriesFromConfig(config);
-    const easyProxyUrl = easyProxyEntries[0]?.url || '';
-    const easyProxyPassword = easyProxyEntries[0]?.password || '';
     const easyProxyMode = resolveEasyProxyModeFromConfig(config);
+    
+    // Pre-select a healthy proxy based on the configured failover/skip logic
+    const healthyProxyUrl = await buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, (url) => url);
+    const easyProxyUrl = healthyProxyUrl || (easyProxyEntries[0]?.url || '');
+    const easyProxyPassword = easyProxyEntries.find(e => e.url === easyProxyUrl)?.password || easyProxyEntries[0]?.password || '';
     const disabledProviders = resolveDisabledProvidersFromConfig(config);
     const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyEntriesToken(easyProxyEntries, easyProxyMode)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);

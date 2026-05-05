@@ -144,7 +144,7 @@ async function smartFetch(url, domain, options = {}) {
             headers: mergedHeaders,
             httpsAgent,
             httpAgent,
-            timeout: options.timeout || 20000,
+            timeout: options.timeout || 30000,
             validateStatus: false,
             responseType: options.responseType || 'text',
             ...options.axiosConfig
