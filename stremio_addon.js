@@ -1448,8 +1448,7 @@ const builder = new addonBuilder({
         {
             key: 'easyProxyMode',
             type: 'select',
-            title: 'EasyProxy mode',
-            description: 'Failover: usa sempre il primo proxy della lista, passa al successivo solo se il primo è offline. Load-balance: alterna i proxy a ogni richiesta (Round Robin) per distribuire il carico.',
+            title: 'EasyProxy mode (Failover: usa primo sano | Load-balance: alterna)',
             options: ['failover', 'load-balance']
         },
         {
