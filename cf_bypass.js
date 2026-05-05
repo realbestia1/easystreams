@@ -91,9 +91,14 @@ function execPythonBypass(url, provider, options) {
 
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
         
-        // Find python executable (prefer .venv if exists)
+        // Find python executable (prefer .venv if exists, fallback to python3 or python)
         const venvPython = path.join(process.cwd(), '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-        const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python';
+        let pythonExe = 'python3'; // Default for Linux/Docker
+        if (fs.existsSync(venvPython)) {
+            pythonExe = venvPython;
+        } else if (process.platform === 'win32') {
+            pythonExe = 'python';
+        }
 
         const child = spawn(pythonExe, args);
         let stdout = '';
