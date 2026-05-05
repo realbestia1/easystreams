@@ -67,14 +67,19 @@ function acquireGlobalSlot(provider, url) {
         }, GLOBAL_QUEUE_TIMEOUT);
 
         globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_QUEUE}: ${url}`);
+        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
     });
 }
 
-function execPythonBypass(url, provider, options) {
+function execPythonBypass(url, provider, options = {}) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, 'src', 'utils', 'scrapling_bypass.py');
-        const args = [scriptPath, url];
+        const args = [
+            scriptPath, 
+            url,
+            '--timeout', String(options.timeout || 60000),
+            '--wait-until', options.waitUntil || 'domcontentloaded'
+        ];
 
         if (options.method) {
             args.push('--method', options.method);
@@ -84,9 +89,6 @@ function execPythonBypass(url, provider, options) {
         }
         if (options.headers) {
             args.push('--headers', JSON.stringify(options.headers));
-        }
-        if (options.timeout) {
-            args.push('--timeout', String(options.timeout));
         }
 
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
@@ -113,20 +115,33 @@ function execPythonBypass(url, provider, options) {
         });
 
         child.on('close', (code) => {
+            // Check if we have valid JSON in stdout despite the exit code or stderr
+            // This handles cases where libraries print warnings to stderr and exit with non-zero codes
+            let result;
+            try {
+                if (stdout.trim()) {
+                    result = JSON.parse(stdout);
+                }
+            } catch (e) {
+                // Not valid JSON
+            }
+
+            if (result && result.status === 'ok') {
+                return resolve(result);
+            }
+
             if (code !== 0) {
                 console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
                 return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
             }
 
-            try {
-                const result = JSON.parse(stdout);
-                if (result.status === 'error') {
-                    return reject(new Error(result.message));
-                }
-                resolve(result);
-            } catch (e) {
-                console.error(`[SC][${provider}] Errore parsing output Python: ${stdout}`);
-                reject(new Error(`Failed to parse Scrapling output: ${e.message}`));
+            if (result && result.status === 'error') {
+                return reject(new Error(result.message));
+            }
+            
+            if (!result) {
+                console.error(`[SC][${provider}] Errore parsing output Python (Vuoto o non valido): ${stdout}`);
+                reject(new Error(`Failed to parse Scrapling output: Empty or invalid JSON`));
             }
         });
     });
@@ -140,7 +155,10 @@ async function runBypass(url, provider, options, sessionFile) {
         
         // Convert Scrapling cookies to FlareSolverr-like string and domains
         const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
-        const cookiesStr = cookiesList.map(c => `${c.name}=${c.value}`).join('; ');
+        const cookiesStr = cookiesList
+            .filter(c => c && c.name && c.value)
+            .map(c => `${c.name}=${c.value}`)
+            .join('; ');
         const cookieDomains = [...new Set(cookiesList.map(c => c.domain).filter(Boolean))];
 
         const data = {
@@ -149,6 +167,7 @@ async function runBypass(url, provider, options, sessionFile) {
             url: result.url,
             response: result.html,
             cookieDomains: cookieDomains,
+            requestHeaders: result.requestHeaders,
             timestamp: Date.now()
         };
 

@@ -3,7 +3,7 @@ const { sanitizeLogArgs } = require('./src/utils/log_sanitizer');
 
 try {
     require('dns').setDefaultResultOrder('ipv4first');
-} catch {}
+} catch { }
 
 // Polyfill fetch and related Web APIs
 if (typeof global.Blob === 'undefined') {
@@ -34,7 +34,7 @@ if (!global.fetch) {
 const https = require('https');
 const http = require('http');
 
-const LOG_LEVEL = String(process.env.LOG_LEVEL || 'warn').trim().toLowerCase();
+const LOG_LEVEL = String(process.env.LOG_LEVEL || 'info').trim().toLowerCase();
 const ENABLE_INFO_LOGS = ['debug', 'verbose', 'info'].includes(LOG_LEVEL);
 const VERBOSE_LOGS = ['debug', 'verbose'].includes(LOG_LEVEL);
 
@@ -1464,7 +1464,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
     const easyProxyEntries = resolveEasyProxyEntriesFromConfig(config);
     const easyProxyMode = resolveEasyProxyModeFromConfig(config);
-    
+
     // Pre-select a healthy proxy based on the configured failover/skip logic
     const healthyProxyUrl = await buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, (url) => url);
     const easyProxyUrl = healthyProxyUrl || (easyProxyEntries[0]?.url || '');
@@ -2040,9 +2040,10 @@ async function warmupGuardoserie() {
 
     try {
         console.log('[Warmup] Riscaldamento Guardoserie...');
-        await getClearance('https://guardoserie.run/wp-admin/admin-ajax.php', 'guardoserie', {
+        await getClearance('https://guardoserie.run/', 'guardoserie', {
             maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
-            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000)
+            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
+            waitUntil: 'network_idle'
         });
         console.log('[Warmup] Guardoserie pronto!');
     } catch (e) {

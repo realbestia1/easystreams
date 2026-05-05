@@ -1,8 +1,6 @@
 import sys
 import json
 import argparse
-import random
-import time
 from scrapling.fetchers import StealthyFetcher
 
 def main():
@@ -12,6 +10,7 @@ def main():
     parser.add_argument('--data', help='POST data (URL encoded string)')
     parser.add_argument('--headers', help='JSON string of headers')
     parser.add_argument('--timeout', type=int, default=60000, help='Timeout in ms')
+    parser.add_argument('--wait-until', default='domcontentloaded', help='Wait strategy (domcontentloaded/network_idle)')
     
     args = parser.parse_args()
     
@@ -22,10 +21,7 @@ def main():
         except:
             pass
 
-    # Extract user agent from headers if present
     user_agent = headers.pop('User-Agent', None) or headers.pop('user-agent', None)
-    
-    # Extract cookies from headers if present
     cookie_str = headers.pop('Cookie', None) or headers.pop('cookie', None)
     cookies = []
     if cookie_str:
@@ -34,25 +30,33 @@ def main():
                 name, value = c.strip().split('=', 1)
                 cookies.append({'name': name, 'value': value})
 
-    fetcher_kwargs = {
+    # Kwargs for the fetch method, as per Scrapling 0.2.x
+    fetch_kwargs = {
         'headless': True,
         'solve_cloudflare': True,
-        'network_idle': True,  # Wait for network to be idle
+        'wait_until': args.wait_until,
         'timeout': args.timeout,
         'extra_headers': headers,
         'cookies': cookies,
     }
     
     if user_agent:
-        fetcher_kwargs['useragent'] = user_agent
+        fetch_kwargs['useragent'] = user_agent
 
     try:
+        fetcher = StealthyFetcher()
         if args.method.upper() == 'POST':
-            # For POST, Scrapling's StealthyFetcher might need specific handling 
-            # if we want to submit a form. But for simple POST requests:
-            response = StealthyFetcher.fetch(args.url, method='POST', body=args.data, **fetcher_kwargs)
+            response = fetcher.fetch(args.url, method='POST', body=args.data, **fetch_kwargs)
         else:
-            response = StealthyFetcher.fetch(args.url, **fetcher_kwargs)
+            response = fetcher.fetch(args.url, **fetch_kwargs)
+
+        # Small extra wait to ensure cookies from late JS execution are captured
+        import time
+        time.sleep(1)
+
+        # Get User-Agent from request headers
+        req_headers = response.request_headers or {}
+        ua = req_headers.get('user-agent') or req_headers.get('User-Agent') or ""
 
         result = {
             'status': 'ok',
@@ -61,7 +65,8 @@ def main():
             'html': response.html_content,
             'headers': dict(response.headers),
             'cookies': response.cookies,
-            'userAgent': response.request_headers.get('User-Agent') or response.request_headers.get('user-agent')
+            'userAgent': ua,
+            'requestHeaders': req_headers
         }
         print(json.dumps(result))
         
