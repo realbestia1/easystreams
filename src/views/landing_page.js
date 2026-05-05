@@ -13,7 +13,16 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function renderLandingPage({ manifest, providerNames }) {
+function safeJsonScript(value) {
+    return JSON.stringify(value || {})
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/&/g, '\\u0026')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
+
+function renderLandingPage({ manifest, providerNames, initialConfig = {} }) {
     const safeManifest = manifest || {};
     const safeProviderNames = Array.isArray(providerNames) ? providerNames : [];
     const providersHtml = safeProviderNames
@@ -33,7 +42,8 @@ function renderLandingPage({ manifest, providerNames }) {
         .replaceAll('{{manifestVersion}}', escapeHtml(safeManifest.version || ''))
         .replaceAll('{{manifestDescription}}', escapeHtml(safeManifest.description || ''))
         .replaceAll('{{providersHtml}}', providersHtml)
-        .replaceAll('{{providerSettingsHtml}}', providerSettingsHtml);
+        .replaceAll('{{providerSettingsHtml}}', providerSettingsHtml)
+        .replaceAll('{{initialConfigJson}}', safeJsonScript(initialConfig));
 }
 
 module.exports = {
