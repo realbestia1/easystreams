@@ -61,7 +61,8 @@ console.log = (...args) => {
 console.warn = (...args) => originalConsoleWarn(...sanitizeLogArgs(args));
 console.error = (...args) => originalConsoleError(...sanitizeLogArgs(args));
 
-const flareManager = require('./flare_manager');
+// flareManager removed in favor of Scrapling
+
 const { getClearance, getStats: getFlareStats } = require('./cf_bypass');
 
 function logInfo(...args) {
@@ -98,10 +99,10 @@ function readPositiveIntEnv(name, fallback) {
     return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-app.get('/health/flaresolverr', (req, res) => {
+app.get('/health/scrapling', (req, res) => {
     res.json({
         ok: true,
-        flaresolverr: getFlareStats()
+        scrapling: getFlareStats()
     });
 });
 
@@ -2051,15 +2052,13 @@ async function warmupGuardoserie() {
 
 let server;
 (async () => {
-    // Avvia FlareSolverr come fallback runtime; warmup iniziale solo per Guardoserie.
+    // FlareSolverr startup removed (Scrapling is used on-demand)
     try {
-        await flareManager.start();
-        console.log('[FlareSolverr] Pronto.');
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
         });
     } catch (e) {
-        console.error('[Addon] Errore avvio FlareSolverr:', e.message);
+        console.error('[Addon] Errore durante warmup:', e.message);
     }
 
     server = app.listen(PORT, () => {
@@ -2070,7 +2069,7 @@ let server;
 // Graceful Shutdown
 process.on('SIGTERM', () => {
     logInfo('[Shutdown] SIGTERM received. Closing server...');
-    flareManager.stop();
+
     server.close(() => {
         logInfo('[Shutdown] Server closed.');
         httpsAgent.destroy();
@@ -2082,7 +2081,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
     logInfo('[Shutdown] SIGINT received. Closing server...');
-    flareManager.stop();
+
     server.close(() => {
         logInfo('[Shutdown] Server closed.');
         httpsAgent.destroy();

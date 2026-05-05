@@ -186,10 +186,18 @@ async function smartFetch(url, domain, options = {}) {
     };
 
     const isCfStatus = (errorOrResponse) => {
+        if (errorOrResponse && (errorOrResponse.code === 'ECONNABORTED' || errorOrResponse.message?.includes('timeout'))) {
+            return true; // Treat timeouts as potential CF challenges
+        }
         const status = errorOrResponse && errorOrResponse.response
             ? errorOrResponse.response.status
             : errorOrResponse && errorOrResponse.status;
         return status === 403 || status === 503;
+    };
+
+    const isCfChallenge = (html) => {
+        if (typeof html !== 'string') return false;
+        return /Just a moment|cf-browser-verification|turnstile|cf-challenge|Checking your browser/i.test(html);
     };
 
     const retryWithRedirectedSession = async (challengeUrl) => {
@@ -227,13 +235,12 @@ async function smartFetch(url, domain, options = {}) {
     try {
         const res = await doRequest(session);
         updateMetaFinalUrl(res);
-        if (res.status === 403 || res.status === 503) {
+        if (res.status === 403 || res.status === 503 || (res.status === 200 && isCfChallenge(res.data))) {
             throw { response: res };
         }
         if (session.cookies) {
             console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
         }
-          // caching disabled
         return res.data;
     } catch (err) {
         if (isCfStatus(err)) {
