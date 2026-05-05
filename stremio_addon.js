@@ -551,7 +551,16 @@ function buildEasyProxyHealthUrl(easyProxyUrl) {
 }
 
 async function shouldFailoverEasyProxy(proxyEntry) {
-    const healthUrl = buildEasyProxyHealthUrl(proxyEntry?.url);
+    const proxyUrl = proxyEntry?.url;
+    if (!proxyUrl) return false;
+
+    // Se l'URL non è HTTPS, lo consideriamo potenzialmente locale (localhost, IP privati, ecc.)
+    // In questi casi non vogliamo scartare il proxy anche se sembra lento o offline.
+    if (!proxyUrl.toLowerCase().startsWith('https:')) {
+        return false;
+    }
+
+    const healthUrl = buildEasyProxyHealthUrl(proxyUrl);
     if (!healthUrl || typeof fetch !== 'function') return false;
 
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -566,7 +575,7 @@ async function shouldFailoverEasyProxy(proxyEntry) {
         return status === 404 || status >= 500;
     } catch (error) {
         logVerbose(`[EasyProxy] Health check failed for ${healthUrl}: ${error.message}`);
-        return false;
+        return true;
     } finally {
         if (timeoutId) clearTimeout(timeoutId);
     }
@@ -585,7 +594,7 @@ async function buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, bu
         if (!shouldFailover) {
             return proxiedUrl;
         }
-        logVerbose(`[EasyProxy] ${buildEasyProxyHealthUrl(proxyEntry.url)} returned 404/5xx, trying next proxy`);
+        logVerbose(`[EasyProxy] ${buildEasyProxyHealthUrl(proxyEntry.url)} health check failed or timed out, trying next proxy`);
     }
 
     return fallbackUrl;
