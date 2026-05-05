@@ -142,6 +142,10 @@ const metrics = {
 
 // Monitoring Middleware
 app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Access-Control-Allow-Methods', '*');
+
     const start = Date.now();
     metrics.requests++;
 
@@ -1915,6 +1919,10 @@ function sendConfigurePage(res, initialConfig = {}) {
 
 // Custom Landing Page
 app.get('/', (req, res) => {
+    sendConfigurePage(res);
+});
+
+app.get('/configure', (req, res) => {
     sendConfigurePage(res);
 });
 
