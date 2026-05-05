@@ -551,7 +551,16 @@ function buildEasyProxyHealthUrl(easyProxyUrl) {
 }
 
 async function shouldFailoverEasyProxy(proxyEntry) {
-    const healthUrl = buildEasyProxyHealthUrl(proxyEntry?.url);
+    const proxyUrl = proxyEntry?.url;
+    if (!proxyUrl) return false;
+
+    // Se l'URL non è HTTPS, lo consideriamo potenzialmente locale (localhost, IP privati, ecc.)
+    // In questi casi non vogliamo scartare il proxy anche se sembra lento o offline.
+    if (!proxyUrl.toLowerCase().startsWith('https:')) {
+        return false;
+    }
+
+    const healthUrl = buildEasyProxyHealthUrl(proxyUrl);
     if (!healthUrl || typeof fetch !== 'function') return false;
 
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -566,7 +575,7 @@ async function shouldFailoverEasyProxy(proxyEntry) {
         return status === 404 || status >= 500;
     } catch (error) {
         logVerbose(`[EasyProxy] Health check failed for ${healthUrl}: ${error.message}`);
-        return false;
+        return true;
     } finally {
         if (timeoutId) clearTimeout(timeoutId);
     }
@@ -585,7 +594,7 @@ async function buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, bu
         if (!shouldFailover) {
             return proxiedUrl;
         }
-        logVerbose(`[EasyProxy] ${buildEasyProxyHealthUrl(proxyEntry.url)} returned 404/5xx, trying next proxy`);
+        logVerbose(`[EasyProxy] ${buildEasyProxyHealthUrl(proxyEntry.url)} health check failed or timed out, trying next proxy`);
     }
 
     return fallbackUrl;
@@ -1440,6 +1449,7 @@ const builder = new addonBuilder({
             key: 'easyProxyMode',
             type: 'select',
             title: 'EasyProxy mode',
+            description: 'Failover: usa sempre il primo proxy della lista, passa al successivo solo se il primo è offline. Load-balance: alterna i proxy a ogni richiesta (Round Robin) per distribuire il carico.',
             options: ['failover', 'load-balance']
         },
         {
@@ -1453,9 +1463,12 @@ const builder = new addonBuilder({
 builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
     const easyProxyEntries = resolveEasyProxyEntriesFromConfig(config);
-    const easyProxyUrl = easyProxyEntries[0]?.url || '';
-    const easyProxyPassword = easyProxyEntries[0]?.password || '';
     const easyProxyMode = resolveEasyProxyModeFromConfig(config);
+    
+    // Pre-select a healthy proxy based on the configured failover/skip logic
+    const healthyProxyUrl = await buildEasyProxyUrlWithFailover(easyProxyEntries, easyProxyMode, (url) => url);
+    const easyProxyUrl = healthyProxyUrl || (easyProxyEntries[0]?.url || '');
+    const easyProxyPassword = easyProxyEntries.find(e => e.url === easyProxyUrl)?.password || easyProxyEntries[0]?.password || '';
     const disabledProviders = resolveDisabledProvidersFromConfig(config);
     const requestKey = `${type}:${id}:lang:${getMappingLanguageToken(mappingLanguage)}:proxy:${getEasyProxyEntriesToken(easyProxyEntries, easyProxyMode)}:disabled:${getDisabledProvidersToken(disabledProviders)}`;
     const parsedRequest = parseStremioRequestId(type, id);
@@ -1917,6 +1930,15 @@ function sendConfigurePage(res, initialConfig = {}) {
     }));
 }
 
+function sendManifest(res) {
+    const manifest = JSON.parse(JSON.stringify(addonInterface.manifest));
+    manifest.behaviorHints = {
+        ...(manifest.behaviorHints || {}),
+        configurable: true
+    };
+    res.json(manifest);
+}
+
 // Custom Landing Page
 app.get('/', (req, res) => {
     sendConfigurePage(res);
@@ -1928,6 +1950,14 @@ app.get('/configure', (req, res) => {
 
 app.get('/:config/configure', (req, res) => {
     sendConfigurePage(res, parseConfigPathParam(req.params.config));
+});
+
+app.get('/manifest.json', (req, res) => {
+    sendManifest(res);
+});
+
+app.get('/:config/manifest.json', (req, res) => {
+    sendManifest(res);
 });
 
 app.use('/', addonRouter);
