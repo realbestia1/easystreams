@@ -178,6 +178,7 @@ const ENABLE_ANIME_FALLBACK_ON_SERIES = false;
 const ENABLE_ANIME_FALLBACK_ON_MOVIES = false;
 const FORCE_ALL_PROVIDERS = false;
 const ENABLE_TMDB_ANIME_DETECTION = true;
+const DEFAULT_DISABLED_PROVIDERS = new Set(['guardoserie']);
 const TMDB_ANIME_DETECTION_TIMEOUT = 1200;
 const TMDB_ANIME_CACHE_TTL = 21600000;
 const ADDON_CACHE_ENABLED = true;
@@ -453,8 +454,9 @@ function resolveEasyProxyModeFromConfig(config = null) {
 }
 
 function resolveDisabledProvidersFromConfig(config = null) {
+    const hasExplicitDisabledProviders = Object.prototype.hasOwnProperty.call(config || {}, 'disabledProviders');
     const raw = String(config?.disabledProviders || '').trim();
-    if (!raw) return new Set();
+    if (!hasExplicitDisabledProviders) return new Set(DEFAULT_DISABLED_PROVIDERS);
     return new Set(raw.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean));
 }
 

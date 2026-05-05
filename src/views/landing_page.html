@@ -505,7 +505,10 @@
                     }
                 }
 
-                const disabledProviders = new Set(String(config.disabledProviders || '')
+                const disabledProviderConfig = Object.prototype.hasOwnProperty.call(config || {}, 'disabledProviders')
+                    ? config.disabledProviders
+                    : 'guardoserie';
+                const disabledProviders = new Set(String(disabledProviderConfig || '')
                     .split(',')
                     .map((name) => name.trim().toLowerCase())
                     .filter(Boolean));
@@ -529,8 +532,9 @@
                 const disabledProviders = providerCheckboxes
                     .filter((input) => !input.checked)
                     .map((input) => input.value);
-                if (disabledProviders.length > 0) {
-                    config.disabledProviders = disabledProviders.join(',');
+                const disabledProvidersToken = disabledProviders.join(',');
+                if (disabledProvidersToken !== 'guardoserie') {
+                    config.disabledProviders = disabledProvidersToken;
                 }
                 if (Object.keys(config).length === 0) return '';
                 const encodedConfig = encodeURIComponent(JSON.stringify(config));

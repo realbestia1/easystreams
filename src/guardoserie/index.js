@@ -333,7 +333,6 @@ if (!IS_SERVER) {
         if (!url) return null;
         try {
             const html = await smartFetch(url, getGuardoserieBaseUrl(), {
-                timeout: 5000,
                 headers: {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
                 },
@@ -442,7 +441,7 @@ if (!IS_SERVER) {
                 // Estrazione dinamica del nonce se possibile
                 let nonce = '';
                 try {
-                    const homeHtml = await smartFetch(baseUrl, baseUrl, { timeout: 5000, provider: 'guardoserie', skipBypassOnFailure: true });
+                    const homeHtml = await smartFetch(baseUrl, baseUrl, { provider: 'guardoserie', skipBypassOnFailure: true });
                     const nonceMatch = homeHtml.match(/"nonce":"([a-z0-9]+)"/i);
                     if (nonceMatch) nonce = nonceMatch[1];
                 } catch (e) {
@@ -461,7 +460,6 @@ if (!IS_SERVER) {
                             'Referer': `${baseUrl}/`,
                             'Accept': 'text/html, */*; q=0.01'
                         },
-                        timeout: 5000, // Massimo 5 secondi come richiesto
                         provider: 'guardoserie',
                         skipBypassOnFailure: true
                     });

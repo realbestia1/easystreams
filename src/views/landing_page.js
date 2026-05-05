@@ -25,14 +25,22 @@ function safeJsonScript(value) {
 function renderLandingPage({ manifest, providerNames, initialConfig = {} }) {
     const safeManifest = manifest || {};
     const safeProviderNames = Array.isArray(providerNames) ? providerNames : [];
+    const disabledProviderConfig = Object.prototype.hasOwnProperty.call(initialConfig || {}, 'disabledProviders')
+        ? initialConfig.disabledProviders
+        : 'guardoserie';
+    const disabledProviders = new Set(String(disabledProviderConfig || '')
+        .split(',')
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean));
     const providersHtml = safeProviderNames
         .map((p) => `<div class="provider-tag">${escapeHtml(p)}</div>`)
         .join('');
     const providerSettingsHtml = safeProviderNames.map((p) => {
         const safeName = escapeHtml(p);
+        const checked = disabledProviders.has(String(p || '').toLowerCase()) ? '' : ' checked';
         return `
                     <label class="provider-option">
-                        <input type="checkbox" class="provider-checkbox" value="${safeName}" checked>
+                        <input type="checkbox" class="provider-checkbox" value="${safeName}"${checked}>
                         <span>${safeName}</span>
                     </label>`;
     }).join('');
