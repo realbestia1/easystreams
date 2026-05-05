@@ -1917,6 +1917,15 @@ function sendConfigurePage(res, initialConfig = {}) {
     }));
 }
 
+function sendManifest(res) {
+    const manifest = JSON.parse(JSON.stringify(addonInterface.manifest));
+    manifest.behaviorHints = {
+        ...(manifest.behaviorHints || {}),
+        configurable: true
+    };
+    res.json(manifest);
+}
+
 // Custom Landing Page
 app.get('/', (req, res) => {
     sendConfigurePage(res);
@@ -1928,6 +1937,14 @@ app.get('/configure', (req, res) => {
 
 app.get('/:config/configure', (req, res) => {
     sendConfigurePage(res, parseConfigPathParam(req.params.config));
+});
+
+app.get('/manifest.json', (req, res) => {
+    sendManifest(res);
+});
+
+app.get('/:config/manifest.json', (req, res) => {
+    sendManifest(res);
 });
 
 app.use('/', addonRouter);
