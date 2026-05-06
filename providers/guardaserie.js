@@ -7578,13 +7578,20 @@ var require_cf_bypass = __commonJS({
           reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
         }, GLOBAL_QUEUE_TIMEOUT);
         globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_QUEUE}: ${url}`);
+        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
       });
     }
-    function execPythonBypass(url, provider, options) {
+    function execPythonBypass(url, provider, options = {}) {
       return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "src", "utils", "scrapling_bypass.py");
-        const args = [scriptPath, url];
+        const args = [
+          scriptPath,
+          url,
+          "--timeout",
+          String(options.timeout || 6e4),
+          "--wait-until",
+          options.waitUntil || "domcontentloaded"
+        ];
         if (options.method) {
           args.push("--method", options.method);
         }
@@ -7594,12 +7601,14 @@ var require_cf_bypass = __commonJS({
         if (options.headers) {
           args.push("--headers", JSON.stringify(options.headers));
         }
-        if (options.timeout) {
-          args.push("--timeout", String(options.timeout));
-        }
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
         const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-        const pythonExe = fs.existsSync(venvPython) ? venvPython : "python";
+        let pythonExe = "python3";
+        if (fs.existsSync(venvPython)) {
+          pythonExe = venvPython;
+        } else if (process.platform === "win32") {
+          pythonExe = "python";
+        }
         const child = spawn(pythonExe, args);
         let stdout = "";
         let stderr = "";
@@ -7610,19 +7619,26 @@ var require_cf_bypass = __commonJS({
           stderr += data.toString();
         });
         child.on("close", (code) => {
+          let result;
+          try {
+            if (stdout.trim()) {
+              result = JSON.parse(stdout);
+            }
+          } catch (e) {
+          }
+          if (result && result.status === "ok") {
+            return resolve(result);
+          }
           if (code !== 0) {
             console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
             return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
           }
-          try {
-            const result = JSON.parse(stdout);
-            if (result.status === "error") {
-              return reject(new Error(result.message));
-            }
-            resolve(result);
-          } catch (e) {
-            console.error(`[SC][${provider}] Errore parsing output Python: ${stdout}`);
-            reject(new Error(`Failed to parse Scrapling output: ${e.message}`));
+          if (result && result.status === "error") {
+            return reject(new Error(result.message));
+          }
+          if (!result) {
+            console.error(`[SC][${provider}] Errore parsing output Python (Vuoto o non valido): ${stdout}`);
+            reject(new Error(`Failed to parse Scrapling output: Empty or invalid JSON`));
           }
         });
       });
@@ -7633,7 +7649,7 @@ var require_cf_bypass = __commonJS({
         try {
           const result = yield execPythonBypass(url, provider, options);
           const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
-          const cookiesStr = cookiesList.map((c) => `${c.name}=${c.value}`).join("; ");
+          const cookiesStr = cookiesList.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
           const cookieDomains = [...new Set(cookiesList.map((c) => c.domain).filter(Boolean))];
           const data = {
             userAgent: result.userAgent,
@@ -7641,6 +7657,7 @@ var require_cf_bypass = __commonJS({
             url: result.url,
             response: result.html,
             cookieDomains,
+            requestHeaders: result.requestHeaders,
             timestamp: Date.now()
           };
           try {
@@ -7690,8 +7707,10 @@ var require_cf_handler = __commonJS({
     };
     var httpsAgent = new https.Agent(agentOptions);
     var httpAgent = new http.Agent(agentOptions);
+    var sessionCache = /* @__PURE__ */ new Map();
     function smartFetch2(_0, _1) {
       return __async(this, arguments, function* (url, domain, options = {}) {
+        var _a, _b;
         const getHost = (u) => {
           try {
             return new URL(u).hostname.replace("www.", "");
@@ -7719,6 +7738,13 @@ var require_cf_handler = __commonJS({
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
         const loadSession = (providerName = provider, targetHost = urlHost) => {
           const targetSessionFile = sessionFileForProvider(providerName);
+          if (providerName !== "guardoserie") {
+            const cached = sessionCache.get(providerName);
+            if (cached && cached.cookies && Date.now() - cached.timestamp < 115 * 60 * 1e3) {
+              console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
+              return cached;
+            }
+          }
           if (fs.existsSync(targetSessionFile)) {
             try {
               const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
@@ -7751,7 +7777,9 @@ var require_cf_handler = __commonJS({
                   } catch (e) {
                   }
                 }
-                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                if (providerName !== "guardoserie") {
+                  sessionCache.set(providerName, data);
+                }
                 return data;
               }
             } catch (e) {
@@ -7763,62 +7791,85 @@ var require_cf_handler = __commonJS({
         let session = loadSession();
         let currentUrl = url;
         if (session.url) {
-          try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            const currentHost = currentUrlObj.hostname.toLowerCase();
-            const sessionHost = sessionUrl.hostname.toLowerCase();
-            if (sessionHost !== currentHost) {
-              const sessionParts = sessionHost.split(".");
-              const currentParts = currentHost.split(".");
-              const sessionRoot = sessionParts.slice(-2).join(".");
-              const currentRoot = currentParts.slice(-2).join(".");
-              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
-                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
-                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
-              }
-            }
-          } catch (e) {
-          }
         }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          var _a, _b, _c, _d, _e;
+        if (!session.cookies && provider === "guardoserie") {
+          console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
+        }
+        const doRequest = (_02, _12, ..._2) => __async(null, [_02, _12, ..._2], function* (targetUrl, sess, reqOptions = {}) {
+          var _a2, _b2, _c, _d, _e;
           const mergedHeaders = __spreadValues({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
+          }, reqOptions.headers);
           if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+            mergedHeaders["user-agent"] = sess.userAgent;
+            delete mergedHeaders["User-Agent"];
+          } else if (!mergedHeaders["user-agent"] && !mergedHeaders["User-Agent"]) {
+            mergedHeaders["user-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
           }
           if (sess.cookies) {
             const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            mergedHeaders.cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            delete mergedHeaders["Cookie"];
           }
-          const response = yield axios(__spreadValues({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 3e4,
-            validateStatus: false,
-            responseType: options.responseType || "text"
-          }, options.axiosConfig));
-          const data = response.data;
-          const responseUrl = ((_b = (_a = response.request) == null ? void 0 : _a.res) == null ? void 0 : _b.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const quietHttpErrors = options.quietHttpErrors === true || Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status);
-            if (!quietHttpErrors) {
-              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+          if (sess.requestHeaders) {
+            const browserHeaders = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site"];
+            for (const h of browserHeaders) {
+              if (sess.requestHeaders[h]) mergedHeaders[h] = sess.requestHeaders[h];
             }
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: responseUrl };
-            throw err;
           }
-          return { data, status: response.status, headers: response.headers, url: responseUrl };
+          const startTime = Date.now();
+          const requestTimeout = reqOptions.timeout ? reqOptions.timeout : sess.userAgent ? 6e4 : 3e4;
+          console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
+          const source = axios.CancelToken.source();
+          let timeoutId;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              source.cancel("timeout");
+              const err = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              err.code = "ECONNABORTED";
+              reject(err);
+            }, requestTimeout);
+          });
+          try {
+            const axiosPromise = axios(__spreadValues({
+              url: targetUrl,
+              method: reqOptions.method || "GET",
+              data: reqOptions.body,
+              headers: mergedHeaders,
+              httpsAgent,
+              httpAgent,
+              cancelToken: source.token,
+              validateStatus: false,
+              responseType: reqOptions.responseType || "text"
+            }, reqOptions.axiosConfig));
+            const response = yield Promise.race([axiosPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
+            const duration = Date.now() - startTime;
+            if (sess.cookies) {
+              console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
+            }
+            const data = response.data;
+            const responseUrl = ((_b2 = (_a2 = response.request) == null ? void 0 : _a2.res) == null ? void 0 : _b2.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
+            if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+              const quietHttpErrors = reqOptions.quietHttpErrors === true || Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status);
+              if (!quietHttpErrors) {
+                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+              }
+              const err = new Error(`HTTP ${response.status}`);
+              err.response = { status: response.status, data, url: responseUrl };
+              throw err;
+            }
+            return { data, status: response.status, headers: response.headers, url: responseUrl };
+          } catch (e) {
+            clearTimeout(timeoutId);
+            if (axios.isCancel(e) || e.code === "ECONNABORTED") {
+              const timeoutErr = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              timeoutErr.code = "ECONNABORTED";
+              throw timeoutErr;
+            }
+            throw e;
+          }
         });
         const updateMetaFinalUrl = (res) => {
           if (!options.meta || !res || !res.url) return;
@@ -7835,8 +7886,8 @@ var require_cf_handler = __commonJS({
           return true;
         };
         const isCfStatus = (errorOrResponse) => {
-          var _a;
-          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a = errorOrResponse.message) == null ? void 0 : _a.includes("timeout")))) {
+          var _a2;
+          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a2 = errorOrResponse.message) == null ? void 0 : _a2.includes("timeout")))) {
             return true;
           }
           const status = errorOrResponse && errorOrResponse.response ? errorOrResponse.response.status : errorOrResponse && errorOrResponse.status;
@@ -7859,7 +7910,7 @@ var require_cf_handler = __commonJS({
           if (!redirectedSession || !redirectedSession.cookies) return null;
           console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
           try {
-            const redirectedRes = yield doRequest(redirectedSession, challengeUrl);
+            const redirectedRes = yield doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
             if (redirectedRes.status === 403 || redirectedRes.status === 503) {
               try {
@@ -7882,13 +7933,14 @@ var require_cf_handler = __commonJS({
           }
         });
         try {
-          const res = yield doRequest(session);
+          const res = yield doRequest(currentUrl, session, options);
           updateMetaFinalUrl(res);
           if (res.status === 403 || res.status === 503 || res.status === 200 && isCfChallenge(res.data)) {
             throw { response: res };
           }
           if (session.cookies) {
-            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+            if (res.headers["set-cookie"]) {
+            }
           }
           return res.data;
         } catch (err) {
@@ -7896,6 +7948,8 @@ var require_cf_handler = __commonJS({
             if (options.skipBypassOnFailure) {
               throw err;
             }
+            const errorMsg = err.code === "ECONNABORTED" || ((_a = err.message) == null ? void 0 : _a.includes("timeout")) ? "Timeout richiesta" : ((_b = err.response) == null ? void 0 : _b.status) || err.message;
+            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = yield retryWithRedirectedSession(challengeUrl);
             if (redirectedData !== null) {

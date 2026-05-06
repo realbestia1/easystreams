@@ -24,6 +24,7 @@ if (!IS_SERVER) {
 
     // SIAMO SU SERVER: carichiamo le librerie pesanti
     const { smartFetch } = require('../utils/cf_handler');
+    let guardoserieDisabledUntil = 0;
     const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
     const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require('../extractors');
     const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
@@ -364,6 +365,11 @@ if (!IS_SERVER) {
             if (!STEP_BENCH_ENABLED) return;
             bench.push({ step, t: Date.now() - benchStart, ...meta });
         };
+
+        if (Date.now() < guardoserieDisabledUntil) {
+            console.log(`[Guardoserie] Provider temporaneamente disabilitato fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
+            return [];
+        }
         try {
             const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
             if (!baseUrl) {
@@ -437,7 +443,7 @@ if (!IS_SERVER) {
             // 1. Ricerca AJAX Ufficiale (Senza indovinelli)
             const searchProvider = async (query) => {
                 const searchStartedAt = Date.now();
-                
+
                 // Estrazione dinamica del nonce se possibile
                 let nonce = '';
                 try {
@@ -461,14 +467,20 @@ if (!IS_SERVER) {
                             'Accept': 'text/html, */*; q=0.01'
                         },
                         provider: 'guardoserie',
-                        skipBypassOnFailure: true
+                        skipBypassOnFailure: true,
+                        timeout: 1000
                     });
 
                     const results = extractSearchResultsFromHtml(ajaxHtml, baseUrl);
                     mark('search_query_done', { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: 'ajax' });
                     return results;
                 } catch (e) {
-                    console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
+                    if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+                        guardoserieDisabledUntil = Date.now() + 3600000;
+                        console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per 1 ora.`);
+                    } else {
+                        console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
+                    }
                     return [];
                 }
             };
@@ -610,7 +622,7 @@ if (!IS_SERVER) {
 
         console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
         const displayName = (type === 'tv' || type === 'series') ? `${title} ${effectiveSeason}x${effectiveEpisode}` : title;
-        
+
         const streamPromises = playerLinks.map(async (playerLink) => {
             try {
                 if (playerLink.includes('loadm')) {
@@ -650,7 +662,7 @@ if (!IS_SERVER) {
                         }, 'Guardoserie')];
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
             return [];
         });
 

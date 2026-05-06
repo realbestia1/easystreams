@@ -343,13 +343,20 @@ var require_cf_bypass = __commonJS({
           reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
         }, GLOBAL_QUEUE_TIMEOUT);
         globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_QUEUE}: ${url}`);
+        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
       });
     }
-    function execPythonBypass(url, provider, options) {
+    function execPythonBypass(url, provider, options = {}) {
       return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "src", "utils", "scrapling_bypass.py");
-        const args = [scriptPath, url];
+        const args = [
+          scriptPath,
+          url,
+          "--timeout",
+          String(options.timeout || 6e4),
+          "--wait-until",
+          options.waitUntil || "domcontentloaded"
+        ];
         if (options.method) {
           args.push("--method", options.method);
         }
@@ -359,12 +366,14 @@ var require_cf_bypass = __commonJS({
         if (options.headers) {
           args.push("--headers", JSON.stringify(options.headers));
         }
-        if (options.timeout) {
-          args.push("--timeout", String(options.timeout));
-        }
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
         const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-        const pythonExe = fs.existsSync(venvPython) ? venvPython : "python";
+        let pythonExe = "python3";
+        if (fs.existsSync(venvPython)) {
+          pythonExe = venvPython;
+        } else if (process.platform === "win32") {
+          pythonExe = "python";
+        }
         const child = spawn(pythonExe, args);
         let stdout = "";
         let stderr = "";
@@ -375,19 +384,26 @@ var require_cf_bypass = __commonJS({
           stderr += data.toString();
         });
         child.on("close", (code) => {
+          let result;
+          try {
+            if (stdout.trim()) {
+              result = JSON.parse(stdout);
+            }
+          } catch (e) {
+          }
+          if (result && result.status === "ok") {
+            return resolve(result);
+          }
           if (code !== 0) {
             console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
             return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
           }
-          try {
-            const result = JSON.parse(stdout);
-            if (result.status === "error") {
-              return reject(new Error(result.message));
-            }
-            resolve(result);
-          } catch (e) {
-            console.error(`[SC][${provider}] Errore parsing output Python: ${stdout}`);
-            reject(new Error(`Failed to parse Scrapling output: ${e.message}`));
+          if (result && result.status === "error") {
+            return reject(new Error(result.message));
+          }
+          if (!result) {
+            console.error(`[SC][${provider}] Errore parsing output Python (Vuoto o non valido): ${stdout}`);
+            reject(new Error(`Failed to parse Scrapling output: Empty or invalid JSON`));
           }
         });
       });
@@ -398,7 +414,7 @@ var require_cf_bypass = __commonJS({
         try {
           const result = yield execPythonBypass(url, provider, options);
           const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
-          const cookiesStr = cookiesList.map((c) => `${c.name}=${c.value}`).join("; ");
+          const cookiesStr = cookiesList.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
           const cookieDomains = [...new Set(cookiesList.map((c) => c.domain).filter(Boolean))];
           const data = {
             userAgent: result.userAgent,
@@ -406,6 +422,7 @@ var require_cf_bypass = __commonJS({
             url: result.url,
             response: result.html,
             cookieDomains,
+            requestHeaders: result.requestHeaders,
             timestamp: Date.now()
           };
           try {
@@ -455,8 +472,10 @@ var require_cf_handler = __commonJS({
     };
     var httpsAgent = new https.Agent(agentOptions);
     var httpAgent = new http.Agent(agentOptions);
+    var sessionCache = /* @__PURE__ */ new Map();
     function smartFetch(_0, _1) {
       return __async(this, arguments, function* (url, domain, options = {}) {
+        var _a, _b;
         const getHost = (u) => {
           try {
             return new URL(u).hostname.replace("www.", "");
@@ -484,6 +503,13 @@ var require_cf_handler = __commonJS({
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
         const loadSession = (providerName = provider, targetHost = urlHost) => {
           const targetSessionFile = sessionFileForProvider(providerName);
+          if (providerName !== "guardoserie") {
+            const cached = sessionCache.get(providerName);
+            if (cached && cached.cookies && Date.now() - cached.timestamp < 115 * 60 * 1e3) {
+              console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
+              return cached;
+            }
+          }
           if (fs.existsSync(targetSessionFile)) {
             try {
               const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
@@ -516,7 +542,9 @@ var require_cf_handler = __commonJS({
                   } catch (e) {
                   }
                 }
-                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                if (providerName !== "guardoserie") {
+                  sessionCache.set(providerName, data);
+                }
                 return data;
               }
             } catch (e) {
@@ -528,62 +556,85 @@ var require_cf_handler = __commonJS({
         let session = loadSession();
         let currentUrl = url;
         if (session.url) {
-          try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            const currentHost = currentUrlObj.hostname.toLowerCase();
-            const sessionHost = sessionUrl.hostname.toLowerCase();
-            if (sessionHost !== currentHost) {
-              const sessionParts = sessionHost.split(".");
-              const currentParts = currentHost.split(".");
-              const sessionRoot = sessionParts.slice(-2).join(".");
-              const currentRoot = currentParts.slice(-2).join(".");
-              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
-                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
-                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
-              }
-            }
-          } catch (e) {
-          }
         }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          var _a, _b, _c, _d, _e;
+        if (!session.cookies && provider === "guardoserie") {
+          console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
+        }
+        const doRequest = (_02, _12, ..._2) => __async(null, [_02, _12, ..._2], function* (targetUrl2, sess, reqOptions = {}) {
+          var _a2, _b2, _c, _d, _e;
           const mergedHeaders = __spreadValues({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
+          }, reqOptions.headers);
           if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+            mergedHeaders["user-agent"] = sess.userAgent;
+            delete mergedHeaders["User-Agent"];
+          } else if (!mergedHeaders["user-agent"] && !mergedHeaders["User-Agent"]) {
+            mergedHeaders["user-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
           }
           if (sess.cookies) {
             const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            mergedHeaders.cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            delete mergedHeaders["Cookie"];
           }
-          const response = yield axios(__spreadValues({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 3e4,
-            validateStatus: false,
-            responseType: options.responseType || "text"
-          }, options.axiosConfig));
-          const data = response.data;
-          const responseUrl = ((_b = (_a = response.request) == null ? void 0 : _a.res) == null ? void 0 : _b.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const quietHttpErrors = options.quietHttpErrors === true || Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status);
-            if (!quietHttpErrors) {
-              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+          if (sess.requestHeaders) {
+            const browserHeaders = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site"];
+            for (const h of browserHeaders) {
+              if (sess.requestHeaders[h]) mergedHeaders[h] = sess.requestHeaders[h];
             }
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: responseUrl };
-            throw err;
           }
-          return { data, status: response.status, headers: response.headers, url: responseUrl };
+          const startTime = Date.now();
+          const requestTimeout = reqOptions.timeout ? reqOptions.timeout : sess.userAgent ? 6e4 : 3e4;
+          console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
+          const source = axios.CancelToken.source();
+          let timeoutId;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              source.cancel("timeout");
+              const err = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              err.code = "ECONNABORTED";
+              reject(err);
+            }, requestTimeout);
+          });
+          try {
+            const axiosPromise = axios(__spreadValues({
+              url: targetUrl2,
+              method: reqOptions.method || "GET",
+              data: reqOptions.body,
+              headers: mergedHeaders,
+              httpsAgent,
+              httpAgent,
+              cancelToken: source.token,
+              validateStatus: false,
+              responseType: reqOptions.responseType || "text"
+            }, reqOptions.axiosConfig));
+            const response = yield Promise.race([axiosPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
+            const duration = Date.now() - startTime;
+            if (sess.cookies) {
+              console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
+            }
+            const data = response.data;
+            const responseUrl = ((_b2 = (_a2 = response.request) == null ? void 0 : _a2.res) == null ? void 0 : _b2.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl2;
+            if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+              const quietHttpErrors = reqOptions.quietHttpErrors === true || Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status);
+              if (!quietHttpErrors) {
+                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+              }
+              const err = new Error(`HTTP ${response.status}`);
+              err.response = { status: response.status, data, url: responseUrl };
+              throw err;
+            }
+            return { data, status: response.status, headers: response.headers, url: responseUrl };
+          } catch (e) {
+            clearTimeout(timeoutId);
+            if (axios.isCancel(e) || e.code === "ECONNABORTED") {
+              const timeoutErr = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              timeoutErr.code = "ECONNABORTED";
+              throw timeoutErr;
+            }
+            throw e;
+          }
         });
         const updateMetaFinalUrl = (res) => {
           if (!options.meta || !res || !res.url) return;
@@ -600,8 +651,8 @@ var require_cf_handler = __commonJS({
           return true;
         };
         const isCfStatus = (errorOrResponse) => {
-          var _a;
-          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a = errorOrResponse.message) == null ? void 0 : _a.includes("timeout")))) {
+          var _a2;
+          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a2 = errorOrResponse.message) == null ? void 0 : _a2.includes("timeout")))) {
             return true;
           }
           const status = errorOrResponse && errorOrResponse.response ? errorOrResponse.response.status : errorOrResponse && errorOrResponse.status;
@@ -624,7 +675,7 @@ var require_cf_handler = __commonJS({
           if (!redirectedSession || !redirectedSession.cookies) return null;
           console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
           try {
-            const redirectedRes = yield doRequest(redirectedSession, challengeUrl);
+            const redirectedRes = yield doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
             if (redirectedRes.status === 403 || redirectedRes.status === 503) {
               try {
@@ -647,13 +698,14 @@ var require_cf_handler = __commonJS({
           }
         });
         try {
-          const res = yield doRequest(session);
+          const res = yield doRequest(currentUrl, session, options);
           updateMetaFinalUrl(res);
           if (res.status === 403 || res.status === 503 || res.status === 200 && isCfChallenge(res.data)) {
             throw { response: res };
           }
           if (session.cookies) {
-            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+            if (res.headers["set-cookie"]) {
+            }
           }
           return res.data;
         } catch (err) {
@@ -661,6 +713,8 @@ var require_cf_handler = __commonJS({
             if (options.skipBypassOnFailure) {
               throw err;
             }
+            const errorMsg = err.code === "ECONNABORTED" || ((_a = err.message) == null ? void 0 : _a.includes("timeout")) ? "Timeout richiesta" : ((_b = err.response) == null ? void 0 : _b.status) || err.message;
+            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = yield retryWithRedirectedSession(challengeUrl);
             if (redirectedData !== null) {
@@ -818,8 +872,8 @@ var require_mixdrop = __commonJS({
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const fetchHtml = (targetUrl, referer) => __async(null, null, function* () {
-            const response = yield fetch(targetUrl, {
+          const fetchHtml = (targetUrl2, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl2, {
               headers: {
                 "User-Agent": USER_AGENT,
                 "Referer": referer
@@ -827,7 +881,7 @@ var require_mixdrop = __commonJS({
             });
             if (!response.ok) return null;
             return {
-              url: response.url || targetUrl,
+              url: response.url || targetUrl2,
               html: yield response.text()
             };
           });
@@ -8106,6 +8160,8 @@ var require_guardoserie = __commonJS({
           results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
         };
         const patterns = [
+          new RegExp(`<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*ml-mask[^"']*["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
+          new RegExp(`<div[^>]*class=["'][^"']*ml-item[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+)["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
           /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
           /<a[^>]+class=["'][^"']*ss-title[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
           /<a[^>]+href=["']([^"']+)["'][^>]+class=["'][^"']*ss-title[^"']*["'][^>]*>(.*?)<\/a>/gi
@@ -8153,6 +8209,7 @@ var require_guardoserie = __commonJS({
       };
       getGuardoserieBaseUrl = getGuardoserieBaseUrl2, getMappingApiUrl = getMappingApiUrl2, normalizeConfigBoolean = normalizeConfigBoolean2, getMappingLanguage = getMappingLanguage2, extractEpisodeUrlFromSeriesPage = extractEpisodeUrlFromSeriesPage2, normalizePlayerLink = normalizePlayerLink2, extractPlayerLinksFromHtml = extractPlayerLinksFromHtml2, getQualityFromName = getQualityFromName2, normalizeBaseUrl = normalizeBaseUrl2, resolveCandidateUrl = resolveCandidateUrl2, isSameHost = isSameHost2, extractSearchResultsFromHtml = extractSearchResultsFromHtml2, decodeEntitiesBasic = decodeEntitiesBasic2, normalizeTitle = normalizeTitle2, slugifyTitle = slugifyTitle2, extractTitleFromHtml = extractTitleFromHtml2, htmlMatchesTitle = htmlMatchesTitle2;
       const { smartFetch } = require_cf_handler();
+      let guardoserieDisabledUntil = 0;
       const { USER_AGENT, getProxiedUrl } = require_common();
       const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
@@ -8206,43 +8263,17 @@ var require_guardoserie = __commonJS({
       function tryFetchPageHtml(url) {
         return __async(this, null, function* () {
           if (!url) return null;
-          const html = yield smartFetch(url, getGuardoserieBaseUrl2(), {
-            headers: {
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            }
-          });
-          return html;
-        });
-      }
-      function guessUrlFromSlug(baseUrl, title, originalTitle) {
-        return __async(this, null, function* () {
-          const candidates = /* @__PURE__ */ new Set();
-          const slugs = [slugifyTitle2(title), slugifyTitle2(originalTitle)].filter(Boolean);
-          const patterns = [
-            (slug) => `${baseUrl}/${slug}/`,
-            (slug) => `${baseUrl}/film/${slug}/`,
-            (slug) => `${baseUrl}/movie/${slug}/`,
-            (slug) => `${baseUrl}/serie/${slug}/`,
-            (slug) => `${baseUrl}/serietv/${slug}/`
-          ];
-          for (const slug of slugs) {
-            for (const makeUrl of patterns) {
-              candidates.add(makeUrl(slug));
-            }
-          }
-          const candidateArray = Array.from(candidates);
-          const results = yield Promise.all(candidateArray.map((url) => __async(null, null, function* () {
-            try {
-              const html = yield tryFetchPageHtml(url);
-              if (html && htmlMatchesTitle2(html, title, originalTitle)) {
-                return url;
-              }
-            } catch (e) {
-            }
+          try {
+            const html = yield smartFetch(url, getGuardoserieBaseUrl2(), {
+              headers: {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+              },
+              provider: "guardoserie"
+            });
+            return html;
+          } catch (e) {
             return null;
-          })));
-          return results.find(Boolean) || null;
+          }
         });
       }
       function getShowInfo(tmdbId, type) {
@@ -8268,6 +8299,10 @@ var require_guardoserie = __commonJS({
             if (!STEP_BENCH_ENABLED) return;
             bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
           };
+          if (Date.now() < guardoserieDisabledUntil) {
+            console.log(`[Guardoserie] Provider temporaneamente disabilitato fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
+            return [];
+          }
           try {
             const baseUrl = normalizeBaseUrl2(getGuardoserieBaseUrl2());
             if (!baseUrl) {
@@ -8326,25 +8361,44 @@ var require_guardoserie = __commonJS({
             const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
             console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
             const searchProvider = (query) => __async(null, null, function* () {
+              var _a2;
               const searchStartedAt = Date.now();
-              const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-              const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
-              const [ajaxHtml, fallbackHtml] = yield Promise.all([
-                smartFetch(searchUrl, baseUrl, {
-                  method: "POST",
-                  body,
-                  headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                  provider: "guardoserie"
-                }).catch(() => ""),
-                smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, { provider: "guardoserie" }).catch(() => "")
-              ]);
-              const ajaxResults = ajaxHtml ? extractSearchResultsFromHtml2(ajaxHtml, baseUrl) : [];
-              const fallbackResults = fallbackHtml ? extractSearchResultsFromHtml2(fallbackHtml, baseUrl) : [];
-              const results = [...ajaxResults, ...fallbackResults];
-              mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length });
-              return results;
+              let nonce = "";
+              try {
+                const homeHtml = yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie", skipBypassOnFailure: true });
+                const nonceMatch = homeHtml.match(/"nonce":"([a-z0-9]+)"/i);
+                if (nonceMatch) nonce = nonceMatch[1];
+              } catch (e) {
+                console.log(`[Guardoserie] Could not fetch nonce from homepage`);
+              }
+              let searchUrl = `${baseUrl}/wp-admin/admin-ajax.php?s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
+              if (nonce) searchUrl += `&_wpnonce=${nonce}`;
+              try {
+                const ajaxHtml = yield smartFetch(searchUrl, baseUrl, {
+                  method: "GET",
+                  headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": `${baseUrl}/`,
+                    "Accept": "text/html, */*; q=0.01"
+                  },
+                  provider: "guardoserie",
+                  skipBypassOnFailure: true,
+                  timeout: 1e3
+                });
+                const results = extractSearchResultsFromHtml2(ajaxHtml, baseUrl);
+                mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: "ajax" });
+                return results;
+              } catch (e) {
+                if (e.code === "ECONNABORTED" || ((_a2 = e.message) == null ? void 0 : _a2.includes("timeout"))) {
+                  guardoserieDisabledUntil = Date.now() + 36e5;
+                  console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per 1 ora.`);
+                } else {
+                  console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
+                }
+                return [];
+              }
             });
-            const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2)));
+            const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2).map((q) => q.toLowerCase()))).slice(0, 2);
             const searchPromises = queries.map((q) => searchProvider(q));
             const allResultsArray = yield Promise.all(searchPromises);
             let allResults = allResultsArray.flat();
@@ -8376,7 +8430,7 @@ var require_guardoserie = __commonJS({
               if (!exactA && exactB) return 1;
               return 0;
             });
-            let targetUrl = null;
+            targetUrl = null;
             let bestNoYearMatch = null;
             let bestNoYearScore = 0;
             const topResults = allResults.slice(0, 5);
@@ -8415,155 +8469,96 @@ var require_guardoserie = __commonJS({
             if (verifiedResults.length > 0) {
               targetUrl = verifiedResults[0].url;
             }
-            if (!targetUrl && bestNoYearMatch) {
-              console.log(`[Guardoserie] Year not found, using best title match: ${bestNoYearMatch}`);
-              targetUrl = bestNoYearMatch;
+            if (targetUrl) {
+              return yield processTargetUrl(targetUrl, type, effectiveSeason, effectiveEpisode, baseUrl, title, id, benchStart, mark);
             }
-            if (!targetUrl) {
-              const guessed = yield guessUrlFromSlug(baseUrl, title, originalTitle);
-              mark("slug_fallback_done", { ok: Boolean(guessed) });
-              if (guessed) {
-                console.log(`[Guardoserie] Slug fallback matched: ${guessed}`);
-                targetUrl = guessed;
-              }
-            }
-            if (!targetUrl) {
-              console.log(`[Guardoserie] No matching result found for ${title}`);
-              return [];
-            }
-            let episodeUrl = targetUrl;
-            if (type === "tv" || type === "series") {
-              season = effectiveSeason;
-              episode = effectiveEpisode;
-              const pageHtml = yield smartFetch(targetUrl, getGuardoserieBaseUrl2(), {
-                headers: {
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                  "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                  "Referer": `${getGuardoserieBaseUrl2()}/`
-                }
-              });
-              const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage2(pageHtml, season, episode);
-              mark("series_episode_resolve_done", { ok: Boolean(resolvedEpisodeUrl) });
-              if (resolvedEpisodeUrl) {
-                episodeUrl = resolvedEpisodeUrl;
-              } else {
-                console.log(`[Guardoserie] Episode ${episode} not found in Season ${season} at ${targetUrl}`);
-                return [];
-              }
-            }
-            console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-            const finalHtml = yield smartFetch(episodeUrl, getGuardoserieBaseUrl2(), {
-              headers: {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Referer": `${getGuardoserieBaseUrl2()}/`
-              }
-            });
-            mark("final_page_done");
-            let playerLinks = extractPlayerLinksFromHtml2(finalHtml);
-            mark("player_links_extracted", { links: playerLinks.length });
-            if (playerLinks.length === 0 && /\/serie\//i.test(episodeUrl)) {
-              const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage2(finalHtml, season, episode);
-              if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
-                console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-                const retryHtml = yield smartFetch(fallbackEpisodeUrl, getGuardoserieBaseUrl2(), {
-                  headers: {
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Referer": `${getGuardoserieBaseUrl2()}/`
-                  }
-                });
-                const fallbackLinks = extractPlayerLinksFromHtml2(retryHtml);
-                if (fallbackLinks.length > 0) {
-                  playerLinks = fallbackLinks;
-                  episodeUrl = fallbackEpisodeUrl;
-                }
-                mark("player_links_fallback_done", { links: playerLinks.length });
-              }
-            }
-            if (playerLinks.length === 0) {
-              console.log(`[Guardoserie] No player links found`);
-              return [];
-            }
-            console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
-            const displayName = type === "tv" || type === "series" ? `${title} ${season}x${episode}` : title;
-            let streams = [];
-            const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
-              try {
-                if (playerLink.includes("loadm")) {
-                  const domain = "guardoserie.horse";
-                  const extracted = yield extractLoadm(playerLink, domain);
-                  const localStreams = [];
-                  for (const s of extracted || []) {
-                    const directLoadmUrl = s.url;
-                    let quality = "HD";
-                    if (s.url.includes(".m3u8")) {
-                      const detected = yield checkQualityFromPlaylist(directLoadmUrl, s.headers || {});
-                      if (detected) quality = detected;
-                    }
-                    const normalizedQuality = getQualityFromName2(quality);
-                    localStreams.push(formatStream({
-                      url: directLoadmUrl,
-                      headers: s.headers,
-                      name: `Guardoserie - Loadm`,
-                      title: displayName,
-                      quality: normalizedQuality,
-                      type: "direct",
-                      behaviorHints: s.behaviorHints
-                    }, "Guardoserie"));
-                  }
-                  return localStreams;
-                } else if (playerLink.includes("uqload")) {
-                  const extracted = yield extractUqload(playerLink);
-                  if (extracted && extracted.url) {
-                    return [formatStream({
-                      url: extracted.url,
-                      headers: extracted.headers,
-                      name: `Guardoserie - Uqload`,
-                      title: displayName,
-                      quality: getQualityFromName2("HD"),
-                      type: "direct"
-                    }, "Guardoserie")];
-                  }
-                } else if (playerLink.includes("dropload") || playerLink.includes("dr0pstream")) {
-                  console.log(`[Guardoserie] DropLoad temporarily disabled: ${playerLink}`);
-                  return [];
-                } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-                  const extracted = yield extractMixDrop(playerLink);
-                  if (extracted && extracted.url) {
-                    return [formatStream({
-                      url: extracted.url,
-                      easyProxySourceUrl: playerLink,
-                      headers: extracted.headers,
-                      name: `Guardoserie - MixDrop`,
-                      title: displayName,
-                      quality: getQualityFromName2("HD"),
-                      type: "direct"
-                    }, "Guardoserie")];
-                  }
-                } else if (playerLink.includes("supervideo")) {
-                  console.log(`[Guardoserie] SuperVideo temporarily disabled: ${playerLink}`);
-                  return [];
-                }
-              } catch (e) {
-                console.error(`[Guardoserie] Extraction error for ${playerLink}:`, e);
-              }
-              return [];
-            }));
-            const nestedStreams = yield Promise.all(streamPromises);
-            streams = nestedStreams.flat().filter(Boolean);
-            mark("extractors_done", { streams: streams.length });
-            if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
-            }
-            return streams;
+            console.log(`[Guardoserie] No matching result found for ${title}`);
+            return [];
           } catch (e) {
-            if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: (e == null ? void 0 : e.message) || String(e) })}`);
-            }
             console.error(`[Guardoserie] Error:`, e);
             return [];
           }
+        });
+      }
+      function processTargetUrl(targetUrl2, type, effectiveSeason, effectiveEpisode, baseUrl, title, id, benchStart, mark) {
+        return __async(this, null, function* () {
+          let episodeUrl = targetUrl2;
+          if (type === "tv" || type === "series") {
+            const pageHtml = yield smartFetch(targetUrl2, getGuardoserieBaseUrl2(), {
+              headers: {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": `${getGuardoserieBaseUrl2()}/`
+              },
+              provider: "guardoserie"
+            });
+            const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage2(pageHtml, effectiveSeason, effectiveEpisode);
+            if (resolvedEpisodeUrl) {
+              episodeUrl = resolvedEpisodeUrl;
+            } else {
+              console.log(`[Guardoserie] Episode ${effectiveEpisode} not found in Season ${effectiveSeason} at ${targetUrl2}`);
+              return [];
+            }
+          }
+          console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
+          const finalHtml = yield smartFetch(episodeUrl, getGuardoserieBaseUrl2(), {
+            headers: {
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Referer": `${getGuardoserieBaseUrl2()}/`
+            },
+            provider: "guardoserie"
+          });
+          let playerLinks = extractPlayerLinksFromHtml2(finalHtml);
+          if (playerLinks.length === 0) {
+            console.log(`[Guardoserie] No player links found`);
+            return [];
+          }
+          console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
+          const displayName = type === "tv" || type === "series" ? `${title} ${effectiveSeason}x${effectiveEpisode}` : title;
+          const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
+            try {
+              if (playerLink.includes("loadm")) {
+                const domain = "guardoserie.horse";
+                const extracted = yield extractLoadm(playerLink, domain);
+                return (extracted || []).map((s) => formatStream({
+                  url: s.url,
+                  headers: s.headers,
+                  name: `Guardoserie - Loadm`,
+                  title: displayName,
+                  quality: "HD",
+                  type: "direct",
+                  behaviorHints: s.behaviorHints
+                }, "Guardoserie"));
+              } else if (playerLink.includes("uqload")) {
+                const extracted = yield extractUqload(playerLink);
+                if (extracted == null ? void 0 : extracted.url) {
+                  return [formatStream({
+                    url: extracted.url,
+                    headers: extracted.headers,
+                    name: `Guardoserie - Uqload`,
+                    title: displayName,
+                    quality: "HD",
+                    type: "direct"
+                  }, "Guardoserie")];
+                }
+              } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
+                const extracted = yield extractMixDrop(playerLink);
+                if (extracted == null ? void 0 : extracted.url) {
+                  return [formatStream({
+                    url: extracted.url,
+                    headers: extracted.headers,
+                    name: `Guardoserie - MixDrop`,
+                    title: displayName,
+                    quality: "HD",
+                    type: "direct"
+                  }, "Guardoserie")];
+                }
+              }
+            } catch (e) {
+            }
+            return [];
+          }));
+          const nestedStreams = yield Promise.all(streamPromises);
+          return nestedStreams.flat().filter(Boolean);
         });
       }
       module2.exports = { getStreams: getStreams2 };
