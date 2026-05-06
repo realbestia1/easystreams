@@ -507,7 +507,7 @@
 
                 const disabledProviderConfig = Object.prototype.hasOwnProperty.call(config || {}, 'disabledProviders')
                     ? config.disabledProviders
-                    : 'guardoserie';
+                    : '';
                 const disabledProviders = new Set(String(disabledProviderConfig || '')
                     .split(',')
                     .map((name) => name.trim().toLowerCase())
@@ -533,7 +533,7 @@
                     .filter((input) => !input.checked)
                     .map((input) => input.value);
                 const disabledProvidersToken = disabledProviders.join(',');
-                if (disabledProvidersToken !== 'guardoserie') {
+                if (disabledProvidersToken !== '') {
                     config.disabledProviders = disabledProvidersToken;
                 }
                 if (Object.keys(config).length === 0) return '';

@@ -27,7 +27,7 @@ function renderLandingPage({ manifest, providerNames, initialConfig = {} }) {
     const safeProviderNames = Array.isArray(providerNames) ? providerNames : [];
     const disabledProviderConfig = Object.prototype.hasOwnProperty.call(initialConfig || {}, 'disabledProviders')
         ? initialConfig.disabledProviders
-        : 'guardoserie';
+        : '';
     const disabledProviders = new Set(String(disabledProviderConfig || '')
         .split(',')
         .map((name) => name.trim().toLowerCase())
