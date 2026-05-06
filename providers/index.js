@@ -8537,8 +8537,8 @@ var require_guardoserie = __commonJS({
             if (!STEP_BENCH_ENABLED) return;
             bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
           };
-          if (Date.now() < guardoserieDisabledUntil) {
-            console.log(`[Guardoserie] Provider temporaneamente disabilitato fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
+          if (Date.now() < guardoserieDisabledUntil && !(providerContext == null ? void 0 : providerContext.format)) {
+            console.log(`[Guardoserie] Provider temporaneamente disabilitato per l'addon fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
             return [];
           }
           try {
@@ -8599,7 +8599,7 @@ var require_guardoserie = __commonJS({
             const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
             console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
             const searchProvider = (query) => __async(null, null, function* () {
-              var _a2;
+              var _a2, _b2;
               const searchStartedAt = Date.now();
               let nonce = "";
               try {
@@ -8627,9 +8627,11 @@ var require_guardoserie = __commonJS({
                 mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: "ajax" });
                 return results;
               } catch (e) {
-                if (e.code === "ECONNABORTED" || ((_a2 = e.message) == null ? void 0 : _a2.includes("timeout"))) {
+                if ((e.code === "ECONNABORTED" || ((_a2 = e.message) == null ? void 0 : _a2.includes("timeout"))) && !(providerContext == null ? void 0 : providerContext.format)) {
                   guardoserieDisabledUntil = Date.now() + 36e5;
-                  console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per 1 ora.`);
+                  console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per l'addon per 1 ora.`);
+                } else if (e.code === "ECONNABORTED" || ((_b2 = e.message) == null ? void 0 : _b2.includes("timeout"))) {
+                  console.log(`[Guardoserie] AJAX Search timeout (1s) durante resolve. Non blocco il provider.`);
                 } else {
                   console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
                 }

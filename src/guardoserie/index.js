@@ -366,8 +366,8 @@ if (!IS_SERVER) {
             bench.push({ step, t: Date.now() - benchStart, ...meta });
         };
 
-        if (Date.now() < guardoserieDisabledUntil) {
-            console.log(`[Guardoserie] Provider temporaneamente disabilitato fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
+        if (Date.now() < guardoserieDisabledUntil && !providerContext?.format) {
+            console.log(`[Guardoserie] Provider temporaneamente disabilitato per l'addon fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
             return [];
         }
         try {
@@ -475,9 +475,11 @@ if (!IS_SERVER) {
                     mark('search_query_done', { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: 'ajax' });
                     return results;
                 } catch (e) {
-                    if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+                    if ((e.code === 'ECONNABORTED' || e.message?.includes('timeout')) && !providerContext?.format) {
                         guardoserieDisabledUntil = Date.now() + 3600000;
-                        console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per 1 ora.`);
+                        console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per l'addon per 1 ora.`);
+                    } else if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+                        console.log(`[Guardoserie] AJAX Search timeout (1s) durante resolve. Non blocco il provider.`);
                     } else {
                         console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
                     }
