@@ -1,11 +1,11 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.71",
+  "version": "1.1.72",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",
-      "version": "1.1.20",
+      "version": "1.1.21",
       "description": "Movies and Series from Guardoserie",
       "resources": ["stream"],
       "contentLanguage": ["it"],
