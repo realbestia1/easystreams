@@ -765,7 +765,7 @@ var require_cf_handler = __commonJS({
               } catch (e) {
               }
             }
-            const res = yield doRequest(newSession, finalUrl);
+            const res = yield doRequest(finalUrl, newSession);
             updateMetaFinalUrl(res);
             return res.data;
           }
@@ -8363,23 +8363,22 @@ var require_guardoserie = __commonJS({
             const searchProvider = (query) => __async(null, null, function* () {
               var _a2, _b2;
               const searchStartedAt = Date.now();
-              let nonce = "";
               try {
-                const homeHtml = yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie", skipBypassOnFailure: true });
-                const nonceMatch = homeHtml.match(/"nonce":"([a-z0-9]+)"/i);
-                if (nonceMatch) nonce = nonceMatch[1];
+                yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie" });
               } catch (e) {
-                console.log(`[Guardoserie] Could not fetch nonce from homepage`);
+                console.log(`[Guardoserie] Could not initialize session from homepage`);
               }
-              let searchUrl = `${baseUrl}/wp-admin/admin-ajax.php?s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
-              if (nonce) searchUrl += `&_wpnonce=${nonce}`;
+              const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
+              const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
               try {
                 const ajaxHtml = yield smartFetch(searchUrl, baseUrl, {
-                  method: "GET",
+                  method: "POST",
+                  body,
                   headers: {
                     "X-Requested-With": "XMLHttpRequest",
                     "Referer": `${baseUrl}/`,
-                    "Accept": "text/html, */*; q=0.01"
+                    "Accept": "text/html, */*; q=0.01",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
                   },
                   provider: "guardoserie",
                   skipBypassOnFailure: true,

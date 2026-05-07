@@ -444,27 +444,25 @@ if (!IS_SERVER) {
             const searchProvider = async (query) => {
                 const searchStartedAt = Date.now();
 
-                // Estrazione dinamica del nonce se possibile
-                let nonce = '';
                 try {
-                    const homeHtml = await smartFetch(baseUrl, baseUrl, { provider: 'guardoserie', skipBypassOnFailure: true });
-                    const nonceMatch = homeHtml.match(/"nonce":"([a-z0-9]+)"/i);
-                    if (nonceMatch) nonce = nonceMatch[1];
+                    // Pre-fetch della homepage per inizializzare i cookie/bypass se necessario
+                    await smartFetch(baseUrl, baseUrl, { provider: 'guardoserie' });
                 } catch (e) {
-                    console.log(`[Guardoserie] Could not fetch nonce from homepage`);
+                    console.log(`[Guardoserie] Could not initialize session from homepage`);
                 }
 
-                // Usiamo GET invece di POST perché il server rifiuta i POST con 400
-                let searchUrl = `${baseUrl}/wp-admin/admin-ajax.php?s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
-                if (nonce) searchUrl += `&_wpnonce=${nonce}`;
+                const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
+                const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
 
                 try {
                     const ajaxHtml = await smartFetch(searchUrl, baseUrl, {
-                        method: 'GET',
+                        method: 'POST',
+                        body,
                         headers: { 
                             'X-Requested-With': 'XMLHttpRequest',
                             'Referer': `${baseUrl}/`,
-                            'Accept': 'text/html, */*; q=0.01'
+                            'Accept': 'text/html, */*; q=0.01',
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                         },
                         provider: 'guardoserie',
                         skipBypassOnFailure: true,

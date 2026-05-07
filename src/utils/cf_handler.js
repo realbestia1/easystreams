@@ -356,7 +356,7 @@ async function smartFetch(url, domain, options = {}) {
                 } catch (e) {}
             }
 
-            const res = await doRequest(newSession, finalUrl);
+            const res = await doRequest(finalUrl, newSession);
             updateMetaFinalUrl(res);
             return res.data;
         }
