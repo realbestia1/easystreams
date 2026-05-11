@@ -12,7 +12,6 @@ Il progetto è progettato per essere versatile e può essere utilizzato in due m
 -   **AnimeWorld** (Anime)
 -   **AnimeSaturn** (Anime)
 -   **GuardaHD** (Film)
--   **GuardaSerie** (Serie TV)
 -   **GuardoSerie** (Film & Serie TV)
 -   **StreamingCommunity** (Film & Serie TV)
 -   **CB01** (Film & Serie TV)

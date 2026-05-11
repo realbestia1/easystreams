@@ -37,7 +37,7 @@ for i in {1..20}; do
     sleep 2
 done
 
-# WARP puo ricreare route IPv6 dopo la connessione; FlareSolverr deve uscire solo IPv4.
+# WARP puo ricreare route IPv6 dopo la connessione; il bypass deve uscire solo IPv4.
 if [ "${FORCE_IPV4_ONLY:-1}" != "0" ]; then
     echo "[WARP] Forzo uscita IPv4-only..."
     for flag in /proc/sys/net/ipv6/conf/*/disable_ipv6; do

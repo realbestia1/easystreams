@@ -149,8 +149,8 @@ var require_mixdrop = __commonJS({
         if (isMixDropDisabled()) return null;
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const fetchHtml2 = (targetUrl, referer) => __async(null, null, function* () {
-            const response = yield fetch(targetUrl, {
+          const fetchHtml2 = (targetUrl2, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl2, {
               headers: {
                 "User-Agent": USER_AGENT2,
                 "Referer": referer
@@ -158,7 +158,7 @@ var require_mixdrop = __commonJS({
             });
             if (!response.ok) return null;
             return {
-              url: response.url || targetUrl,
+              url: response.url || targetUrl2,
               html: yield response.text()
             };
           });
@@ -7763,127 +7763,15 @@ var require_guardahd = __commonJS({
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
-    var fs = require("fs");
+    var { spawn } = require("child_process");
     var path = require("path");
-    var axios = require("axios");
-    var { exec } = require("child_process");
+    var fs = require("fs");
     var activeBypasses = /* @__PURE__ */ new Map();
-    var providerCooldowns = /* @__PURE__ */ new Map();
-    var throttledLogAt = /* @__PURE__ */ new Map();
     var globalQueue = [];
     var activeGlobalRequests = 0;
-    function readPositiveIntEnv(name, fallback) {
-      const value = Number.parseInt(String(process.env[name] || ""), 10);
-      return Number.isInteger(value) && value > 0 ? value : fallback;
-    }
-    var MAX_GLOBAL_CONCURRENT = readPositiveIntEnv("FLARE_MAX_CONCURRENT", 4);
-    var MAX_GLOBAL_QUEUE = readPositiveIntEnv("FLARE_MAX_QUEUE", 100);
-    var GLOBAL_QUEUE_TIMEOUT = readPositiveIntEnv("FLARE_QUEUE_TIMEOUT_MS", 45e3);
-    var FLARE_HEALTH_TIMEOUT = readPositiveIntEnv("FLARE_HEALTH_TIMEOUT_MS", 3e3);
-    var FLARE_HEALTH_CACHE_MS = readPositiveIntEnv("FLARE_HEALTH_CACHE_MS", 1e4);
-    var FLARE_RETRIES = readPositiveIntEnv("FLARE_RETRIES", 1);
-    var FLARE_FAILURE_COOLDOWN_MS = readPositiveIntEnv("FLARE_FAILURE_COOLDOWN_MS", 12e4);
-    var FLARE_FAILURE_COOLDOWN_MAX_MS = readPositiveIntEnv("FLARE_FAILURE_COOLDOWN_MAX_MS", 3e5);
-    var FLARE_ORIGIN_COOKIE_TIMEOUT = readPositiveIntEnv("FLARE_ORIGIN_COOKIE_TIMEOUT_MS", 1e4);
-    var FLARE_CAPTURE_ORIGIN_COOKIES = !["0", "false", "no", "off"].includes(
-      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIES || "").trim().toLowerCase()
-    );
-    var FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS = new Set(
-      String(process.env.FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS || "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean)
-    );
-    var FLARE_IDLE_CLEANUP_MS = readPositiveIntEnv("FLARE_IDLE_CLEANUP_MS", 5e3);
-    var FLARE_IDLE_PROCESS_CLEANUP = !["0", "false", "no", "off"].includes(
-      String(process.env.FLARE_IDLE_PROCESS_CLEANUP || "").trim().toLowerCase()
-    );
-    var FLARE_KEEP_SESSIONS = !["0", "false", "no", "off"].includes(
-      String(process.env.FLARE_KEEP_SESSIONS || "1").trim().toLowerCase()
-    );
-    var idleCleanupTimer = null;
-    var lastFlareHealthOkAt = 0;
-    function getFlareUrl() {
-      return process.env.FLARE_URL || "http://127.0.0.1:8191/v1";
-    }
-    function getStats() {
-      return {
-        active: activeGlobalRequests,
-        queued: globalQueue.length,
-        activeProviders: activeBypasses.size,
-        maxConcurrent: MAX_GLOBAL_CONCURRENT,
-        maxQueue: MAX_GLOBAL_QUEUE,
-        queueTimeoutMs: GLOBAL_QUEUE_TIMEOUT,
-        healthCacheMs: FLARE_HEALTH_CACHE_MS,
-        failureCooldownMs: FLARE_FAILURE_COOLDOWN_MS,
-        failureCooldownMaxMs: FLARE_FAILURE_COOLDOWN_MAX_MS,
-        cooldowns: getActiveCooldownStats(),
-        captureOriginCookies: FLARE_CAPTURE_ORIGIN_COOKIES,
-        captureOriginCookieProviders: Array.from(FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS),
-        originCookieTimeoutMs: FLARE_ORIGIN_COOKIE_TIMEOUT,
-        idleProcessCleanup: FLARE_IDLE_PROCESS_CLEANUP,
-        idleCleanupMs: FLARE_IDLE_CLEANUP_MS,
-        keepSessions: FLARE_KEEP_SESSIONS
-      };
-    }
-    function logThrottled(key, message, intervalMs = 5e3) {
-      const now = Date.now();
-      const last = throttledLogAt.get(key) || 0;
-      if (now - last < intervalMs) return;
-      throttledLogAt.set(key, now);
-      console.log(message);
-    }
-    function getActiveCooldown(provider) {
-      const key = String(provider || "default").toLowerCase();
-      const entry = providerCooldowns.get(key);
-      if (!entry) return null;
-      if (Date.now() >= entry.until) {
-        providerCooldowns.delete(key);
-        return null;
-      }
-      return entry;
-    }
-    function getActiveCooldownStats() {
-      const now = Date.now();
-      const stats = [];
-      for (const [provider, entry] of providerCooldowns.entries()) {
-        if (!entry || now >= entry.until) {
-          providerCooldowns.delete(provider);
-          continue;
-        }
-        stats.push({
-          provider,
-          remainingMs: entry.until - now,
-          failures: entry.failures,
-          reason: entry.reason
-        });
-      }
-      return stats;
-    }
-    function markProviderCooldown(provider, error) {
-      const key = String(provider || "default").toLowerCase();
-      const now = Date.now();
-      const previous = providerCooldowns.get(key);
-      const previousFailures = previous && now - previous.lastFailureAt <= FLARE_FAILURE_COOLDOWN_MAX_MS ? previous.failures : 0;
-      const failures = previousFailures + 1;
-      const duration = Math.min(
-        FLARE_FAILURE_COOLDOWN_MS * Math.pow(2, Math.max(0, failures - 1)),
-        FLARE_FAILURE_COOLDOWN_MAX_MS
-      );
-      const reason = error && error.message ? error.message : String(error || "errore sconosciuto");
-      providerCooldowns.set(key, {
-        until: now + duration,
-        lastFailureAt: now,
-        failures,
-        reason
-      });
-      console.warn(`[CF] Cooldown FlareSolverr per [${key}] ${Math.round(duration / 1e3)}s dopo errore: ${reason}`);
-    }
-    function clearProviderCooldown(provider) {
-      providerCooldowns.delete(String(provider || "default").toLowerCase());
-    }
-    function clearIdleCleanupTimer() {
-      if (!idleCleanupTimer) return;
-      clearTimeout(idleCleanupTimer);
-      idleCleanupTimer = null;
-    }
+    var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "2", 10);
+    var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "20", 10);
+    var GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || "60000", 10);
     function createRelease() {
       let released = false;
       return () => {
@@ -7900,25 +7788,22 @@ var require_cf_bypass = __commonJS({
         entry.done = true;
         clearTimeout(entry.timeoutId);
         activeGlobalRequests++;
-        const waitedMs = Date.now() - entry.enqueuedAt;
-        console.log(`[CF] Slot FlareSolverr assegnato a [${entry.provider}] dopo ${waitedMs}ms. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
+        console.log(`[SC] Slot Scrapling assegnato a [${entry.provider}]. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
         entry.resolve(createRelease());
       }
     }
     function acquireGlobalSlot(provider, url) {
-      clearIdleCleanupTimer();
       if (activeGlobalRequests < MAX_GLOBAL_CONCURRENT) {
         activeGlobalRequests++;
         return Promise.resolve(createRelease());
       }
       if (globalQueue.length >= MAX_GLOBAL_QUEUE) {
-        return Promise.reject(new Error(`Coda FlareSolverr piena (${globalQueue.length}/${MAX_GLOBAL_QUEUE}) per ${provider}`));
+        return Promise.reject(new Error(`Coda Scrapling piena (${globalQueue.length}/${MAX_GLOBAL_QUEUE}) per ${provider}`));
       }
       return new Promise((resolve, reject) => {
         const entry = {
           provider,
           url,
-          enqueuedAt: Date.now(),
           done: false,
           resolve,
           reject,
@@ -7929,335 +7814,100 @@ var require_cf_bypass = __commonJS({
           entry.done = true;
           const index = globalQueue.indexOf(entry);
           if (index >= 0) globalQueue.splice(index, 1);
-          reject(new Error(`Timeout coda FlareSolverr dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
+          reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
         }, GLOBAL_QUEUE_TIMEOUT);
         globalQueue.push(entry);
-        console.log(`[CF] Coda FlareSolverr [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_QUEUE} Active=${activeGlobalRequests}: ${url}`);
+        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
       });
     }
-    function sleep(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-    function runIdleProcessCleanup() {
-      if (!FLARE_IDLE_PROCESS_CLEANUP) return;
-      if (FLARE_KEEP_SESSIONS) return;
-      if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
-      const command = process.platform === "win32" ? `powershell -NoProfile -Command "$root = '${process.cwd().replace(/'/g, "''").toLowerCase()}'; $targets = Get-CimInstance Win32_Process | Where-Object { $p = ($_.ExecutablePath + '').ToLower(); ($_.Name -in @('chrome.exe','chromedriver.exe')) -and $p.StartsWith($root) }; foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }"` : `sh -lc "pkill -f '[c]hromium|[c]hromedriver|--user-data-dir=/tmp/t[m]p' 2>/dev/null || true"`;
-      exec(command, { timeout: 1e4 }, (error) => {
-        if (error) {
-          console.error(`[CF] Idle cleanup browser fallito: ${error.message}`);
-          return;
-        }
-        console.log("[CF] Idle cleanup browser completato.");
-      });
-    }
-    function scheduleIdleProcessCleanup() {
-      if (!FLARE_IDLE_PROCESS_CLEANUP) return;
-      if (FLARE_KEEP_SESSIONS) return;
-      if (activeGlobalRequests > 0 || globalQueue.length > 0) return;
-      clearIdleCleanupTimer();
-      idleCleanupTimer = setTimeout(() => {
-        idleCleanupTimer = null;
-        runIdleProcessCleanup();
-      }, FLARE_IDLE_CLEANUP_MS);
-      if (typeof idleCleanupTimer.unref === "function") idleCleanupTimer.unref();
-    }
-    function isRetryableFlareError(error) {
-      const status = error && error.response && error.response.status;
-      return error && (error.code === "ECONNRESET" || error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT" || error.code === "ECONNABORTED" || status === 502 || status === 503 || status === 504);
-    }
-    function postFlare(flareUrl, payload, timeout, attemptLabel) {
-      return __async(this, null, function* () {
-        let lastError = null;
-        for (let attempt = 0; attempt <= FLARE_RETRIES; attempt++) {
-          try {
-            return yield axios.post(flareUrl, payload, {
-              timeout,
-              headers: { "Content-Type": "application/json" }
-            });
-          } catch (error) {
-            lastError = error;
-            if (attempt >= FLARE_RETRIES || !isRetryableFlareError(error)) break;
-            const waitMs = 750 * (attempt + 1);
-            console.error(`[CF] FlareSolverr ${attemptLabel} fallito (${error.message}), retry tra ${waitMs}ms...`);
-            yield sleep(waitMs);
-          }
-        }
-        throw lastError;
-      });
-    }
-    function assertFlareSolverrReady(flareUrl) {
-      return __async(this, null, function* () {
-        if (Date.now() - lastFlareHealthOkAt <= FLARE_HEALTH_CACHE_MS) return;
-        try {
-          const response = yield axios.post(flareUrl, { cmd: "sessions.list" }, {
-            timeout: FLARE_HEALTH_TIMEOUT,
-            headers: { "Content-Type": "application/json" }
-          });
-          if (response.data && response.data.status === "ok") {
-            lastFlareHealthOkAt = Date.now();
-            return;
-          }
-        } catch (error) {
-          throw new Error(`FlareSolverr non disponibile su ${flareUrl}: ${error.message}`);
-        }
-      });
-    }
-    function listFlareSessions(flareUrl) {
-      return __async(this, null, function* () {
-        const response = yield axios.post(flareUrl, { cmd: "sessions.list" }, {
-          timeout: FLARE_HEALTH_TIMEOUT,
-          headers: { "Content-Type": "application/json" }
-        });
-        const sessions = response.data && response.data.sessions;
-        return Array.isArray(sessions) ? sessions.map((value) => String(value)) : [];
-      });
-    }
-    function writeJsonAtomic(filePath, data) {
-      const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
-      fs.renameSync(tempPath, filePath);
-    }
-    function saveSessionFile(sessionFile, data) {
-      try {
-        writeJsonAtomic(sessionFile, data);
-      } catch (error) {
-        console.error(`[CF] Errore salvataggio sessione ${sessionFile}: ${error.message}`);
-      }
-    }
-    function normalizeHost(host) {
-      return String(host || "").trim().toLowerCase().replace(/^www\./, "").replace(/^\./, "");
-    }
-    function getHostFromUrl(url) {
-      try {
-        return normalizeHost(new URL(url).hostname);
-      } catch (e) {
-        return "";
-      }
-    }
-    function getOriginFromUrl(url) {
-      try {
-        const parsed = new URL(url);
-        return `${parsed.protocol}//${parsed.hostname}`;
-      } catch (e) {
-        return null;
-      }
-    }
-    function normalizeCookieDomain(domain) {
-      return normalizeHost(domain);
-    }
-    function cookieMatchesHost(cookie, host) {
-      const cookieDomain = normalizeCookieDomain(cookie && cookie.domain);
-      const targetHost = normalizeHost(host);
-      if (!cookieDomain || !targetHost) return false;
-      return targetHost === cookieDomain || targetHost.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${targetHost}`);
-    }
-    function filterCookiesForHost(cookiesList, host) {
-      return cookiesList.filter((cookie) => cookieMatchesHost(cookie, host));
-    }
-    function uniqueCookies(cookiesList) {
-      const byKey = /* @__PURE__ */ new Map();
-      for (const cookie of cookiesList) {
-        if (!cookie || !cookie.name) continue;
-        const key = [
-          normalizeCookieDomain(cookie.domain),
-          cookie.path || "/",
-          cookie.name
-        ].join("|");
-        byKey.set(key, cookie);
-      }
-      return Array.from(byKey.values());
-    }
-    function serializeCookies(cookiesList) {
-      return uniqueCookies(cookiesList).map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
-    }
-    function getCookieDomains(cookiesList) {
-      return [...new Set(
-        uniqueCookies(cookiesList).map((cookie) => normalizeCookieDomain(cookie.domain)).filter(Boolean)
-      )];
-    }
-    function findCfClearance(cookiesList) {
-      var _a;
-      return ((_a = cookiesList.find((cookie) => cookie && cookie.name === "cf_clearance")) == null ? void 0 : _a.value) || null;
-    }
-    function shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList) {
-      if (!FLARE_CAPTURE_ORIGIN_COOKIES) return false;
-      if (!originalHost || !finalHost || originalHost === finalHost) return false;
-      if (providerCookiesList.length > 0) return false;
-      const key = String(provider || "").toLowerCase();
-      return FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has("*") || FLARE_CAPTURE_ORIGIN_COOKIE_PROVIDERS.has(key);
-    }
-    function captureOriginCookies(flareUrl, provider, url) {
-      return __async(this, null, function* () {
-        const originalHost = getHostFromUrl(url);
-        const origin = getOriginFromUrl(url);
-        if (!origin || !originalHost) return [];
-        const probeUrls = [
-          `${origin}/cdn-cgi/trace`,
-          `${origin}/favicon.ico`,
-          `${origin}/`
+    function execPythonBypass(url, provider, options = {}) {
+      return new Promise((resolve, reject) => {
+        const scriptPath = path.join(__dirname, "src", "utils", "scrapling_bypass.py");
+        const args = [
+          scriptPath,
+          url,
+          "--timeout",
+          String(options.timeout || 6e4),
+          "--wait-until",
+          options.waitUntil || "domcontentloaded"
         ];
-        for (const probeUrl of probeUrls) {
+        if (options.method) {
+          args.push("--method", options.method);
+        }
+        if (options.body) {
+          args.push("--data", options.body);
+        }
+        if (options.headers) {
+          args.push("--headers", JSON.stringify(options.headers));
+        }
+        console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
+        const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+        let pythonExe = "python3";
+        if (fs.existsSync(venvPython)) {
+          pythonExe = venvPython;
+        } else if (process.platform === "win32") {
+          pythonExe = "python";
+        }
+        const child = spawn(pythonExe, args);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
+        child.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
+        child.on("close", (code) => {
+          let result;
           try {
-            const response = yield postFlare(flareUrl, {
-              cmd: "request.get",
-              url: probeUrl,
-              session: provider,
-              maxTimeout: FLARE_ORIGIN_COOKIE_TIMEOUT
-            }, FLARE_ORIGIN_COOKIE_TIMEOUT + 5e3, `origin-cookie ${provider}`);
-            if (!response.data || response.data.status !== "ok") continue;
-            const solution = response.data.solution || {};
-            const cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
-            const originCookies = filterCookiesForHost(cookiesList, originalHost);
-            if (originCookies.length > 0) {
-              console.log(`[CF] Cookie dominio originale catturati per [${provider}] da ${probeUrl}: ${originCookies.length}`);
-              return originCookies;
+            if (stdout.trim()) {
+              result = JSON.parse(stdout);
             }
-            const returnedHost = getHostFromUrl(solution.url);
-            console.log(`[CF] Nessun cookie ${originalHost} da ${probeUrl} (finale: ${returnedHost || "n/d"}).`);
-          } catch (error) {
-            console.error(`[CF] Cattura cookie dominio originale fallita per [${provider}] ${probeUrl}: ${error.message}`);
+          } catch (e) {
           }
-        }
-        return [];
-      });
-    }
-    function createSessionIfNeeded(flareUrl, provider) {
-      return __async(this, null, function* () {
-        try {
-          if (FLARE_KEEP_SESSIONS) {
-            const sessions = yield listFlareSessions(flareUrl);
-            if (sessions.includes(provider)) {
-              console.log(`[CF] Riutilizzo sessione FlareSolverr esistente [${provider}].`);
-              return;
-            }
+          if (result && result.status === "ok") {
+            return resolve(result);
           }
-          yield axios.post(flareUrl, { cmd: "sessions.create", session: provider }, {
-            timeout: 5e3,
-            headers: { "Content-Type": "application/json" }
-          });
-        } catch (e) {
-        }
-      });
-    }
-    function destroySessionIfNeeded(flareUrl, provider) {
-      return __async(this, null, function* () {
-        if (FLARE_KEEP_SESSIONS) {
-          console.log(`[CF] Sessione FlareSolverr mantenuta per [${provider}].`);
-          return;
-        }
-        try {
-          yield axios.post(flareUrl, { cmd: "sessions.destroy", session: provider }, {
-            timeout: 5e3,
-            headers: { "Content-Type": "application/json" }
-          });
-          console.log(`[CF] Sessione FlareSolverr chiusa per [${provider}].`);
-        } catch (e) {
-        }
+          if (code !== 0) {
+            console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
+            return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
+          }
+          if (result && result.status === "error") {
+            return reject(new Error(result.message));
+          }
+          if (!result) {
+            console.error(`[SC][${provider}] Errore parsing output Python (Vuoto o non valido): ${stdout}`);
+            reject(new Error(`Failed to parse Scrapling output: Empty or invalid JSON`));
+          }
+        });
       });
     }
     function runBypass(url, provider, options, sessionFile) {
       return __async(this, null, function* () {
-        const flareUrl = getFlareUrl();
         const releaseSlot = yield acquireGlobalSlot(provider, url);
         try {
-          yield assertFlareSolverrReady(flareUrl);
-          console.log(`[CF] Richiesta bypass a FlareSolverr [Session: ${provider}][Active: ${activeGlobalRequests}][Queue: ${globalQueue.length}]: ${url}`);
-          yield createSessionIfNeeded(flareUrl, provider);
-          const maxTimeout = Number.isInteger(options.maxTimeout) && options.maxTimeout > 0 ? options.maxTimeout : 35e3;
-          const requestTimeout = Number.isInteger(options.requestTimeout) && options.requestTimeout > maxTimeout ? options.requestTimeout : maxTimeout + 5e3;
-          const payload = {
-            cmd: options.method === "POST" ? "request.post" : "request.get",
-            url,
-            session: provider,
-            maxTimeout
+          const result = yield execPythonBypass(url, provider, options);
+          const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
+          const cookiesStr = cookiesList.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
+          const cookieDomains = [...new Set(cookiesList.map((c) => c.domain).filter(Boolean))];
+          const data = {
+            userAgent: result.userAgent,
+            cookies: cookiesStr,
+            url: result.url,
+            response: result.html,
+            cookieDomains,
+            requestHeaders: result.requestHeaders,
+            timestamp: Date.now()
           };
-          if (options.method === "POST" && options.body) {
-            payload.postData = options.body;
-          }
           try {
-            const response = yield postFlare(flareUrl, payload, requestTimeout, `${payload.cmd} ${provider}`);
-            if (response.data && response.data.status === "ok") {
-              const solution = response.data.solution || {};
-              let cookiesList = Array.isArray(solution.cookies) ? solution.cookies : [];
-              const originalHost = getHostFromUrl(url);
-              const finalHost = getHostFromUrl(solution.url);
-              let providerCookiesList = filterCookiesForHost(cookiesList, originalHost);
-              console.log(`[CF] FlareSolverr ha restituito ${cookiesList.length} cookie.`);
-              if (shouldCaptureOriginCookies(provider, originalHost, finalHost, providerCookiesList)) {
-                const originCookies = yield captureOriginCookies(flareUrl, provider, url);
-                if (originCookies.length > 0) {
-                  cookiesList = uniqueCookies([...cookiesList, ...originCookies]);
-                  providerCookiesList = uniqueCookies([...providerCookiesList, ...originCookies]);
-                }
-              }
-              const cookies = serializeCookies(cookiesList);
-              const cfClearance = findCfClearance(cookiesList);
-              if (!cookies && !solution.response) {
-                throw new Error("FlareSolverr ha restituito successo ma zero cookie e nessuna risposta.");
-              }
-              const data = {
-                userAgent: solution.userAgent,
-                cookies: cookies || "",
-                cf_clearance: cfClearance || null,
-                url: solution.url,
-                response: solution.response,
-                cookieDomains: getCookieDomains(cookiesList),
-                timestamp: Date.now()
-              };
-              const providerCookies = serializeCookies(providerCookiesList);
-              if (providerCookies || !originalHost || originalHost === finalHost) {
-                const providerData = {
-                  userAgent: solution.userAgent,
-                  cookies: providerCookies || cookies || "",
-                  cf_clearance: findCfClearance(providerCookiesList) || cfClearance || null,
-                  url: providerCookies ? url : solution.url,
-                  response: solution.response,
-                  cookieDomains: getCookieDomains(providerCookies ? providerCookiesList : cookiesList),
-                  timestamp: Date.now()
-                };
-                saveSessionFile(sessionFile, providerData);
-              } else {
-                console.log(`[CF] Cookie provider [${provider}] non trovati per ${originalHost}; non salvo cookie di ${finalHost || "dominio finale"} in ${path.basename(sessionFile)}.`);
-              }
-              if (cookiesList.length > 0) {
-                const domains = getCookieDomains(cookiesList);
-                for (const domain of domains) {
-                  const domainProvider = domain.replace("www.", "").split(".")[0];
-                  if (!domainProvider || domainProvider === provider) continue;
-                  const domainSessionFile = path.join(process.cwd(), `cf-session-${domainProvider}.json`);
-                  const domainCookiesList = filterCookiesForHost(cookiesList, domain);
-                  const domainCookies = serializeCookies(domainCookiesList);
-                  if (!domainCookies) continue;
-                  const domainData = {
-                    userAgent: solution.userAgent,
-                    cookies: domainCookies,
-                    cf_clearance: findCfClearance(domainCookiesList),
-                    url: solution.url,
-                    cookieDomains: getCookieDomains(domainCookiesList),
-                    timestamp: Date.now()
-                  };
-                  saveSessionFile(domainSessionFile, domainData);
-                  console.log(`[CF] Salvata sessione extra per dominio: ${domain} -> ${domainProvider}`);
-                }
-              }
-              console.log(`[CF] FlareSolverr: Bypass completato con successo per ${url}`);
-              clearProviderCooldown(provider);
-              return data;
-            }
-            const errorMsg = response.data ? response.data.message : "Risposta non valida da FlareSolverr";
-            throw new Error(errorMsg);
-          } catch (error) {
-            console.error(`[CF] Errore FlareSolverr: ${error.message}`);
-            if (error.code === "ECONNREFUSED") {
-              console.error(`[CF] ASSICURATI CHE FLARESOLVERR SIA ATTIVO SU ${flareUrl}`);
-            }
-            throw error;
+            fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
+          } catch (e) {
+            console.error(`[SC] Errore salvataggio sessione: ${e.message}`);
           }
+          console.log(`[SC][${provider}] Bypass completato con successo.`);
+          return data;
         } finally {
-          yield destroySessionIfNeeded(flareUrl, provider);
           releaseSlot();
-          scheduleIdleProcessCleanup();
         }
       });
     }
@@ -8265,25 +7915,16 @@ var require_cf_bypass = __commonJS({
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
         const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
-          logThrottled(`wait:${provider}`, `[CF] FlareSolverr bypass gia in corso per il provider [${provider}], attendo...`);
           return activeBypasses.get(provider);
         }
-        const cooldown = getActiveCooldown(provider);
-        if (cooldown) {
-          const remainingMs = Math.max(0, cooldown.until - Date.now());
-          throw new Error(`FlareSolverr in cooldown per [${provider}] ancora ${Math.ceil(remainingMs / 1e3)}s (${cooldown.reason})`);
-        }
-        const bypassPromise = runBypass(url, provider, options, sessionFile).catch((error) => {
-          markProviderCooldown(provider, error);
-          throw error;
-        }).finally(() => {
+        const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
           activeBypasses.delete(provider);
         });
         activeBypasses.set(provider, bypassPromise);
         return bypassPromise;
       });
     }
-    module2.exports = { getClearance, getStats };
+    module2.exports = { getClearance, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -8305,8 +7946,10 @@ var require_cf_handler = __commonJS({
     };
     var httpsAgent = new https.Agent(agentOptions);
     var httpAgent = new http.Agent(agentOptions);
+    var sessionCache = /* @__PURE__ */ new Map();
     function smartFetch2(_0, _1) {
       return __async(this, arguments, function* (url, domain, options = {}) {
+        var _a, _b;
         const getHost = (u) => {
           try {
             return new URL(u).hostname.replace("www.", "");
@@ -8334,6 +7977,13 @@ var require_cf_handler = __commonJS({
         const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
         const loadSession = (providerName = provider, targetHost = urlHost) => {
           const targetSessionFile = sessionFileForProvider(providerName);
+          if (providerName !== "guardoserie") {
+            const cached = sessionCache.get(providerName);
+            if (cached && cached.cookies && Date.now() - cached.timestamp < 115 * 60 * 1e3) {
+              console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
+              return cached;
+            }
+          }
           if (fs.existsSync(targetSessionFile)) {
             try {
               const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
@@ -8366,7 +8016,9 @@ var require_cf_handler = __commonJS({
                   } catch (e) {
                   }
                 }
-                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs / 6e4)} min fa).`);
+                if (providerName !== "guardoserie") {
+                  sessionCache.set(providerName, data);
+                }
                 return data;
               }
             } catch (e) {
@@ -8378,62 +8030,85 @@ var require_cf_handler = __commonJS({
         let session = loadSession();
         let currentUrl = url;
         if (session.url) {
-          try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            const currentHost = currentUrlObj.hostname.toLowerCase();
-            const sessionHost = sessionUrl.hostname.toLowerCase();
-            if (sessionHost !== currentHost) {
-              const sessionParts = sessionHost.split(".");
-              const currentParts = currentHost.split(".");
-              const sessionRoot = sessionParts.slice(-2).join(".");
-              const currentRoot = currentParts.slice(-2).join(".");
-              if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
-                console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
-                currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
-              }
-            }
-          } catch (e) {
-          }
         }
-        const doRequest = (_02, ..._12) => __async(null, [_02, ..._12], function* (sess, targetUrl = currentUrl) {
-          var _a, _b, _c, _d, _e;
+        if (!session.cookies && provider === "guardoserie") {
+          console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
+        }
+        const doRequest = (_02, _12, ..._2) => __async(null, [_02, _12, ..._2], function* (targetUrl2, sess, reqOptions = {}) {
+          var _a2, _b2, _c, _d, _e;
           const mergedHeaders = __spreadValues({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, options.headers);
+          }, reqOptions.headers);
           if (sess.userAgent) {
-            mergedHeaders["User-Agent"] = sess.userAgent;
-          } else if (!mergedHeaders["User-Agent"]) {
-            mergedHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+            mergedHeaders["user-agent"] = sess.userAgent;
+            delete mergedHeaders["User-Agent"];
+          } else if (!mergedHeaders["user-agent"] && !mergedHeaders["User-Agent"]) {
+            mergedHeaders["user-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
           }
           if (sess.cookies) {
             const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.Cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            mergedHeaders.cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
+            delete mergedHeaders["Cookie"];
           }
-          const response = yield axios(__spreadValues({
-            url: targetUrl,
-            method: options.method || "GET",
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 2e4,
-            validateStatus: false,
-            responseType: options.responseType || "text"
-          }, options.axiosConfig));
-          const data = response.data;
-          const responseUrl = ((_b = (_a = response.request) == null ? void 0 : _a.res) == null ? void 0 : _b.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
-          if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const quietHttpErrors = options.quietHttpErrors === true || Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status);
-            if (!quietHttpErrors) {
-              console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+          if (sess.requestHeaders) {
+            const browserHeaders = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site"];
+            for (const h of browserHeaders) {
+              if (sess.requestHeaders[h]) mergedHeaders[h] = sess.requestHeaders[h];
             }
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: responseUrl };
-            throw err;
           }
-          return { data, status: response.status, headers: response.headers, url: responseUrl };
+          const startTime = Date.now();
+          const requestTimeout = reqOptions.timeout ? reqOptions.timeout : sess.userAgent ? 6e4 : 3e4;
+          console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
+          const source = axios.CancelToken.source();
+          let timeoutId;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              source.cancel("timeout");
+              const err = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              err.code = "ECONNABORTED";
+              reject(err);
+            }, requestTimeout);
+          });
+          try {
+            const axiosPromise = axios(__spreadValues({
+              url: targetUrl2,
+              method: reqOptions.method || "GET",
+              data: reqOptions.body,
+              headers: mergedHeaders,
+              httpsAgent,
+              httpAgent,
+              cancelToken: source.token,
+              validateStatus: false,
+              responseType: reqOptions.responseType || "text"
+            }, reqOptions.axiosConfig));
+            const response = yield Promise.race([axiosPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
+            const duration = Date.now() - startTime;
+            if (sess.cookies) {
+              console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
+            }
+            const data = response.data;
+            const responseUrl = ((_b2 = (_a2 = response.request) == null ? void 0 : _a2.res) == null ? void 0 : _b2.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl2;
+            if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+              const quietHttpErrors = reqOptions.quietHttpErrors === true || Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status);
+              if (!quietHttpErrors) {
+                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+              }
+              const err = new Error(`HTTP ${response.status}`);
+              err.response = { status: response.status, data, url: responseUrl };
+              throw err;
+            }
+            return { data, status: response.status, headers: response.headers, url: responseUrl };
+          } catch (e) {
+            clearTimeout(timeoutId);
+            if (axios.isCancel(e) || e.code === "ECONNABORTED") {
+              const timeoutErr = new Error(`timeout of ${requestTimeout}ms exceeded`);
+              timeoutErr.code = "ECONNABORTED";
+              throw timeoutErr;
+            }
+            throw e;
+          }
         });
         const updateMetaFinalUrl = (res) => {
           if (!options.meta || !res || !res.url) return;
@@ -8450,8 +8125,16 @@ var require_cf_handler = __commonJS({
           return true;
         };
         const isCfStatus = (errorOrResponse) => {
+          var _a2;
+          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a2 = errorOrResponse.message) == null ? void 0 : _a2.includes("timeout")))) {
+            return true;
+          }
           const status = errorOrResponse && errorOrResponse.response ? errorOrResponse.response.status : errorOrResponse && errorOrResponse.status;
           return status === 403 || status === 503;
+        };
+        const isCfChallenge = (html) => {
+          if (typeof html !== "string") return false;
+          return /Just a moment|cf-browser-verification|turnstile|cf-challenge|Checking your browser/i.test(html);
         };
         const retryWithRedirectedSession = (challengeUrl) => __async(null, null, function* () {
           let challengeHost = "";
@@ -8466,7 +8149,7 @@ var require_cf_handler = __commonJS({
           if (!redirectedSession || !redirectedSession.cookies) return null;
           console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
           try {
-            const redirectedRes = yield doRequest(redirectedSession, challengeUrl);
+            const redirectedRes = yield doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
             if (redirectedRes.status === 403 || redirectedRes.status === 503) {
               try {
@@ -8489,13 +8172,14 @@ var require_cf_handler = __commonJS({
           }
         });
         try {
-          const res = yield doRequest(session);
+          const res = yield doRequest(currentUrl, session, options);
           updateMetaFinalUrl(res);
-          if (res.status === 403 || res.status === 503) {
+          if (res.status === 403 || res.status === 503 || res.status === 200 && isCfChallenge(res.data)) {
             throw { response: res };
           }
           if (session.cookies) {
-            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+            if (res.headers["set-cookie"]) {
+            }
           }
           return res.data;
         } catch (err) {
@@ -8503,6 +8187,8 @@ var require_cf_handler = __commonJS({
             if (options.skipBypassOnFailure) {
               throw err;
             }
+            const errorMsg = err.code === "ECONNABORTED" || ((_a = err.message) == null ? void 0 : _a.includes("timeout")) ? "Timeout richiesta" : ((_b = err.response) == null ? void 0 : _b.status) || err.message;
+            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = yield retryWithRedirectedSession(challengeUrl);
             if (redirectedData !== null) {
@@ -8553,7 +8239,7 @@ var require_cf_handler = __commonJS({
               } catch (e) {
               }
             }
-            const res = yield doRequest(newSession, finalUrl);
+            const res = yield doRequest(finalUrl, newSession);
             updateMetaFinalUrl(res);
             return res.data;
           }
@@ -8712,6 +8398,8 @@ var require_guardoserie = __commonJS({
           results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
         };
         const patterns = [
+          new RegExp(`<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*ml-mask[^"']*["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
+          new RegExp(`<div[^>]*class=["'][^"']*ml-item[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+)["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
           /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
           /<a[^>]+class=["'][^"']*ss-title[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
           /<a[^>]+href=["']([^"']+)["'][^>]+class=["'][^"']*ss-title[^"']*["'][^>]*>(.*?)<\/a>/gi
@@ -8759,6 +8447,7 @@ var require_guardoserie = __commonJS({
       };
       getGuardoserieBaseUrl = getGuardoserieBaseUrl2, getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, extractEpisodeUrlFromSeriesPage = extractEpisodeUrlFromSeriesPage2, normalizePlayerLink = normalizePlayerLink2, extractPlayerLinksFromHtml = extractPlayerLinksFromHtml2, getQualityFromName = getQualityFromName2, normalizeBaseUrl = normalizeBaseUrl2, resolveCandidateUrl = resolveCandidateUrl2, isSameHost = isSameHost2, extractSearchResultsFromHtml = extractSearchResultsFromHtml2, decodeEntitiesBasic = decodeEntitiesBasic2, normalizeTitle2 = normalizeTitle3, slugifyTitle = slugifyTitle2, extractTitleFromHtml = extractTitleFromHtml2, htmlMatchesTitle = htmlMatchesTitle2;
       const { smartFetch: smartFetch2 } = require_cf_handler();
+      let guardoserieDisabledUntil = 0;
       const { USER_AGENT: USER_AGENT2, getProxiedUrl } = require_common();
       const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
@@ -8812,43 +8501,17 @@ var require_guardoserie = __commonJS({
       function tryFetchPageHtml(url) {
         return __async(this, null, function* () {
           if (!url) return null;
-          const html = yield smartFetch2(url, getGuardoserieBaseUrl2(), {
-            headers: {
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            }
-          });
-          return html;
-        });
-      }
-      function guessUrlFromSlug(baseUrl, title, originalTitle) {
-        return __async(this, null, function* () {
-          const candidates = /* @__PURE__ */ new Set();
-          const slugs = [slugifyTitle2(title), slugifyTitle2(originalTitle)].filter(Boolean);
-          const patterns = [
-            (slug) => `${baseUrl}/${slug}/`,
-            (slug) => `${baseUrl}/film/${slug}/`,
-            (slug) => `${baseUrl}/movie/${slug}/`,
-            (slug) => `${baseUrl}/serie/${slug}/`,
-            (slug) => `${baseUrl}/serietv/${slug}/`
-          ];
-          for (const slug of slugs) {
-            for (const makeUrl of patterns) {
-              candidates.add(makeUrl(slug));
-            }
-          }
-          const candidateArray = Array.from(candidates);
-          const results = yield Promise.all(candidateArray.map((url) => __async(null, null, function* () {
-            try {
-              const html = yield tryFetchPageHtml(url);
-              if (html && htmlMatchesTitle2(html, title, originalTitle)) {
-                return url;
-              }
-            } catch (e) {
-            }
+          try {
+            const html = yield smartFetch2(url, getGuardoserieBaseUrl2(), {
+              headers: {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+              },
+              provider: "guardoserie"
+            });
+            return html;
+          } catch (e) {
             return null;
-          })));
-          return results.find(Boolean) || null;
+          }
         });
       }
       function getShowInfo(tmdbId, type) {
@@ -8874,6 +8537,10 @@ var require_guardoserie = __commonJS({
             if (!STEP_BENCH_ENABLED) return;
             bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
           };
+          if (Date.now() < guardoserieDisabledUntil && !(providerContext == null ? void 0 : providerContext.format)) {
+            console.log(`[Guardoserie] Provider temporaneamente disabilitato per l'addon fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
+            return [];
+          }
           try {
             const baseUrl = normalizeBaseUrl2(getGuardoserieBaseUrl2());
             if (!baseUrl) {
@@ -8932,25 +8599,45 @@ var require_guardoserie = __commonJS({
             const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
             console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
             const searchProvider = (query) => __async(null, null, function* () {
+              var _a2, _b2;
               const searchStartedAt = Date.now();
+              try {
+                yield smartFetch2(baseUrl, baseUrl, { provider: "guardoserie" });
+              } catch (e) {
+                console.log(`[Guardoserie] Could not initialize session from homepage`);
+              }
               const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-              const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpengine=default&swpquery=${encodeURIComponent(query)}`;
-              const [ajaxHtml, fallbackHtml] = yield Promise.all([
-                smartFetch2(searchUrl, baseUrl, {
+              const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
+              try {
+                const ajaxHtml = yield smartFetch2(searchUrl, baseUrl, {
                   method: "POST",
                   body,
-                  headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                  provider: "guardoserie"
-                }).catch(() => ""),
-                smartFetch2(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, { provider: "guardoserie" }).catch(() => "")
-              ]);
-              const ajaxResults = ajaxHtml ? extractSearchResultsFromHtml2(ajaxHtml, baseUrl) : [];
-              const fallbackResults = fallbackHtml ? extractSearchResultsFromHtml2(fallbackHtml, baseUrl) : [];
-              const results = [...ajaxResults, ...fallbackResults];
-              mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length });
-              return results;
+                  headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": `${baseUrl}/`,
+                    "Accept": "text/html, */*; q=0.01",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+                  },
+                  provider: "guardoserie",
+                  skipBypassOnFailure: true,
+                  timeout: 1e3
+                });
+                const results = extractSearchResultsFromHtml2(ajaxHtml, baseUrl);
+                mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: "ajax" });
+                return results;
+              } catch (e) {
+                if ((e.code === "ECONNABORTED" || ((_a2 = e.message) == null ? void 0 : _a2.includes("timeout"))) && !(providerContext == null ? void 0 : providerContext.format)) {
+                  guardoserieDisabledUntil = Date.now() + 36e5;
+                  console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per l'addon per 1 ora.`);
+                } else if (e.code === "ECONNABORTED" || ((_b2 = e.message) == null ? void 0 : _b2.includes("timeout"))) {
+                  console.log(`[Guardoserie] AJAX Search timeout (1s) durante resolve. Non blocco il provider.`);
+                } else {
+                  console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
+                }
+                return [];
+              }
             });
-            const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2)));
+            const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2).map((q) => q.toLowerCase()))).slice(0, 2);
             const searchPromises = queries.map((q) => searchProvider(q));
             const allResultsArray = yield Promise.all(searchPromises);
             let allResults = allResultsArray.flat();
@@ -8982,7 +8669,7 @@ var require_guardoserie = __commonJS({
               if (!exactA && exactB) return 1;
               return 0;
             });
-            let targetUrl = null;
+            targetUrl = null;
             let bestNoYearMatch = null;
             let bestNoYearScore = 0;
             const topResults = allResults.slice(0, 5);
@@ -9021,155 +8708,96 @@ var require_guardoserie = __commonJS({
             if (verifiedResults.length > 0) {
               targetUrl = verifiedResults[0].url;
             }
-            if (!targetUrl && bestNoYearMatch) {
-              console.log(`[Guardoserie] Year not found, using best title match: ${bestNoYearMatch}`);
-              targetUrl = bestNoYearMatch;
+            if (targetUrl) {
+              return yield processTargetUrl(targetUrl, type, effectiveSeason, effectiveEpisode, baseUrl, title, id, benchStart, mark);
             }
-            if (!targetUrl) {
-              const guessed = yield guessUrlFromSlug(baseUrl, title, originalTitle);
-              mark("slug_fallback_done", { ok: Boolean(guessed) });
-              if (guessed) {
-                console.log(`[Guardoserie] Slug fallback matched: ${guessed}`);
-                targetUrl = guessed;
-              }
-            }
-            if (!targetUrl) {
-              console.log(`[Guardoserie] No matching result found for ${title}`);
-              return [];
-            }
-            let episodeUrl = targetUrl;
-            if (type === "tv" || type === "series") {
-              season = effectiveSeason;
-              episode = effectiveEpisode;
-              const pageHtml = yield smartFetch2(targetUrl, getGuardoserieBaseUrl2(), {
-                headers: {
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                  "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                  "Referer": `${getGuardoserieBaseUrl2()}/`
-                }
-              });
-              const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage2(pageHtml, season, episode);
-              mark("series_episode_resolve_done", { ok: Boolean(resolvedEpisodeUrl) });
-              if (resolvedEpisodeUrl) {
-                episodeUrl = resolvedEpisodeUrl;
-              } else {
-                console.log(`[Guardoserie] Episode ${episode} not found in Season ${season} at ${targetUrl}`);
-                return [];
-              }
-            }
-            console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-            const finalHtml = yield smartFetch2(episodeUrl, getGuardoserieBaseUrl2(), {
-              headers: {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Referer": `${getGuardoserieBaseUrl2()}/`
-              }
-            });
-            mark("final_page_done");
-            let playerLinks = extractPlayerLinksFromHtml2(finalHtml);
-            mark("player_links_extracted", { links: playerLinks.length });
-            if (playerLinks.length === 0 && /\/serie\//i.test(episodeUrl)) {
-              const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage2(finalHtml, season, episode);
-              if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
-                console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-                const retryHtml = yield smartFetch2(fallbackEpisodeUrl, getGuardoserieBaseUrl2(), {
-                  headers: {
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Referer": `${getGuardoserieBaseUrl2()}/`
-                  }
-                });
-                const fallbackLinks = extractPlayerLinksFromHtml2(retryHtml);
-                if (fallbackLinks.length > 0) {
-                  playerLinks = fallbackLinks;
-                  episodeUrl = fallbackEpisodeUrl;
-                }
-                mark("player_links_fallback_done", { links: playerLinks.length });
-              }
-            }
-            if (playerLinks.length === 0) {
-              console.log(`[Guardoserie] No player links found`);
-              return [];
-            }
-            console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
-            const displayName = type === "tv" || type === "series" ? `${title} ${season}x${episode}` : title;
-            let streams = [];
-            const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
-              try {
-                if (playerLink.includes("loadm")) {
-                  const domain = "guardoserie.horse";
-                  const extracted = yield extractLoadm(playerLink, domain);
-                  const localStreams = [];
-                  for (const s of extracted || []) {
-                    const directLoadmUrl = s.url;
-                    let quality = "HD";
-                    if (s.url.includes(".m3u8")) {
-                      const detected = yield checkQualityFromPlaylist2(directLoadmUrl, s.headers || {});
-                      if (detected) quality = detected;
-                    }
-                    const normalizedQuality = getQualityFromName2(quality);
-                    localStreams.push(formatStream2({
-                      url: directLoadmUrl,
-                      headers: s.headers,
-                      name: `Guardoserie - Loadm`,
-                      title: displayName,
-                      quality: normalizedQuality,
-                      type: "direct",
-                      behaviorHints: s.behaviorHints
-                    }, "Guardoserie"));
-                  }
-                  return localStreams;
-                } else if (playerLink.includes("uqload")) {
-                  const extracted = yield extractUqload(playerLink);
-                  if (extracted && extracted.url) {
-                    return [formatStream2({
-                      url: extracted.url,
-                      headers: extracted.headers,
-                      name: `Guardoserie - Uqload`,
-                      title: displayName,
-                      quality: getQualityFromName2("HD"),
-                      type: "direct"
-                    }, "Guardoserie")];
-                  }
-                } else if (playerLink.includes("dropload") || playerLink.includes("dr0pstream")) {
-                  console.log(`[Guardoserie] DropLoad temporarily disabled: ${playerLink}`);
-                  return [];
-                } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-                  const extracted = yield extractMixDrop(playerLink);
-                  if (extracted && extracted.url) {
-                    return [formatStream2({
-                      url: extracted.url,
-                      easyProxySourceUrl: playerLink,
-                      headers: extracted.headers,
-                      name: `Guardoserie - MixDrop`,
-                      title: displayName,
-                      quality: getQualityFromName2("HD"),
-                      type: "direct"
-                    }, "Guardoserie")];
-                  }
-                } else if (playerLink.includes("supervideo")) {
-                  console.log(`[Guardoserie] SuperVideo temporarily disabled: ${playerLink}`);
-                  return [];
-                }
-              } catch (e) {
-                console.error(`[Guardoserie] Extraction error for ${playerLink}:`, e);
-              }
-              return [];
-            }));
-            const nestedStreams = yield Promise.all(streamPromises);
-            streams = nestedStreams.flat().filter(Boolean);
-            mark("extractors_done", { streams: streams.length });
-            if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
-            }
-            return streams;
+            console.log(`[Guardoserie] No matching result found for ${title}`);
+            return [];
           } catch (e) {
-            if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardoserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: (e == null ? void 0 : e.message) || String(e) })}`);
-            }
             console.error(`[Guardoserie] Error:`, e);
             return [];
           }
+        });
+      }
+      function processTargetUrl(targetUrl2, type, effectiveSeason, effectiveEpisode, baseUrl, title, id, benchStart, mark) {
+        return __async(this, null, function* () {
+          let episodeUrl = targetUrl2;
+          if (type === "tv" || type === "series") {
+            const pageHtml = yield smartFetch2(targetUrl2, getGuardoserieBaseUrl2(), {
+              headers: {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": `${getGuardoserieBaseUrl2()}/`
+              },
+              provider: "guardoserie"
+            });
+            const resolvedEpisodeUrl = extractEpisodeUrlFromSeriesPage2(pageHtml, effectiveSeason, effectiveEpisode);
+            if (resolvedEpisodeUrl) {
+              episodeUrl = resolvedEpisodeUrl;
+            } else {
+              console.log(`[Guardoserie] Episode ${effectiveEpisode} not found in Season ${effectiveSeason} at ${targetUrl2}`);
+              return [];
+            }
+          }
+          console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
+          const finalHtml = yield smartFetch2(episodeUrl, getGuardoserieBaseUrl2(), {
+            headers: {
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Referer": `${getGuardoserieBaseUrl2()}/`
+            },
+            provider: "guardoserie"
+          });
+          let playerLinks = extractPlayerLinksFromHtml2(finalHtml);
+          if (playerLinks.length === 0) {
+            console.log(`[Guardoserie] No player links found`);
+            return [];
+          }
+          console.log(`[Guardoserie] Found ${playerLinks.length} player links`);
+          const displayName = type === "tv" || type === "series" ? `${title} ${effectiveSeason}x${effectiveEpisode}` : title;
+          const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
+            try {
+              if (playerLink.includes("loadm")) {
+                const domain = "guardoserie.horse";
+                const extracted = yield extractLoadm(playerLink, domain);
+                return (extracted || []).map((s) => formatStream2({
+                  url: s.url,
+                  headers: s.headers,
+                  name: `Guardoserie - Loadm`,
+                  title: displayName,
+                  quality: "HD",
+                  type: "direct",
+                  behaviorHints: s.behaviorHints
+                }, "Guardoserie"));
+              } else if (playerLink.includes("uqload")) {
+                const extracted = yield extractUqload(playerLink);
+                if (extracted == null ? void 0 : extracted.url) {
+                  return [formatStream2({
+                    url: extracted.url,
+                    headers: extracted.headers,
+                    name: `Guardoserie - Uqload`,
+                    title: displayName,
+                    quality: "HD",
+                    type: "direct"
+                  }, "Guardoserie")];
+                }
+              } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
+                const extracted = yield extractMixDrop(playerLink);
+                if (extracted == null ? void 0 : extracted.url) {
+                  return [formatStream2({
+                    url: extracted.url,
+                    headers: extracted.headers,
+                    name: `Guardoserie - MixDrop`,
+                    title: displayName,
+                    quality: "HD",
+                    type: "direct"
+                  }, "Guardoserie")];
+                }
+              }
+            } catch (e) {
+            }
+            return [];
+          }));
+          const nestedStreams = yield Promise.all(streamPromises);
+          return nestedStreams.flat().filter(Boolean);
         });
       }
       module2.exports = { getStreams: getStreams3 };
@@ -9908,9 +9536,9 @@ var require_animeunity = __commonJS({
         const attemptStatuses = [];
         let directWarmupError = null;
         let proxyWarmupError = null;
-        const doRequest = (_02, _1, ..._2) => __async(null, [_02, _1, ..._2], function* (targetUrl, requestHeaders, { storeCookies = false } = {}) {
+        const doRequest = (_02, _1, ..._2) => __async(null, [_02, _1, ..._2], function* (targetUrl2, requestHeaders, { storeCookies = false } = {}) {
           const response2 = yield fetchWithTimeout2(
-            targetUrl,
+            targetUrl2,
             __spreadProps(__spreadValues({}, requestConfig), {
               headers: requestHeaders
             }),
@@ -11213,17 +10841,17 @@ var require_animeworld = __commonJS({
           });
         }
         if (streams.length === 0) {
-          const targetUrl = toAbsoluteUrl(infoData.target || null, getWorldBaseUrl());
-          if (targetUrl) {
+          const targetUrl2 = toAbsoluteUrl(infoData.target || null, getWorldBaseUrl());
+          if (targetUrl2) {
             const extraHeaders = {};
             const csrfToken = String((pageContext == null ? void 0 : pageContext.csrfToken) || "").trim();
             const sessionCookie = String((pageContext == null ? void 0 : pageContext.sessionCookie) || "").trim();
             if (csrfToken) extraHeaders["csrf-token"] = csrfToken;
             if (sessionCookie) extraHeaders.cookie = sessionCookie;
             try {
-              const targetHtml = yield fetchResource(targetUrl, {
+              const targetHtml = yield fetchResource(targetUrl2, {
                 ttlMs: TTL.info,
-                cacheKey: `server-target:${targetUrl}:${csrfToken ? "csrf" : "nocsrf"}:${sessionCookie ? "cookie" : "nocookie"}`,
+                cacheKey: `server-target:${targetUrl2}:${csrfToken ? "csrf" : "nocsrf"}:${sessionCookie ? "cookie" : "nocookie"}`,
                 timeoutMs: FETCH_TIMEOUT2,
                 headers: __spreadValues({
                   referer: animeUrl,
