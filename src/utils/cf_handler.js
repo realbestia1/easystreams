@@ -17,7 +17,8 @@ const agentOptions = {
 const httpsAgent = new https.Agent(agentOptions);
 const httpAgent = new http.Agent(agentOptions);
 
-// Cache completely disabled: no in-memory cache for bypass
+// In-memory cache for CF sessions to avoid disk I/O on every request
+const sessionCache = new Map();
 
 
 
@@ -57,6 +58,16 @@ async function smartFetch(url, domain, options = {}) {
     
     const loadSession = (providerName = provider, targetHost = urlHost) => {
         const targetSessionFile = sessionFileForProvider(providerName);
+
+        // Check memory cache first (disabled for guardoserie as requested)
+        if (providerName !== 'guardoserie') {
+            const cached = sessionCache.get(providerName);
+            if (cached && cached.cookies && (Date.now() - cached.timestamp < 115 * 60 * 1000)) {
+                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
+                return cached;
+            }
+        }
+
         if (fs.existsSync(targetSessionFile)) {
             try {
                 const data = JSON.parse(fs.readFileSync(targetSessionFile, 'utf8'));
@@ -82,7 +93,10 @@ async function smartFetch(url, domain, options = {}) {
                             }
                         } catch (e) {}
                     }
-                    console.log(`[CF-HANDLER][${providerName}] Sessione caricata da file (${Math.round(ageMs/60000)} min fa).`);
+                    // Update memory cache (skipped for guardoserie)
+                    if (providerName !== 'guardoserie') {
+                        sessionCache.set(providerName, data);
+                    }
                     return data;
                 }
             } catch (e) { return {}; }
@@ -94,80 +108,111 @@ async function smartFetch(url, domain, options = {}) {
     let currentUrl = url;
 
     if (session.url) {
-        try {
-            const currentUrlObj = new URL(currentUrl);
-            const sessionUrl = new URL(session.url);
-            const currentHost = currentUrlObj.hostname.toLowerCase();
-            const sessionHost = sessionUrl.hostname.toLowerCase();
-
-            if (sessionHost !== currentHost) {
-                const sessionParts = sessionHost.split('.');
-                const currentParts = currentHost.split('.');
-                const sessionRoot = sessionParts.slice(-2).join('.');
-                const currentRoot = currentParts.slice(-2).join('.');
-                
-                if (sessionRoot === currentRoot || currentHost.includes(sessionParts[sessionParts.length - 2])) {
-                    console.log(`[CF-HANDLER][${provider}] Cambio dominio: ${currentHost} -> ${sessionHost}`);
-                    currentUrl = currentUrl.replace(currentUrlObj.hostname, sessionUrl.hostname);
-                }
-            }
-        } catch (e) {}
+        // Hostname replacement logic removed as it caused "Invalid URL" errors
+    }
+    if (!session.cookies && provider === 'guardoserie') {
+        console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
     }
 
-    const doRequest = async (sess, targetUrl = currentUrl) => {
+    const doRequest = async (targetUrl, sess, reqOptions = {}) => {
         const mergedHeaders = {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-            ...options.headers
+            ...reqOptions.headers
         };
 
         // Prioritize session User-Agent to match Cloudflare clearance
         if (sess.userAgent) {
-            mergedHeaders['User-Agent'] = sess.userAgent;
-        } else if (!mergedHeaders['User-Agent']) {
-            mergedHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+            mergedHeaders['user-agent'] = sess.userAgent;
+            delete mergedHeaders['User-Agent'];
+        } else if (!mergedHeaders['user-agent'] && !mergedHeaders['User-Agent']) {
+            mergedHeaders['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
         }
 
         // Merge session cookies with provided cookies
         if (sess.cookies) {
             const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || '';
-            mergedHeaders.Cookie = existingCookies 
+            mergedHeaders.cookie = existingCookies 
                 ? (existingCookies.endsWith(';') ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}`)
                 : sess.cookies;
+            delete mergedHeaders['Cookie'];
         }
 
 
-        const response = await axios({
-            url: targetUrl,
-            method: options.method || 'GET',
-            data: options.body,
-            headers: mergedHeaders,
-            httpsAgent,
-            httpAgent,
-            timeout: options.timeout || 30000,
-            validateStatus: false,
-            responseType: options.responseType || 'text',
-            ...options.axiosConfig
+        // Replicate browser fingerprint headers (sec-ch-ua, etc.)
+        if (sess.requestHeaders) {
+            const browserHeaders = ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site'];
+            for (const h of browserHeaders) {
+                if (sess.requestHeaders[h]) mergedHeaders[h] = sess.requestHeaders[h];
+            }
+        }
+
+        const startTime = Date.now();
+        const requestTimeout = reqOptions.timeout ? reqOptions.timeout : (sess.userAgent ? 60000 : 30000);
+        console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
+        
+        const source = axios.CancelToken.source();
+        
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                source.cancel('timeout');
+                const err = new Error(`timeout of ${requestTimeout}ms exceeded`);
+                err.code = 'ECONNABORTED';
+                reject(err);
+            }, requestTimeout);
         });
 
-        const data = response.data;
-        const responseUrl =
-            response.request?.res?.responseUrl ||
-            response.request?._redirectable?._currentUrl ||
-            response.config?.url ||
-            targetUrl;
-        if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-            const quietHttpErrors = options.quietHttpErrors === true ||
-                (Array.isArray(options.quietHttpErrors) && options.quietHttpErrors.includes(response.status));
-            if (!quietHttpErrors) {
-                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
-            }
-            const err = new Error(`HTTP ${response.status}`);
-            err.response = { status: response.status, data, url: responseUrl };
-            throw err;
-        }
+        try {
+            const axiosPromise = axios({
+                url: targetUrl,
+                method: reqOptions.method || 'GET',
+                data: reqOptions.body,
+                headers: mergedHeaders,
+                httpsAgent,
+                httpAgent,
+                cancelToken: source.token,
+                validateStatus: false,
+                responseType: reqOptions.responseType || 'text',
+                ...reqOptions.axiosConfig
+            });
 
-        return { data, status: response.status, headers: response.headers, url: responseUrl };
+            const response = await Promise.race([axiosPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
+            
+            const duration = Date.now() - startTime;
+            if (sess.cookies) {
+                console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
+            }
+
+            const data = response.data;
+            const responseUrl =
+                response.request?.res?.responseUrl ||
+                response.request?._redirectable?._currentUrl ||
+                response.config?.url ||
+                targetUrl;
+                
+            if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
+                const quietHttpErrors = reqOptions.quietHttpErrors === true ||
+                    (Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status));
+                if (!quietHttpErrors) {
+                    console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
+                }
+                const err = new Error(`HTTP ${response.status}`);
+                err.response = { status: response.status, data, url: responseUrl };
+                throw err;
+            }
+
+            return { data, status: response.status, headers: response.headers, url: responseUrl };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            if (axios.isCancel(e) || e.code === 'ECONNABORTED') {
+                const timeoutErr = new Error(`timeout of ${requestTimeout}ms exceeded`);
+                timeoutErr.code = 'ECONNABORTED';
+                throw timeoutErr;
+            }
+            throw e;
+        }
     };
 
     const updateMetaFinalUrl = (res) => {
@@ -186,10 +231,18 @@ async function smartFetch(url, domain, options = {}) {
     };
 
     const isCfStatus = (errorOrResponse) => {
+        if (errorOrResponse && (errorOrResponse.code === 'ECONNABORTED' || errorOrResponse.message?.includes('timeout'))) {
+            return true; // Treat timeouts as potential CF challenges
+        }
         const status = errorOrResponse && errorOrResponse.response
             ? errorOrResponse.response.status
             : errorOrResponse && errorOrResponse.status;
         return status === 403 || status === 503;
+    };
+
+    const isCfChallenge = (html) => {
+        if (typeof html !== 'string') return false;
+        return /Just a moment|cf-browser-verification|turnstile|cf-challenge|Checking your browser/i.test(html);
     };
 
     const retryWithRedirectedSession = async (challengeUrl) => {
@@ -207,7 +260,7 @@ async function smartFetch(url, domain, options = {}) {
 
         console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
         try {
-            const redirectedRes = await doRequest(redirectedSession, challengeUrl);
+            const redirectedRes = await doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
             if (redirectedRes.status === 403 || redirectedRes.status === 503) {
                 try { fs.unlinkSync(sessionFileForProvider(challengeProvider)); } catch (e) {}
@@ -225,21 +278,25 @@ async function smartFetch(url, domain, options = {}) {
     };
 
     try {
-        const res = await doRequest(session);
+        const res = await doRequest(currentUrl, session, options);
         updateMetaFinalUrl(res);
-        if (res.status === 403 || res.status === 503) {
+        if (res.status === 403 || res.status === 503 || (res.status === 200 && isCfChallenge(res.data))) {
             throw { response: res };
         }
         if (session.cookies) {
-            console.log(`[CF-HANDLER][${provider}] Richiesta completata usando sessione esistente.`);
+            // Update cache if session was updated during request (rare but possible)
+            if (res.headers['set-cookie']) {
+                 // Note: we don't update file here to avoid blocking
+            }
         }
-          // caching disabled
         return res.data;
     } catch (err) {
         if (isCfStatus(err)) {
             if (options.skipBypassOnFailure) {
                 throw err;
             }
+            const errorMsg = err.code === 'ECONNABORTED' || err.message?.includes('timeout') ? 'Timeout richiesta' : (err.response?.status || err.message);
+            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
 
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = await retryWithRedirectedSession(challengeUrl);
@@ -299,7 +356,7 @@ async function smartFetch(url, domain, options = {}) {
                 } catch (e) {}
             }
 
-            const res = await doRequest(newSession, finalUrl);
+            const res = await doRequest(finalUrl, newSession);
             updateMetaFinalUrl(res);
             return res.data;
         }
