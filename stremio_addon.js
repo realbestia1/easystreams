@@ -1338,6 +1338,8 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'cinemacity']);
+
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
     if (normalizedType === 'anime') return true;
@@ -1571,8 +1573,10 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
         if (animeRoutingFlag && type !== 'anime') {
             logVerbose(`[Stremio] Anime routing enabled for ${type}:${providerId}`);
         }
+        const hasEasyProxy = Boolean(easyProxyUrl);
         const selectedProviders = getProviderExecutionOrder(type, providerId, requestContext, animeRoutingFlag)
-            .filter((name) => !disabledProviders.has(String(name).toLowerCase()));
+            .filter((name) => !disabledProviders.has(String(name).toLowerCase()))
+            .filter((name) => !EASY_PROXY_REQUIRED_PROVIDERS.has(name) || hasEasyProxy);
         if (selectedProviders.length === 0) {
             console.warn('[Stremio] No provider selected for request.');
             return { streams: [] };
