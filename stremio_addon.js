@@ -1414,11 +1414,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
-                : ['streamingcommunity', 'guardoserie', 'cinemacity'];
+                : ['streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity'];
         }
     }
 
