@@ -103,7 +103,7 @@
       "formats": ["mp4", "m3u8"],
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/guardaserie.js",
-      "supportedTypes": ["tv"],
+      "supportedTypes": ["tv", "anime"],
       "enabled": true
     }
   ]
