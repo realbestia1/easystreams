@@ -7411,6 +7411,7 @@ var require_vidxgo = __commonJS({
             stderr += data.toString();
           });
           child.on("close", (code) => {
+            if (code !== 0) console.error("[VidxGo] Python script exited with code", code, "stderr:", stderr);
             if (stdout.trim()) {
               try {
                 const result = JSON.parse(stdout);
@@ -7418,11 +7419,14 @@ var require_vidxgo = __commonJS({
                   resolve(result.stream_url);
                   return;
                 }
+                console.warn("[VidxGo] Python script returned error:", result.error || "unknown");
                 resolve(null);
               } catch (e) {
+                console.warn("[VidxGo] Failed to parse Python output:", stdout.substring(0, 200));
                 resolve(null);
               }
             } else {
+              console.warn("[VidxGo] Python script returned empty stdout, stderr:", stderr);
               resolve(null);
             }
           });
