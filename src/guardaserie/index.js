@@ -244,9 +244,10 @@ if (!IS_SERVER) {
 
         const vidxgoUrl = extractVidxGoFromHtml(showHtml);
         if (vidxgoUrl) {
-          const vidxgoStream = yield extractVidxGo(vidxgoUrl, showUrl);
+          const vidxgoSeasonEpisodeUrl = `${vidxgoUrl}/${effectiveSeason}/${effectiveEpisode}`;
+          const vidxgoStream = yield extractVidxGo(vidxgoSeasonEpisodeUrl, showUrl);
           if (vidxgoStream && vidxgoStream.url) {
-            streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoUrl, headers: vidxgoStream.headers, name: "Guardaserie - VidxGo", title: displayName, quality: getQualityFromName("HD"), type: "direct" });
+            streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoSeasonEpisodeUrl, headers: vidxgoStream.headers, name: "Guardaserie - VidxGo", title: displayName, quality: getQualityFromName("HD"), type: "direct" });
           }
         }
         mark("vidxgo_extracted", { ok: Boolean(vidxgoUrl) });
