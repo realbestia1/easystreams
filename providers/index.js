@@ -7377,6 +7377,95 @@ var require_streamhg = __commonJS({
   }
 });
 
+// src/extractors/vidxgo.js
+var require_vidxgo = __commonJS({
+  "src/extractors/vidxgo.js"(exports2, module2) {
+    var { spawn } = require("child_process");
+    var path = require("path");
+    var fs = require("fs");
+    var { USER_AGENT: USER_AGENT2 } = require_common();
+    function getPythonExe() {
+      const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+      if (fs.existsSync(venvPython)) return venvPython;
+      if (process.platform === "win32") return "python";
+      return "python3";
+    }
+    function bypassAndExtract(url, referer = null) {
+      return __async(this, null, function* () {
+        const scriptPath = path.join(__dirname, "..", "utils", "vidxgo_bypass.py");
+        const pythonExe = getPythonExe();
+        const args = [
+          scriptPath,
+          url,
+          "--referer",
+          referer || "https://altadefinizione.you/"
+        ];
+        return new Promise((resolve, reject) => {
+          const child = spawn(pythonExe, args);
+          let stdout = "";
+          let stderr = "";
+          child.stdout.on("data", (data) => {
+            stdout += data.toString();
+          });
+          child.stderr.on("data", (data) => {
+            stderr += data.toString();
+          });
+          child.on("close", (code) => {
+            if (stdout.trim()) {
+              try {
+                const result = JSON.parse(stdout);
+                if (result.status === "ok" && result.stream_url) {
+                  resolve(result.stream_url);
+                  return;
+                }
+                resolve(null);
+              } catch (e) {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          });
+          child.on("error", () => resolve(null));
+        });
+      });
+    }
+    function extractVidxGo(url, referer = null) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const streamUrl = yield bypassAndExtract(url, referer);
+          if (streamUrl) {
+            console.log("[VidxGo] Real stream URL extracted:", streamUrl);
+            const vidxgoOrigin = new URL(url).origin;
+            return {
+              url: streamUrl,
+              headers: {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
+                "Referer": url,
+                "Origin": vidxgoOrigin,
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-GPC": "1",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "cross-site",
+                "DNT": "1",
+                "Priority": "u=0"
+              }
+            };
+          }
+          return { url, headers: { "User-Agent": USER_AGENT2, "Referer": referer || url } };
+        } catch (e) {
+          console.error("[VidxGo] Extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractVidxGo };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -7390,6 +7479,7 @@ var require_extractors = __commonJS({
     var { extractVixCloud } = require_vixcloud();
     var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
+    var { extractVidxGo } = require_vidxgo();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
@@ -7402,6 +7492,7 @@ var require_extractors = __commonJS({
       extractVixCloud,
       extractLoadm,
       extractStreamHG,
+      extractVidxGo,
       USER_AGENT: USER_AGENT2,
       unPack
     };
@@ -12985,6 +13076,294 @@ var require_cinemacity = __commonJS({
   }
 });
 
+// src/guardaserie/index.js
+var require_guardaserie = __commonJS({
+  "src/guardaserie/index.js"(exports2, module2) {
+    var IS_SERVER2 = typeof process !== "undefined" && process.versions && process.versions.node;
+    if (!IS_SERVER2) {
+      module2.exports = {
+        getStreams: (id, type, season, episode) => __async(null, null, function* () {
+          try {
+            const url = `https://easystreams.realbestia.com/resolve/guardaserie?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
+            const response = yield fetch(url);
+            const data = yield response.json();
+            return data.streams || [];
+          } catch (e) {
+            console.error("[Guardaserie-Client] API Error:", e.message);
+            return [];
+          }
+        })
+      };
+    } else {
+      let getGuardaserieBaseUrl2 = function() {
+        return "https://guardaserietv.rest";
+      }, getMappingApiUrl3 = function() {
+        return "https://animemapping.realbestia.com";
+      }, normalizeConfigBoolean3 = function(value) {
+        if (value === true) return true;
+        const normalized = String(value || "").trim().toLowerCase();
+        return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+      }, getMappingLanguage3 = function(providerContext = null) {
+        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
+        if (explicit === "it") return "it";
+        return normalizeConfigBoolean3(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      }, getQualityFromName2 = function(qualityStr) {
+        if (!qualityStr) return "Unknown";
+        const quality = qualityStr.toUpperCase();
+        if (quality === "ORG" || quality === "ORIGINAL") return "Original";
+        if (quality === "4K" || quality === "2160P") return "4K";
+        if (quality === "1440P" || quality === "2K") return "1440p";
+        if (quality === "1080P" || quality === "FHD") return "1080p";
+        if (quality === "720P" || quality === "HD") return "720p";
+        if (quality === "480P" || quality === "SD") return "480p";
+        if (quality === "360P") return "360p";
+        if (quality === "240P") return "240p";
+        const match = qualityStr.match(/(\d{3,4})[pP]?/);
+        if (match) {
+          const resolution = parseInt(match[1]);
+          if (resolution >= 2160) return "4K";
+          if (resolution >= 1440) return "1440p";
+          if (resolution >= 1080) return "1080p";
+          if (resolution >= 720) return "720p";
+          if (resolution >= 480) return "480p";
+          if (resolution >= 360) return "360p";
+          return "240p";
+        }
+        return "Unknown";
+      }, getImdbId2 = function(tmdbId, type) {
+        return __async2(this, null, function* () {
+          try {
+            const endpoint = type === "movie" ? "movie" : "tv";
+            const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}`;
+            const response = yield fetch(url);
+            if (!response.ok) return null;
+            const data = yield response.json();
+            if (data.imdb_id) return data.imdb_id;
+            const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY3}`;
+            const extResponse = yield fetch(externalUrl);
+            if (extResponse.ok) {
+              const extData = yield extResponse.json();
+              if (extData.imdb_id) return extData.imdb_id;
+            }
+            return null;
+          } catch (e) {
+            console.error("[Guardaserie] Conversion error:", e);
+            return null;
+          }
+        });
+      }, getShowInfo2 = function(tmdbId, type) {
+        return __async2(this, null, function* () {
+          try {
+            const endpoint = type === "movie" ? "movie" : "tv";
+            const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}&language=it-IT`;
+            const response = yield fetch(url);
+            if (!response.ok) return null;
+            return yield response.json();
+          } catch (e) {
+            console.error("[Guardaserie] TMDB error:", e);
+            return null;
+          }
+        });
+      }, getTmdbIdFromImdb2 = function(imdbId, type) {
+        return __async2(this, null, function* () {
+          var _a, _b;
+          try {
+            const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY3}&external_source=imdb_id`;
+            const response = yield fetch(url);
+            if (!response.ok) return null;
+            const data = yield response.json();
+            if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
+            if (type === "tv") {
+              if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+              if (data.tv_episode_results && data.tv_episode_results.length > 0) return data.tv_episode_results[0].show_id;
+              if (data.tv_season_results && data.tv_season_results.length > 0) return data.tv_season_results[0].show_id;
+            }
+            return null;
+          } catch (e) {
+            console.error("[Guardaserie] ID conversion error:", e);
+            return null;
+          }
+        });
+      }, getIdsFromKitsu3 = function(kitsuId, season, episode, providerContext = null) {
+        return __async2(this, null, function* () {
+          try {
+            if (!kitsuId) return null;
+            const params = new URLSearchParams();
+            const parsedEpisode = parseInt(String(episode || ""), 10);
+            const parsedSeason = parseInt(String(season || ""), 10);
+            params.set("ep", Number.isInteger(parsedEpisode) && parsedEpisode > 0 ? String(parsedEpisode) : "1");
+            if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
+            params.set("lang", "it");
+            const url = `${getMappingApiUrl3()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+            const response = yield fetch(url);
+            if (!response.ok) return null;
+            const payload = yield response.json();
+            const ids = payload && payload.mappings && payload.mappings.ids ? payload.mappings.ids : {};
+            const tmdbEpisode = payload && payload.mappings && (payload.mappings.tmdb_episode || payload.mappings.tmdbEpisode) || payload && (payload.tmdb_episode || payload.tmdbEpisode) || null;
+            const tmdbId = ids && /^\d+$/.test(String(ids.tmdb || "").trim()) ? String(ids.tmdb).trim() : null;
+            const imdbId = ids && /^tt\d+$/i.test(String(ids.imdb || "").trim()) ? String(ids.imdb).trim() : null;
+            const mappedSeason = parseInt(String(tmdbEpisode && (tmdbEpisode.season || tmdbEpisode.seasonNumber || tmdbEpisode.season_number) || ""), 10);
+            const mappedEpisode = parseInt(String(tmdbEpisode && (tmdbEpisode.episode || tmdbEpisode.episodeNumber || tmdbEpisode.episode_number) || ""), 10);
+            const rawEpisodeNumber = parseInt(String(tmdbEpisode && (tmdbEpisode.rawEpisodeNumber || tmdbEpisode.raw_episode_number || tmdbEpisode.rawEpisode) || ""), 10);
+            return {
+              tmdbId,
+              imdbId,
+              mappedSeason: Number.isInteger(mappedSeason) && mappedSeason > 0 ? mappedSeason : null,
+              mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
+              rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
+            };
+          } catch (e) {
+            console.error("[Guardaserie] Kitsu mapping error:", e);
+            return null;
+          }
+        });
+      }, extractVidxGoFromHtml2 = function(html) {
+        const imdbMatch = html.match(/show_imdb\s*=\s*['"](tt\d+)['"]/i);
+        if (imdbMatch) {
+          const numericId = imdbMatch[1].replace("tt", "");
+          return `https://v.vidxgo.co/${numericId}`;
+        }
+        const scriptMatch = html.match(/vidxgo-frame['"]\.src\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
+        if (scriptMatch) return scriptMatch[1];
+        const concatMatch = html.match(/vidxgo\.co\/'\s*\+\s*['"](tt\d+)['"]/i);
+        if (concatMatch) {
+          const numericId = concatMatch[1].replace("tt", "");
+          return `https://v.vidxgo.co/${numericId}`;
+        }
+        return null;
+      }, getStreams4 = function(id, type, season, episode, providerContext = null) {
+        if (String(type).toLowerCase() === "movie") return [];
+        return __async2(this, null, function* () {
+          const benchStart = Date.now();
+          const bench = [];
+          const mark = (step, meta = {}) => {
+            if (!STEP_BENCH_ENABLED) return;
+            bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
+          };
+          try {
+            let tmdbId = id;
+            let imdbId = null;
+            let effectiveSeason = parseInt(String(season || ""), 10) || 1;
+            let effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
+            const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+            const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null;
+            const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
+            if (id.toString().startsWith("kitsu:") || contextKitsuId) {
+              const kitsuId = contextKitsuId || id.toString().split(":")[1];
+              const mapped = yield getIdsFromKitsu3(kitsuId, season, episode, providerContext);
+              mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
+              if (mapped) {
+                if (mapped.tmdbId) tmdbId = mapped.tmdbId;
+                if (mapped.imdbId) imdbId = mapped.imdbId;
+                if (mapped.mappedSeason && mapped.mappedEpisode) {
+                  effectiveSeason = mapped.mappedSeason;
+                  effectiveEpisode = mapped.mappedEpisode;
+                } else if (mapped.rawEpisodeNumber) {
+                  effectiveEpisode = mapped.rawEpisodeNumber;
+                }
+              }
+            } else if (id.toString().startsWith("tt")) {
+              imdbId = id.toString();
+              tmdbId = contextTmdbId || tmdbId;
+              mark("imdb_to_tmdb_done", { ok: true });
+            } else if (id.toString().startsWith("tmdb:")) {
+              tmdbId = id.toString().replace("tmdb:", "");
+            }
+            if (!imdbId && tmdbId) imdbId = contextImdbId || (yield getImdbId2(tmdbId, type));
+            mark("imdb_resolve_done", { ok: Boolean(imdbId) });
+            if (!imdbId) return [];
+            let showUrl = null, showHtml = null;
+            let matchedTitle = imdbId;
+            if (imdbId) {
+              const searchUrl = `${getGuardaserieBaseUrl2()}/index.php?do=search&subaction=search&story=${imdbId}`;
+              const searchHtml = yield smartFetch2(searchUrl, getGuardaserieBaseUrl2(), {
+                headers: { "Referer": getGuardaserieBaseUrl2() }
+              });
+              if (searchHtml) {
+                const match = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i.exec(searchHtml);
+                if (match && !match[2].toUpperCase().includes("[SUB ITA]")) {
+                  showUrl = match[1].startsWith("/") ? `${getGuardaserieBaseUrl2()}${match[1]}` : match[1];
+                  matchedTitle = match[2] || imdbId;
+                  const pageHtml = yield smartFetch2(showUrl, getGuardaserieBaseUrl2(), {
+                    headers: { "Referer": getGuardaserieBaseUrl2() }
+                  });
+                  if (pageHtml) showHtml = pageHtml;
+                }
+              }
+              mark("search_by_imdb_done", { ok: Boolean(showUrl) });
+            }
+            if (!showUrl || !showHtml) return [];
+            const displayName = `${matchedTitle} ${effectiveSeason}x${effectiveEpisode}`;
+            const streams = [];
+            const vidxgoUrl = extractVidxGoFromHtml2(showHtml);
+            if (vidxgoUrl) {
+              const vidxgoStream = yield extractVidxGo(vidxgoUrl, showUrl);
+              if (vidxgoStream && vidxgoStream.url) {
+                streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoUrl, headers: vidxgoStream.headers, name: "Guardaserie - VidxGo", title: displayName, quality: getQualityFromName2("HD"), type: "direct" });
+              }
+            }
+            mark("vidxgo_extracted", { ok: Boolean(vidxgoUrl) });
+            const finalStreams = streams.map((s) => formatStream2(s, "Guardaserie")).filter((s) => s !== null);
+            mark("extractors_done", { streams: finalStreams.length });
+            if (STEP_BENCH_ENABLED) {
+              console.log(`[GuardaserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
+            }
+            return finalStreams;
+          } catch (e) {
+            if (STEP_BENCH_ENABLED) {
+              console.log(`[GuardaserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e && e.message ? e.message : String(e) })}`);
+            }
+            console.error("[Guardaserie] Error:", e);
+            return [];
+          }
+        });
+      };
+      getGuardaserieBaseUrl = getGuardaserieBaseUrl2, getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getShowInfo = getShowInfo2, getTmdbIdFromImdb = getTmdbIdFromImdb2, getIdsFromKitsu2 = getIdsFromKitsu3, extractVidxGoFromHtml = extractVidxGoFromHtml2, getStreams3 = getStreams4;
+      __async2 = (__this, __arguments, generator) => {
+        return new Promise((resolve, reject) => {
+          var fulfilled = (value) => {
+            try {
+              step(generator.next(value));
+            } catch (e) {
+              reject(e);
+            }
+          };
+          var rejected = (value) => {
+            try {
+              step(generator.throw(value));
+            } catch (e) {
+              reject(e);
+            }
+          };
+          var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+          step((generator = generator.apply(__this, __arguments)).next());
+        });
+      };
+      const TMDB_API_KEY3 = "68e094699525b18a70bab2f86b1fa706";
+      const USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+      const { extractVidxGo } = require_vidxgo();
+      require_fetch_helper();
+      const { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
+      const { formatStream: formatStream2 } = require_formatter();
+      const { smartFetch: smartFetch2 } = require_cf_handler();
+      const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
+      module2.exports = { getStreams: getStreams4 };
+    }
+    var __async2;
+    var getGuardaserieBaseUrl;
+    var getMappingApiUrl2;
+    var normalizeConfigBoolean2;
+    var getMappingLanguage2;
+    var getQualityFromName;
+    var getImdbId;
+    var getShowInfo;
+    var getTmdbIdFromImdb;
+    var getIdsFromKitsu2;
+    var extractVidxGoFromHtml;
+    var getStreams3;
+  }
+});
+
 // src/index.js
 var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
@@ -12993,6 +13372,7 @@ var animeunity = require_animeunity();
 var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
+var guardaserie = require_guardaserie();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -13151,9 +13531,9 @@ function getStreams2(id, type, season, episode) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "guardaserie", "cinemacity");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "guardaserie", "cinemacity");
         }
       }
     } else {
@@ -13193,6 +13573,12 @@ function getStreams2(id, type, season, episode) {
       if (providerName === "guardoserie") {
         promises.push(
           guardoserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardoserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardoserie", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "guardaserie") {
+        promises.push(
+          guardaserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardaserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardaserie", error: e, status: "rejected" }))
         );
         continue;
       }

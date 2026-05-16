@@ -7982,6 +7982,95 @@ var require_streamhg = __commonJS({
   }
 });
 
+// src/extractors/vidxgo.js
+var require_vidxgo = __commonJS({
+  "src/extractors/vidxgo.js"(exports2, module2) {
+    var { spawn } = require("child_process");
+    var path = require("path");
+    var fs = require("fs");
+    var { USER_AGENT } = require_common();
+    function getPythonExe() {
+      const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+      if (fs.existsSync(venvPython)) return venvPython;
+      if (process.platform === "win32") return "python";
+      return "python3";
+    }
+    function bypassAndExtract(url, referer = null) {
+      return __async(this, null, function* () {
+        const scriptPath = path.join(__dirname, "..", "utils", "vidxgo_bypass.py");
+        const pythonExe = getPythonExe();
+        const args = [
+          scriptPath,
+          url,
+          "--referer",
+          referer || "https://altadefinizione.you/"
+        ];
+        return new Promise((resolve, reject) => {
+          const child = spawn(pythonExe, args);
+          let stdout = "";
+          let stderr = "";
+          child.stdout.on("data", (data) => {
+            stdout += data.toString();
+          });
+          child.stderr.on("data", (data) => {
+            stderr += data.toString();
+          });
+          child.on("close", (code) => {
+            if (stdout.trim()) {
+              try {
+                const result = JSON.parse(stdout);
+                if (result.status === "ok" && result.stream_url) {
+                  resolve(result.stream_url);
+                  return;
+                }
+                resolve(null);
+              } catch (e) {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          });
+          child.on("error", () => resolve(null));
+        });
+      });
+    }
+    function extractVidxGo(url, referer = null) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const streamUrl = yield bypassAndExtract(url, referer);
+          if (streamUrl) {
+            console.log("[VidxGo] Real stream URL extracted:", streamUrl);
+            const vidxgoOrigin = new URL(url).origin;
+            return {
+              url: streamUrl,
+              headers: {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
+                "Referer": url,
+                "Origin": vidxgoOrigin,
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-GPC": "1",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "cross-site",
+                "DNT": "1",
+                "Priority": "u=0"
+              }
+            };
+          }
+          return { url, headers: { "User-Agent": USER_AGENT, "Referer": referer || url } };
+        } catch (e) {
+          console.error("[VidxGo] Extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractVidxGo };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -7995,6 +8084,7 @@ var require_extractors = __commonJS({
     var { extractVixCloud } = require_vixcloud();
     var { extractLoadm } = require_loadm();
     var { extractStreamHG } = require_streamhg();
+    var { extractVidxGo } = require_vidxgo();
     var { USER_AGENT, unPack } = require_common();
     module2.exports = {
       extractMixDrop,
@@ -8007,6 +8097,7 @@ var require_extractors = __commonJS({
       extractVixCloud,
       extractLoadm,
       extractStreamHG,
+      extractVidxGo,
       USER_AGENT,
       unPack
     };
