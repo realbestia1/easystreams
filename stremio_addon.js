@@ -41,6 +41,7 @@ const VERBOSE_LOGS = ['debug', 'verbose'].includes(LOG_LEVEL);
 const PROVIDER_LOG_PREFIXES = [
     '[GuardaHD]',
     '[Guardoserie]',
+    '[Guardaserie]',
     '[CinemaCity]',
     '[AnimeUnity]',
     '[AnimeWorld]',
@@ -1331,6 +1332,7 @@ async function resolveCanonicalStreamCacheKey(type, providerId, season, episode,
 const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardoserie: require('./src/guardoserie/index.js'),
+    guardaserie: require('./src/guardaserie/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
