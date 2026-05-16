@@ -188,7 +188,7 @@ async function getStreams(id, type, season, episode) {
             selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
-        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
+        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'guardaserie');
     } else if (normalizedType === 'tv' || normalizedType === 'series') {
         if (likelyAnime) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
