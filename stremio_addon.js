@@ -41,6 +41,7 @@ const VERBOSE_LOGS = ['debug', 'verbose'].includes(LOG_LEVEL);
 const PROVIDER_LOG_PREFIXES = [
     '[GuardaHD]',
     '[Guardoserie]',
+    '[Guardaserie]',
     '[CinemaCity]',
     '[AnimeUnity]',
     '[AnimeWorld]',
@@ -1331,6 +1332,7 @@ async function resolveCanonicalStreamCacheKey(type, providerId, season, episode,
 const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardoserie: require('./src/guardoserie/index.js'),
+    guardaserie: require('./src/guardaserie/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
@@ -1412,11 +1414,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
-                : ['streamingcommunity', 'guardoserie', 'cinemacity'];
+                : ['streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity'];
         }
     }
 

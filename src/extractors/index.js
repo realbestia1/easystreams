@@ -8,6 +8,7 @@ const { extractVidoza } = require('./vidoza');
 const { extractVixCloud } = require('./vixcloud');
 const { extractLoadm } = require('./loadm');
 const { extractStreamHG } = require('./streamhg');
+const { extractVidxGo } = require('./vidxgo');
 const { USER_AGENT, unPack } = require('./common');
 
 module.exports = {
@@ -21,6 +22,7 @@ module.exports = {
   extractVixCloud,
   extractLoadm,
   extractStreamHG,
+  extractVidxGo,
   USER_AGENT,
   unPack
 };
