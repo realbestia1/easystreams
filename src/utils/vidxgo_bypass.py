@@ -4,7 +4,6 @@ import re
 import base64
 import argparse
 from curl_cffi.requests import AsyncSession
-from bs4 import BeautifulSoup, SoupStrainer
 import asyncio
 
 async def extract_vidxgo_url(url, headers=None):
@@ -41,26 +40,18 @@ async def extract_vidxgo_url(url, headers=None):
                 result['error'] = f'HTTP {response.status_code}'
                 return result
 
-            soup = BeautifulSoup(response.text, 'lxml', parse_only=SoupStrainer('script'))
-            scripts = soup.find_all('script')
+            html = response.text
 
-            xor_patterns = []
-            for script in scripts:
-                if script.text and 'atob' in script.text:
-                    match = re.search(r"var\s+.+'(.*)',\s*d\s*=\s*atob\s*\(\s*'(.*)'\s*\)", script.text)
-                    if match:
-                        xor_patterns.append({
-                            'key': match.group(1),
-                            'base64': match.group(2)
-                        })
+            xor_patterns = re.findall(
+                r"var\s+\w+\s*=\s*'(\w+)'\s*,?\s*d\s*=\s*atob\s*\(\s*'([A-Za-z0-9+/=]+)'\s*\)",
+                html
+            )
 
             if not xor_patterns:
                 result['error'] = 'XOR pattern not found'
                 return result
 
-            for pattern in xor_patterns:
-                key = pattern['key']
-                base64_text = pattern['base64']
+            for key, base64_text in xor_patterns:
                 try:
                     decoded = base64.b64decode(base64_text)
                     u = bytearray(len(decoded))
