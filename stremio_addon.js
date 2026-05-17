@@ -1333,6 +1333,7 @@ const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardoserie: require('./src/guardoserie/index.js'),
     vidxgo: require('./src/vidxgo/index.js'),
+    altadefinizionestreaming: require('./src/altadefinizionestreaming/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
@@ -1402,11 +1403,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'vidxgo', 'cinemacity'];
+                : ['streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1414,11 +1415,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity'];
+                : ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity'];
+            plan = ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity'];
         }
     }
 

@@ -13303,6 +13303,153 @@ var require_vidxgo2 = __commonJS({
   }
 });
 
+// src/altadefinizionestreaming/index.js
+var require_altadefinizionestreaming = __commonJS({
+  "src/altadefinizionestreaming/index.js"(exports2, module2) {
+    var TMDB_API_KEY3 = "68e094699525b18a70bab2f86b1fa706";
+    var BASE_URL2 = "https://altadefinizionestreaming.com";
+    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var { extractMixDrop } = require_extractors();
+    var { formatStream: formatStream2 } = require_formatter();
+    function fetchJson(url) {
+      return __async(this, null, function* () {
+        try {
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": `${BASE_URL2}/`,
+              "Accept": "application/json,text/plain,*/*"
+            }
+          });
+          if (!response.ok) return null;
+          return yield response.json();
+        } catch (e) {
+          return null;
+        }
+      });
+    }
+    function resolveTmdbId(id, type, providerContext = null) {
+      return __async(this, null, function* () {
+        var _a, _b, _c, _d;
+        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+        if (contextTmdbId) return contextTmdbId;
+        const idStr = String(id || "").trim();
+        if (/^tmdb:\d+$/i.test(idStr)) return idStr.split(":")[1];
+        if (/^\d+$/.test(idStr)) return idStr;
+        const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null;
+        const imdbId = /^tt\d+$/i.test(idStr) ? idStr : contextImdbId;
+        if (!imdbId) return null;
+        const normalizedType = String(type || "").toLowerCase();
+        const payload = yield fetchJson(`https://api.themoviedb.org/3/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY3}&external_source=imdb_id`);
+        if (!payload) return null;
+        if (normalizedType === "movie") {
+          if (Array.isArray(payload.movie_results) && ((_a = payload.movie_results[0]) == null ? void 0 : _a.id)) return String(payload.movie_results[0].id);
+          if (Array.isArray(payload.tv_results) && ((_b = payload.tv_results[0]) == null ? void 0 : _b.id)) return String(payload.tv_results[0].id);
+        }
+        if (Array.isArray(payload.tv_results) && ((_c = payload.tv_results[0]) == null ? void 0 : _c.id)) return String(payload.tv_results[0].id);
+        if (Array.isArray(payload.movie_results) && ((_d = payload.movie_results[0]) == null ? void 0 : _d.id)) return String(payload.movie_results[0].id);
+        return null;
+      });
+    }
+    function absoluteUrl(url) {
+      if (!url) return null;
+      try {
+        return new URL(String(url), BASE_URL2).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function resolveDownloadToMixDrop(url) {
+      return __async(this, null, function* () {
+        const downloadUrl = absoluteUrl(url);
+        if (!downloadUrl) return null;
+        const withGo = `${downloadUrl}${downloadUrl.includes("?") ? "&" : "?"}go=1`;
+        try {
+          const response = yield fetch(withGo, {
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": `${BASE_URL2}/`
+            }
+          });
+          const finalUrl = String(response.url || "").replace(/\?download$/i, "");
+          if (/mixdrop|m1xdrop|mxdrop/i.test(finalUrl)) return finalUrl;
+        } catch (e) {
+          return null;
+        }
+        return null;
+      });
+    }
+    function addCdnStream(streams, tmdbId, type, season, episode) {
+      return __async(this, null, function* () {
+        var _a, _b;
+        const normalizedType = String(type || "").toLowerCase();
+        const endpoint = normalizedType === "movie" ? `${BASE_URL2}/api/player-sources/movie/${tmdbId}` : `${BASE_URL2}/api/player-sources/tv/${tmdbId}/${season}/${episode}`;
+        const payload = yield fetchJson(endpoint);
+        const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && (s == null ? void 0 : s.url))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => s == null ? void 0 : s.url));
+        if (!(source == null ? void 0 : source.url)) return;
+        streams.push({
+          name: "AltadefinizioneStreaming - CDN",
+          title: normalizedType === "movie" ? "CDN 720p" : `CDN 720p ${season}x${episode}`,
+          url: source.url,
+          easyProxySourceUrl: endpoint,
+          headers: {
+            "User-Agent": USER_AGENT2,
+            "Referer": `${BASE_URL2}/`
+          },
+          quality: "720p",
+          type: "direct"
+        });
+      });
+    }
+    function addMixDropStream(streams, tmdbId, type, season, episode) {
+      return __async(this, null, function* () {
+        const normalizedType = String(type || "").toLowerCase();
+        let downloadEntry = null;
+        if (normalizedType === "movie") {
+          const payload = yield fetchJson(`${BASE_URL2}/api/download/${tmdbId}`);
+          if ((payload == null ? void 0 : payload.available) && (payload == null ? void 0 : payload.url)) downloadEntry = payload.url;
+        } else {
+          const payload = yield fetchJson(`${BASE_URL2}/api/download-episodes/${tmdbId}`);
+          const episodes = Array.isArray(payload == null ? void 0 : payload.episodes) ? payload.episodes : [];
+          const match = episodes.find((item) => Number(item == null ? void 0 : item.season) === Number(season) && Number(item == null ? void 0 : item.episode) === Number(episode));
+          if ((payload == null ? void 0 : payload.available) && (match == null ? void 0 : match.url)) downloadEntry = match.url;
+        }
+        const mixdropUrl = yield resolveDownloadToMixDrop(downloadEntry);
+        if (!mixdropUrl) return;
+        const extracted = yield extractMixDrop(mixdropUrl);
+        if (!(extracted == null ? void 0 : extracted.url)) return;
+        streams.push({
+          name: "AltadefinizioneStreaming - MixDrop",
+          title: normalizedType === "movie" ? "MixDrop" : `MixDrop ${season}x${episode}`,
+          url: extracted.url,
+          easyProxySourceUrl: mixdropUrl,
+          headers: extracted.headers,
+          quality: "720p",
+          type: "direct"
+        });
+      });
+    }
+    function getStreams3(id, type, season, episode, providerContext = null) {
+      return __async(this, null, function* () {
+        const normalizedType = String(type || "").toLowerCase();
+        if (normalizedType !== "movie" && normalizedType !== "tv" && normalizedType !== "series") return [];
+        const tmdbId = yield resolveTmdbId(id, normalizedType === "movie" ? "movie" : "tv", providerContext);
+        if (!tmdbId) return [];
+        const effectiveSeason = parseInt(String(season || ""), 10) || 1;
+        const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
+        const providerType = normalizedType === "movie" ? "movie" : "tv";
+        const streams = [];
+        yield Promise.all([
+          addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode),
+          addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode)
+        ]);
+        return streams.map((s) => formatStream2(s, "AltadefinizioneStreaming")).filter(Boolean);
+      });
+    }
+    module2.exports = { getStreams: getStreams3 };
+  }
+});
+
 // src/index.js
 var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
@@ -13312,6 +13459,7 @@ var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
 var vidxgo = require_vidxgo2();
+var altadefinizionestreaming = require_altadefinizionestreaming();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -13461,7 +13609,7 @@ function getStreams2(id, type, season, episode) {
       if (likelyAnime || isKitsuRequest) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity", "guardahd");
       } else {
-        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "vidxgo", "cinemacity");
+        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
       }
     } else if (normalizedType === "anime") {
       selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "vidxgo");
@@ -13470,9 +13618,9 @@ function getStreams2(id, type, season, episode) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "vidxgo", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "vidxgo", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
         }
       }
     } else {
@@ -13518,6 +13666,12 @@ function getStreams2(id, type, season, episode) {
       if (providerName === "vidxgo") {
         promises.push(
           vidxgo.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "VidxGo", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "VidxGo", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "altadefinizionestreaming") {
+        promises.push(
+          altadefinizionestreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "AltadefinizioneStreaming", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AltadefinizioneStreaming", error: e, status: "rejected" }))
         );
         continue;
       }

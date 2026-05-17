@@ -6,6 +6,7 @@ const animeworld = require('./animeworld/index');
 const animesaturn = require('./animesaturn/index');
 const cinemacity = require('./cinemacity/index');
 const vidxgo = require('./vidxgo/index');
+const altadefinizionestreaming = require('./altadefinizionestreaming/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
 
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
@@ -185,7 +186,7 @@ async function getStreams(id, type, season, episode) {
         if (likelyAnime || isKitsuRequest) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
         } else {
-            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'vidxgo', 'cinemacity');
+            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
         selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo');
@@ -194,9 +195,9 @@ async function getStreams(id, type, season, episode) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity');
             } else {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo', 'cinemacity');
             }
         }
     } else {
@@ -257,6 +258,14 @@ async function getStreams(id, type, season, episode) {
                 vidxgo.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
                     .then(s => ({ provider: 'VidxGo', streams: s, status: 'fulfilled' }))
                     .catch(e => ({ provider: 'VidxGo', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'altadefinizionestreaming') {
+            promises.push(
+                altadefinizionestreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'AltadefinizioneStreaming', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'AltadefinizioneStreaming', error: e, status: 'rejected' }))
             );
             continue;
         }
