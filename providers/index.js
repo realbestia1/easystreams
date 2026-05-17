@@ -13080,37 +13080,27 @@ var require_cinemacity = __commonJS({
   }
 });
 
-// src/guardaserie/index.js
-var require_guardaserie = __commonJS({
-  "src/guardaserie/index.js"(exports2, module2) {
+// src/vidxgo/index.js
+var require_vidxgo = __commonJS({
+  "src/vidxgo/index.js"(exports2, module2) {
     var IS_SERVER2 = typeof process !== "undefined" && process.versions && process.versions.node;
     if (!IS_SERVER2) {
       module2.exports = {
         getStreams: (id, type, season, episode) => __async(null, null, function* () {
           try {
-            const url = `https://easystreams.realbestia.com/resolve/guardaserie?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
+            const url = `https://easystreams.realbestia.com/resolve/vidxgo?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
             const response = yield fetch(url);
             const data = yield response.json();
             return data.streams || [];
           } catch (e) {
-            console.error("[Guardaserie-Client] API Error:", e.message);
+            console.error("[VidxGo-Client] API Error:", e.message);
             return [];
           }
         })
       };
     } else {
-      let getGuardaserieBaseUrl2 = function() {
-        return "https://guardaserietv.rest";
-      }, getMappingApiUrl3 = function() {
+      let getMappingApiUrl3 = function() {
         return "https://animemapping.realbestia.com";
-      }, normalizeConfigBoolean3 = function(value) {
-        if (value === true) return true;
-        const normalized = String(value || "").trim().toLowerCase();
-        return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-      }, getMappingLanguage3 = function(providerContext = null) {
-        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-        if (explicit === "it") return "it";
-        return normalizeConfigBoolean3(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
       }, getQualityFromName2 = function(qualityStr) {
         if (!qualityStr) return "Unknown";
         const quality = qualityStr.toUpperCase();
@@ -13151,40 +13141,7 @@ var require_guardaserie = __commonJS({
             }
             return null;
           } catch (e) {
-            console.error("[Guardaserie] Conversion error:", e);
-            return null;
-          }
-        });
-      }, getShowInfo2 = function(tmdbId, type) {
-        return __async2(this, null, function* () {
-          try {
-            const endpoint = type === "movie" ? "movie" : "tv";
-            const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}&language=it-IT`;
-            const response = yield fetch(url);
-            if (!response.ok) return null;
-            return yield response.json();
-          } catch (e) {
-            console.error("[Guardaserie] TMDB error:", e);
-            return null;
-          }
-        });
-      }, getTmdbIdFromImdb2 = function(imdbId, type) {
-        return __async2(this, null, function* () {
-          var _a, _b;
-          try {
-            const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY3}&external_source=imdb_id`;
-            const response = yield fetch(url);
-            if (!response.ok) return null;
-            const data = yield response.json();
-            if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
-            if (type === "tv") {
-              if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
-              if (data.tv_episode_results && data.tv_episode_results.length > 0) return data.tv_episode_results[0].show_id;
-              if (data.tv_season_results && data.tv_season_results.length > 0) return data.tv_season_results[0].show_id;
-            }
-            return null;
-          } catch (e) {
-            console.error("[Guardaserie] ID conversion error:", e);
+            console.error("[VidxGo] Conversion error:", e);
             return null;
           }
         });
@@ -13217,26 +13174,11 @@ var require_guardaserie = __commonJS({
               rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
             };
           } catch (e) {
-            console.error("[Guardaserie] Kitsu mapping error:", e);
+            console.error("[VidxGo] Kitsu mapping error:", e);
             return null;
           }
         });
-      }, extractVidxGoFromHtml2 = function(html) {
-        const imdbMatch = html.match(/show_imdb\s*=\s*['"](tt\d+)['"]/i);
-        if (imdbMatch) {
-          const numericId = imdbMatch[1].replace("tt", "");
-          return `https://v.vidxgo.co/${numericId}`;
-        }
-        const scriptMatch = html.match(/vidxgo-frame['"]\.src\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
-        if (scriptMatch) return scriptMatch[1];
-        const concatMatch = html.match(/vidxgo\.co\/'\s*\+\s*['"](tt\d+)['"]/i);
-        if (concatMatch) {
-          const numericId = concatMatch[1].replace("tt", "");
-          return `https://v.vidxgo.co/${numericId}`;
-        }
-        return null;
       }, getStreams4 = function(id, type, season, episode, providerContext = null) {
-        if (String(type).toLowerCase() === "movie") return [];
         return __async2(this, null, function* () {
           const benchStart = Date.now();
           const bench = [];
@@ -13276,54 +13218,31 @@ var require_guardaserie = __commonJS({
             if (!imdbId && tmdbId) imdbId = contextImdbId || (yield getImdbId2(tmdbId, type));
             mark("imdb_resolve_done", { ok: Boolean(imdbId) });
             if (!imdbId) return [];
-            let showUrl = null, showHtml = null;
-            let matchedTitle = imdbId;
-            if (imdbId) {
-              const searchUrl = `${getGuardaserieBaseUrl2()}/index.php?do=search&subaction=search&story=${imdbId}`;
-              const searchHtml = yield smartFetch2(searchUrl, getGuardaserieBaseUrl2(), {
-                headers: { "Referer": getGuardaserieBaseUrl2() }
-              });
-              if (searchHtml) {
-                const match = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i.exec(searchHtml);
-                if (match && !match[2].toUpperCase().includes("[SUB ITA]")) {
-                  showUrl = match[1].startsWith("/") ? `${getGuardaserieBaseUrl2()}${match[1]}` : match[1];
-                  matchedTitle = match[2] || imdbId;
-                  const pageHtml = yield smartFetch2(showUrl, getGuardaserieBaseUrl2(), {
-                    headers: { "Referer": getGuardaserieBaseUrl2() }
-                  });
-                  if (pageHtml) showHtml = pageHtml;
-                }
-              }
-              mark("search_by_imdb_done", { ok: Boolean(showUrl) });
-            }
-            if (!showUrl || !showHtml) return [];
-            const displayName = `${matchedTitle} ${effectiveSeason}x${effectiveEpisode}`;
+            const numericId = imdbId.replace("tt", "");
+            const displayName = "VidxGo " + effectiveSeason + "x" + effectiveEpisode;
             const streams = [];
-            const vidxgoUrl = extractVidxGoFromHtml2(showHtml);
-            if (vidxgoUrl) {
-              const vidxgoSeasonEpisodeUrl = `${vidxgoUrl}/${effectiveSeason}/${effectiveEpisode}`;
-              const vidxgoStream = yield extractVidxGo(vidxgoSeasonEpisodeUrl, showUrl);
-              if (vidxgoStream && vidxgoStream.url) {
-                streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoSeasonEpisodeUrl, headers: vidxgoStream.headers, name: "Guardaserie - VidxGo", title: displayName, quality: getQualityFromName2("HD"), type: "direct" });
-              }
+            const vidxgoUrl = `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
+            const vidxgoStream = yield extractVidxGo(vidxgoUrl, "https://altadefinizione.you/");
+            if (vidxgoStream && vidxgoStream.url) {
+              streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoUrl, headers: vidxgoStream.headers, name: "VidxGo", title: displayName, quality: getQualityFromName2("HD"), type: "direct" });
             }
-            mark("vidxgo_extracted", { ok: Boolean(vidxgoUrl) });
-            const finalStreams = streams.map((s) => formatStream2(s, "Guardaserie")).filter((s) => s !== null);
+            mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
+            const finalStreams = streams.map((s) => formatStream2(s, "VidxGo")).filter((s) => s !== null);
             mark("extractors_done", { streams: finalStreams.length });
             if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardaserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
+              console.log("[VidxGoBench] " + JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench }));
             }
             return finalStreams;
           } catch (e) {
             if (STEP_BENCH_ENABLED) {
-              console.log(`[GuardaserieBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e && e.message ? e.message : String(e) })}`);
+              console.log("[VidxGoBench] " + JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e && e.message ? e.message : String(e) }));
             }
-            console.error("[Guardaserie] Error:", e);
+            console.error("[VidxGo] Error:", e);
             return [];
           }
         });
       };
-      getGuardaserieBaseUrl = getGuardaserieBaseUrl2, getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getShowInfo = getShowInfo2, getTmdbIdFromImdb = getTmdbIdFromImdb2, getIdsFromKitsu2 = getIdsFromKitsu3, extractVidxGoFromHtml = extractVidxGoFromHtml2, getStreams3 = getStreams4;
+      getMappingApiUrl2 = getMappingApiUrl3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getIdsFromKitsu2 = getIdsFromKitsu3, getStreams3 = getStreams4;
       __async2 = (__this, __arguments, generator) => {
         return new Promise((resolve, reject) => {
           var fulfilled = (value) => {
@@ -13350,21 +13269,14 @@ var require_guardaserie = __commonJS({
       require_fetch_helper();
       const { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
       const { formatStream: formatStream2 } = require_formatter();
-      const { smartFetch: smartFetch2 } = require_cf_handler();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       module2.exports = { getStreams: getStreams4 };
     }
     var __async2;
-    var getGuardaserieBaseUrl;
     var getMappingApiUrl2;
-    var normalizeConfigBoolean2;
-    var getMappingLanguage2;
     var getQualityFromName;
     var getImdbId;
-    var getShowInfo;
-    var getTmdbIdFromImdb;
     var getIdsFromKitsu2;
-    var extractVidxGoFromHtml;
     var getStreams3;
   }
 });
@@ -13377,7 +13289,7 @@ var animeunity = require_animeunity();
 var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
-var guardaserie = require_guardaserie();
+var vidxgo = require_vidxgo();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -13527,18 +13439,18 @@ function getStreams2(id, type, season, episode) {
       if (likelyAnime || isKitsuRequest) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity", "guardahd");
       } else {
-        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity");
+        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "vidxgo", "cinemacity");
       }
     } else if (normalizedType === "anime") {
-      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "guardaserie");
+      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "vidxgo");
     } else if (normalizedType === "tv" || normalizedType === "series") {
       if (likelyAnime) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "guardaserie", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "vidxgo", "cinemacity");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "guardaserie", "cinemacity");
+          selectedProviders.push("streamingcommunity", "guardoserie", "vidxgo", "cinemacity");
         }
       }
     } else {
@@ -13581,9 +13493,9 @@ function getStreams2(id, type, season, episode) {
         );
         continue;
       }
-      if (providerName === "guardaserie") {
+      if (providerName === "vidxgo") {
         promises.push(
-          guardaserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardaserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardaserie", error: e, status: "rejected" }))
+          vidxgo.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "VidxGo", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "VidxGo", error: e, status: "rejected" }))
         );
         continue;
       }

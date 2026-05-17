@@ -5,7 +5,7 @@ const animeunity = require('./animeunity/index');
 const animeworld = require('./animeworld/index');
 const animesaturn = require('./animesaturn/index');
 const cinemacity = require('./cinemacity/index');
-const guardaserie = require('./guardaserie/index');
+const vidxgo = require('./vidxgo/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
 
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
@@ -185,18 +185,18 @@ async function getStreams(id, type, season, episode) {
         if (likelyAnime || isKitsuRequest) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
         } else {
-            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'cinemacity');
+            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie', 'vidxgo', 'cinemacity');
         }
     } else if (normalizedType === 'anime') {
-        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'guardaserie');
+        selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo');
     } else if (normalizedType === 'tv' || normalizedType === 'series') {
         if (likelyAnime) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity');
             } else {
-                selectedProviders.push('streamingcommunity', 'guardoserie', 'guardaserie', 'cinemacity');
+                selectedProviders.push('streamingcommunity', 'guardoserie', 'vidxgo', 'cinemacity');
             }
         }
     } else {
@@ -252,11 +252,11 @@ async function getStreams(id, type, season, episode) {
             );
             continue;
         }
-        if (providerName === 'guardaserie') {
+        if (providerName === 'vidxgo') {
             promises.push(
-                guardaserie.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'Guardaserie', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'Guardaserie', error: e, status: 'rejected' }))
+                vidxgo.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'VidxGo', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'VidxGo', error: e, status: 'rejected' }))
             );
             continue;
         }

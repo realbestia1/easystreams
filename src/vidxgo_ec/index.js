@@ -1,6 +1,6 @@
 "use strict";
 
-const baseProvider = require("../guardaserie/index.js");
+const baseProvider = require("../vidxgo/index.js");
 
 async function getStreams(id, type, season, episode, providerContext = null) {
   return await baseProvider.getStreams(id, type, season, episode, {
