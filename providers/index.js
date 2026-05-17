@@ -13081,7 +13081,7 @@ var require_cinemacity = __commonJS({
 });
 
 // src/vidxgo/index.js
-var require_vidxgo = __commonJS({
+var require_vidxgo2 = __commonJS({
   "src/vidxgo/index.js"(exports2, module2) {
     var IS_SERVER2 = typeof process !== "undefined" && process.versions && process.versions.node;
     if (!IS_SERVER2) {
@@ -13101,6 +13101,14 @@ var require_vidxgo = __commonJS({
     } else {
       let getMappingApiUrl3 = function() {
         return "https://animemapping.realbestia.com";
+      }, normalizeConfigBoolean3 = function(value) {
+        if (value === true) return true;
+        const normalized = String(value || "").trim().toLowerCase();
+        return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
+      }, getMappingLanguage3 = function(providerContext = null) {
+        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
+        if (explicit === "it") return "it";
+        return normalizeConfigBoolean3(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
       }, getQualityFromName2 = function(qualityStr) {
         if (!qualityStr) return "Unknown";
         const quality = qualityStr.toUpperCase();
@@ -13219,30 +13227,42 @@ var require_vidxgo = __commonJS({
             mark("imdb_resolve_done", { ok: Boolean(imdbId) });
             if (!imdbId) return [];
             const numericId = imdbId.replace("tt", "");
-            const displayName = "VidxGo " + effectiveSeason + "x" + effectiveEpisode;
+            const isMovie = String(type).toLowerCase() === "movie";
+            const displayName = isMovie ? "VidxGo" : `VidxGo ${effectiveSeason}x${effectiveEpisode}`;
             const streams = [];
-            const vidxgoUrl = `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
+            const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${numericId}` : `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
             const vidxgoStream = yield extractVidxGo(vidxgoUrl, "https://altadefinizione.you/");
             if (vidxgoStream && vidxgoStream.url) {
-              streams.push({ url: vidxgoStream.url, easyProxySourceUrl: vidxgoUrl, headers: vidxgoStream.headers, name: "VidxGo", title: displayName, quality: getQualityFromName2("HD"), type: "direct" });
+              let quality = "HD";
+              const detectedQuality = yield checkQualityFromPlaylist2(vidxgoStream.url, vidxgoStream.headers);
+              if (detectedQuality) quality = detectedQuality;
+              streams.push({
+                url: vidxgoStream.url,
+                easyProxySourceUrl: vidxgoUrl,
+                headers: vidxgoStream.headers,
+                name: "VidxGo",
+                title: displayName,
+                quality: getQualityFromName2(quality),
+                type: "direct"
+              });
             }
             mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
             const finalStreams = streams.map((s) => formatStream2(s, "VidxGo")).filter((s) => s !== null);
             mark("extractors_done", { streams: finalStreams.length });
             if (STEP_BENCH_ENABLED) {
-              console.log("[VidxGoBench] " + JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench }));
+              console.log(`[VidxGoBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, steps: bench })}`);
             }
             return finalStreams;
           } catch (e) {
             if (STEP_BENCH_ENABLED) {
-              console.log("[VidxGoBench] " + JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e && e.message ? e.message : String(e) }));
+              console.log(`[VidxGoBench] ${JSON.stringify({ id: String(id), type: String(type), totalMs: Date.now() - benchStart, failed: true, steps: bench, error: e && e.message ? e.message : String(e) })}`);
             }
             console.error("[VidxGo] Error:", e);
             return [];
           }
         });
       };
-      getMappingApiUrl2 = getMappingApiUrl3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getIdsFromKitsu2 = getIdsFromKitsu3, getStreams3 = getStreams4;
+      getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getIdsFromKitsu2 = getIdsFromKitsu3, getStreams3 = getStreams4;
       __async2 = (__this, __arguments, generator) => {
         return new Promise((resolve, reject) => {
           var fulfilled = (value) => {
@@ -13274,6 +13294,8 @@ var require_vidxgo = __commonJS({
     }
     var __async2;
     var getMappingApiUrl2;
+    var normalizeConfigBoolean2;
+    var getMappingLanguage2;
     var getQualityFromName;
     var getImdbId;
     var getIdsFromKitsu2;
@@ -13289,7 +13311,7 @@ var animeunity = require_animeunity();
 var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
-var vidxgo = require_vidxgo();
+var vidxgo = require_vidxgo2();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;

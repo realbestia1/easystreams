@@ -163,19 +163,25 @@ if (!IS_SERVER) {
         if (!imdbId) return [];
 
         const numericId = imdbId.replace("tt", "");
-        const displayName = `VidxGo ${effectiveSeason}x${effectiveEpisode}`;
+        const isMovie = String(type).toLowerCase() === "movie";
+        const displayName = isMovie ? "VidxGo" : `VidxGo ${effectiveSeason}x${effectiveEpisode}`;
         const streams = [];
 
-        const vidxgoUrl = `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
+        const vidxgoUrl = isMovie
+          ? `https://v.vidxgo.co/${numericId}`
+          : `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
         const vidxgoStream = yield extractVidxGo(vidxgoUrl, 'https://altadefinizione.you/');
         if (vidxgoStream && vidxgoStream.url) {
+          let quality = "HD";
+          const detectedQuality = yield checkQualityFromPlaylist(vidxgoStream.url, vidxgoStream.headers);
+          if (detectedQuality) quality = detectedQuality;
           streams.push({
             url: vidxgoStream.url,
             easyProxySourceUrl: vidxgoUrl,
             headers: vidxgoStream.headers,
             name: "VidxGo",
             title: displayName,
-            quality: getQualityFromName("HD"),
+            quality: getQualityFromName(quality),
             type: "direct"
           });
         }
