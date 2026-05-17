@@ -60,6 +60,13 @@ function absoluteUrl(url) {
   }
 }
 
+async function getShowTitle(tmdbId, type) {
+  const endpoint = String(type || "").toLowerCase() === "movie" ? "movie" : "tv";
+  const payload = await fetchJson(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+  if (!payload) return null;
+  return payload.title || payload.name || payload.original_title || payload.original_name || null;
+}
+
 async function resolveDownloadToMixDrop(url) {
   const downloadUrl = absoluteUrl(url);
   if (!downloadUrl) return null;
@@ -81,7 +88,7 @@ async function resolveDownloadToMixDrop(url) {
   return null;
 }
 
-async function addCdnStream(streams, tmdbId, type, season, episode) {
+async function addCdnStream(streams, tmdbId, type, season, episode, displayName) {
   const normalizedType = String(type || "").toLowerCase();
   const endpoint = normalizedType === "movie"
     ? `${BASE_URL}/api/player-sources/movie/${tmdbId}`
@@ -93,7 +100,7 @@ async function addCdnStream(streams, tmdbId, type, season, episode) {
 
   streams.push({
     name: "AltadefinizioneStreaming - CDN",
-    title: normalizedType === "movie" ? "CDN 720p" : `CDN 720p ${season}x${episode}`,
+    title: displayName,
     url: source.url,
     easyProxySourceUrl: endpoint,
     headers: {
@@ -105,7 +112,7 @@ async function addCdnStream(streams, tmdbId, type, season, episode) {
   });
 }
 
-async function addMixDropStream(streams, tmdbId, type, season, episode) {
+async function addMixDropStream(streams, tmdbId, type, season, episode, displayName) {
   const normalizedType = String(type || "").toLowerCase();
   let downloadEntry = null;
 
@@ -127,7 +134,7 @@ async function addMixDropStream(streams, tmdbId, type, season, episode) {
 
   streams.push({
     name: "AltadefinizioneStreaming - MixDrop",
-    title: normalizedType === "movie" ? "MixDrop" : `MixDrop ${season}x${episode}`,
+    title: displayName,
     url: extracted.url,
     easyProxySourceUrl: mixdropUrl,
     headers: extracted.headers,
@@ -146,11 +153,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
   const effectiveSeason = parseInt(String(season || ""), 10) || 1;
   const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
   const providerType = normalizedType === "movie" ? "movie" : "tv";
+  const showTitle = await getShowTitle(tmdbId, providerType) || (normalizedType === "movie" ? "Film" : "Serie");
+  const displayName = normalizedType === "movie" ? showTitle : `${showTitle} ${effectiveSeason}x${effectiveEpisode}`;
   const streams = [];
 
   await Promise.all([
-    addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode),
-    addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode)
+    addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName),
+    addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName)
   ]);
 
   return streams.map(s => formatStream(s, "AltadefinizioneStreaming")).filter(Boolean);

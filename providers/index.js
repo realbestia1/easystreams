@@ -13359,6 +13359,14 @@ var require_altadefinizionestreaming = __commonJS({
         return null;
       }
     }
+    function getShowTitle(tmdbId, type) {
+      return __async(this, null, function* () {
+        const endpoint = String(type || "").toLowerCase() === "movie" ? "movie" : "tv";
+        const payload = yield fetchJson(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY3}&language=it-IT`);
+        if (!payload) return null;
+        return payload.title || payload.name || payload.original_title || payload.original_name || null;
+      });
+    }
     function resolveDownloadToMixDrop(url) {
       return __async(this, null, function* () {
         const downloadUrl = absoluteUrl(url);
@@ -13379,7 +13387,7 @@ var require_altadefinizionestreaming = __commonJS({
         return null;
       });
     }
-    function addCdnStream(streams, tmdbId, type, season, episode) {
+    function addCdnStream(streams, tmdbId, type, season, episode, displayName) {
       return __async(this, null, function* () {
         var _a, _b;
         const normalizedType = String(type || "").toLowerCase();
@@ -13389,7 +13397,7 @@ var require_altadefinizionestreaming = __commonJS({
         if (!(source == null ? void 0 : source.url)) return;
         streams.push({
           name: "AltadefinizioneStreaming - CDN",
-          title: normalizedType === "movie" ? "CDN 720p" : `CDN 720p ${season}x${episode}`,
+          title: displayName,
           url: source.url,
           easyProxySourceUrl: endpoint,
           headers: {
@@ -13401,7 +13409,7 @@ var require_altadefinizionestreaming = __commonJS({
         });
       });
     }
-    function addMixDropStream(streams, tmdbId, type, season, episode) {
+    function addMixDropStream(streams, tmdbId, type, season, episode, displayName) {
       return __async(this, null, function* () {
         const normalizedType = String(type || "").toLowerCase();
         let downloadEntry = null;
@@ -13420,7 +13428,7 @@ var require_altadefinizionestreaming = __commonJS({
         if (!(extracted == null ? void 0 : extracted.url)) return;
         streams.push({
           name: "AltadefinizioneStreaming - MixDrop",
-          title: normalizedType === "movie" ? "MixDrop" : `MixDrop ${season}x${episode}`,
+          title: displayName,
           url: extracted.url,
           easyProxySourceUrl: mixdropUrl,
           headers: extracted.headers,
@@ -13438,10 +13446,12 @@ var require_altadefinizionestreaming = __commonJS({
         const effectiveSeason = parseInt(String(season || ""), 10) || 1;
         const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
         const providerType = normalizedType === "movie" ? "movie" : "tv";
+        const showTitle = (yield getShowTitle(tmdbId, providerType)) || (normalizedType === "movie" ? "Film" : "Serie");
+        const displayName = normalizedType === "movie" ? showTitle : `${showTitle} ${effectiveSeason}x${effectiveEpisode}`;
         const streams = [];
         yield Promise.all([
-          addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode),
-          addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode)
+          addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName),
+          addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName)
         ]);
         return streams.map((s) => formatStream2(s, "AltadefinizioneStreaming")).filter(Boolean);
       });
