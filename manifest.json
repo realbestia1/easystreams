@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.75",
+  "version": "1.1.76",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.1.14",
+      "version": "1.1.15",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-vidxgo",
       "name": "VidxGo",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Streams from VidxGo",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -109,7 +109,7 @@
     {
       "id": "easystreams-altadefinizionestreaming",
       "name": "AltadefinizioneStreaming",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Movies and Series from AltadefinizioneStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],
