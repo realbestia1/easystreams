@@ -83,6 +83,36 @@ if (!IS_SERVER) {
     });
   }
 
+  function getTitleFromIds(imdbId, tmdbId, type) {
+    return __async(this, null, function* () {
+      try {
+        const normalizedType = String(type || "").toLowerCase();
+        const endpoint = normalizedType === "movie" ? "movie" : "tv";
+
+        if (/^\d+$/.test(String(tmdbId || ""))) {
+          const response = yield fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+          if (response.ok) {
+            const data = yield response.json();
+            return data.title || data.name || data.original_title || data.original_name || null;
+          }
+        }
+
+        if (/^tt\d+$/i.test(String(imdbId || ""))) {
+          const response = yield fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          const results = endpoint === "movie" ? data.movie_results : data.tv_results;
+          const fallback = endpoint === "movie" ? data.tv_results : data.movie_results;
+          const item = (Array.isArray(results) && results[0]) || (Array.isArray(fallback) && fallback[0]) || null;
+          return item && (item.title || item.name || item.original_title || item.original_name) || null;
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    });
+  }
+
   function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
     return __async(this, null, function* () {
       try {
@@ -164,7 +194,8 @@ if (!IS_SERVER) {
 
         const numericId = imdbId.replace("tt", "");
         const isMovie = String(type).toLowerCase() === "movie";
-        const displayName = isMovie ? "VidxGo" : `VidxGo ${effectiveSeason}x${effectiveEpisode}`;
+        const contentTitle = (yield getTitleFromIds(imdbId, tmdbId, type)) || (isMovie ? "Film" : "Serie");
+        const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         const streams = [];
 
         const vidxgoUrl = isMovie

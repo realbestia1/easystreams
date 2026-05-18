@@ -503,6 +503,32 @@ if (!IS_SERVER) {
         return null;
       }
     });
+  }, getTitleFromIds = function(imdbId, tmdbId, type) {
+    return __async2(this, null, function* () {
+      try {
+        const normalizedType = String(type || "").toLowerCase();
+        const endpoint = normalizedType === "movie" ? "movie" : "tv";
+        if (/^\d+$/.test(String(tmdbId || ""))) {
+          const response = yield fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+          if (response.ok) {
+            const data = yield response.json();
+            return data.title || data.name || data.original_title || data.original_name || null;
+          }
+        }
+        if (/^tt\d+$/i.test(String(imdbId || ""))) {
+          const response = yield fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          const results = endpoint === "movie" ? data.movie_results : data.tv_results;
+          const fallback = endpoint === "movie" ? data.tv_results : data.movie_results;
+          const item = Array.isArray(results) && results[0] || Array.isArray(fallback) && fallback[0] || null;
+          return item && (item.title || item.name || item.original_title || item.original_name) || null;
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    });
   }, getIdsFromKitsu = function(kitsuId, season, episode, providerContext = null) {
     return __async2(this, null, function* () {
       try {
@@ -578,7 +604,8 @@ if (!IS_SERVER) {
         if (!imdbId) return [];
         const numericId = imdbId.replace("tt", "");
         const isMovie = String(type).toLowerCase() === "movie";
-        const displayName = isMovie ? "VidxGo" : `VidxGo ${effectiveSeason}x${effectiveEpisode}`;
+        const contentTitle = (yield getTitleFromIds(imdbId, tmdbId, type)) || (isMovie ? "Film" : "Serie");
+        const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         const streams = [];
         const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${numericId}` : `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
         const vidxgoStream = yield extractVidxGo(vidxgoUrl, "https://altadefinizione.you/");
@@ -612,7 +639,7 @@ if (!IS_SERVER) {
       }
     });
   };
-  getMappingApiUrl2 = getMappingApiUrl, normalizeConfigBoolean2 = normalizeConfigBoolean, getMappingLanguage2 = getMappingLanguage, getQualityFromName2 = getQualityFromName, getImdbId2 = getImdbId, getIdsFromKitsu2 = getIdsFromKitsu, getStreams2 = getStreams;
+  getMappingApiUrl2 = getMappingApiUrl, normalizeConfigBoolean2 = normalizeConfigBoolean, getMappingLanguage2 = getMappingLanguage, getQualityFromName2 = getQualityFromName, getImdbId2 = getImdbId, getTitleFromIds2 = getTitleFromIds, getIdsFromKitsu2 = getIdsFromKitsu, getStreams2 = getStreams;
   __async2 = (__this, __arguments, generator) => {
     return new Promise((resolve, reject) => {
       var fulfilled = (value) => {
@@ -648,5 +675,6 @@ var normalizeConfigBoolean2;
 var getMappingLanguage2;
 var getQualityFromName2;
 var getImdbId2;
+var getTitleFromIds2;
 var getIdsFromKitsu2;
 var getStreams2;
