@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.72",
+  "version": "1.1.73",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-vidxgo-ec",
       "name": "VidxGo",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Streams from VidxGo",
       "resources": ["stream"],
       "contentLanguage": ["it"],
