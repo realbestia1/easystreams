@@ -179,29 +179,13 @@ var require_mixdrop = __commonJS({
             }
           }
           if (!streamUrl) return null;
-          const origin = (() => {
-            try {
-              return new URL(pageUrl).origin;
-            } catch (e) {
-              return "https://m1xdrop.net";
-            }
-          })();
           return {
             url: streamUrl,
             referer: pageUrl,
             userAgent: USER_AGENT,
             headers: {
               "User-Agent": USER_AGENT,
-              "Accept": "video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5",
-              "Accept-Language": "en-US,en;q=0.9",
-              "Accept-Encoding": "identity",
-              "Connection": "keep-alive",
-              "Referer": pageUrl,
-              "Origin": origin,
-              "Sec-Fetch-Dest": "video",
-              "Sec-Fetch-Mode": "no-cors",
-              "Sec-Fetch-Site": "cross-site",
-              "DNT": "1"
+              "Referer": pageUrl
             }
           };
         } catch (e) {
