@@ -881,7 +881,9 @@ var require_mixdrop = __commonJS({
             const response = yield fetch(targetUrl2, {
               headers: {
                 "User-Agent": USER_AGENT,
-                "Referer": referer
+                "Referer": referer,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
               }
             });
             if (!response.ok) return null;
@@ -920,7 +922,9 @@ var require_mixdrop = __commonJS({
             headers: {
               "User-Agent": USER_AGENT,
               "Referer": pageUrl,
-              "Origin": origin
+              "Origin": origin,
+              "Accept": "*/*",
+              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
             }
           };
         } catch (e) {
