@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.73",
+  "version": "1.1.74",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.1.15",
+      "version": "1.1.16",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
