@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.74",
+  "version": "1.1.75",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
@@ -91,19 +91,6 @@
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/cinemacity.js",
       "supportedTypes": ["movie", "tv"],
-      "enabled": true
-    },
-    {
-      "id": "easystreams-vidxgo-ec",
-      "name": "VidxGo",
-      "version": "1.0.3",
-      "description": "Streams from VidxGo",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
-      "filename": "providers/vidxgo_ec.js",
-      "supportedTypes": ["tv", "anime", "movie"],
       "enabled": true
     },
     {

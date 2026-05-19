@@ -3,15 +3,8 @@ const IS_SERVER = typeof process !== 'undefined' && process.versions && process.
 if (!IS_SERVER) {
   module.exports = {
     getStreams: async (id, type, season, episode) => {
-      try {
-        const url = `https://easystreams.realbestia.com/resolve/vidxgo?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
-        const response = await fetch(url);
-        const data = await response.json();
-        return data.streams || [];
-      } catch (e) {
-        console.error('[VidxGo-Client] API Error:', e.message);
-        return [];
-      }
+      console.warn('[VidxGo-Client] Disabled: VidXGo requires EasyProxy stream proxy.');
+      return [];
     }
   };
 } else {

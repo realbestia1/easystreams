@@ -114,13 +114,7 @@ var require_vidxgo = __commonJS({
     var { spawn } = require("child_process");
     var path = require("path");
     var fs = require("fs");
-    var crypto = require("crypto");
     var { USER_AGENT } = require_common();
-    var VIDXGO_HEARTBEAT_URL = "https://v.vidxgo.co/hb";
-    var VIDXGO_HEARTBEAT_INTERVAL_MS = 6e4;
-    var VIDXGO_HEARTBEAT_TTL_MS = 4 * 60 * 60 * 1e3;
-    var VIDXGO_DEFAULT_DURATION_SEC = 4 * 60 * 60;
-    var vidxgoHeartbeats = /* @__PURE__ */ new Map();
     function getPythonExe() {
       const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
       if (fs.existsSync(venvPython)) return venvPython;
@@ -171,123 +165,6 @@ var require_vidxgo = __commonJS({
         });
       });
     }
-    function parseVidxGoPageUrl(url) {
-      try {
-        const parsed = new URL(url);
-        const parts = parsed.pathname.split("/").filter(Boolean);
-        const imdb = String(parts[0] || "").replace(/^tt/i, "").trim();
-        if (!/^\d+$/.test(imdb)) return null;
-        const season = Number.parseInt(parts[1], 10);
-        const episode = Number.parseInt(parts[2], 10);
-        const isEpisode = Number.isInteger(season) && season > 0 && Number.isInteger(episode) && episode > 0;
-        return {
-          imdb,
-          type: isEpisode ? "episode" : "movie",
-          season: isEpisode ? season : null,
-          episode: isEpisode ? episode : null
-        };
-      } catch (e) {
-        return null;
-      }
-    }
-    function createHeartbeatId() {
-      if (crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    }
-    function buildHeartbeatHeaders(pageUrl) {
-      return {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Content-Type": "application/json",
-        "Origin": "https://v.vidxgo.co",
-        "Referer": pageUrl,
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "DNT": "1"
-      };
-    }
-    function sendVidxGoHeartbeat(state) {
-      return __async(this, null, function* () {
-        if (typeof fetch !== "function") return true;
-        const elapsedSec = Math.max(1, Math.floor((Date.now() - state.startedAt) / 1e3));
-        const payload = {
-          sid: state.sid,
-          imdb: state.meta.imdb,
-          type: state.meta.type,
-          pos: Math.min(elapsedSec, VIDXGO_DEFAULT_DURATION_SEC - 1),
-          dur: VIDXGO_DEFAULT_DURATION_SEC,
-          playing: 1,
-          ref: state.referer,
-          dm: "Stremio"
-        };
-        if (state.meta.type === "episode") {
-          payload.s = state.meta.season;
-          payload.e = state.meta.episode;
-        }
-        const response = yield fetch(VIDXGO_HEARTBEAT_URL, {
-          method: "POST",
-          headers: buildHeartbeatHeaders(state.pageUrl),
-          body: JSON.stringify(payload)
-        });
-        if (response.status === 410) return false;
-        const text = yield response.text().catch(() => "");
-        if (!response.ok) {
-          console.warn(`[VidxGo] Heartbeat HTTP ${response.status}: ${text.slice(0, 120)}`);
-          return true;
-        }
-        try {
-          const data = JSON.parse(text);
-          return !(data && data.kicked);
-        } catch (e) {
-          return true;
-        }
-      });
-    }
-    function stopVidxGoHeartbeat(key) {
-      const state = vidxgoHeartbeats.get(key);
-      if (!state) return;
-      if (state.timer) clearInterval(state.timer);
-      vidxgoHeartbeats.delete(key);
-    }
-    function startVidxGoHeartbeat(pageUrl, referer = null) {
-      const meta = parseVidxGoPageUrl(pageUrl);
-      if (!meta) return;
-      const heartbeatReferer = referer || "https://altadefinizione.you/";
-      const key = `${meta.imdb}:${meta.season || 0}:${meta.episode || 0}:${heartbeatReferer}`;
-      const now = Date.now();
-      const existing = vidxgoHeartbeats.get(key);
-      if (existing) {
-        existing.expiresAt = now + VIDXGO_HEARTBEAT_TTL_MS;
-        return;
-      }
-      const state = {
-        sid: createHeartbeatId(),
-        pageUrl,
-        referer: heartbeatReferer,
-        meta,
-        startedAt: now,
-        expiresAt: now + VIDXGO_HEARTBEAT_TTL_MS,
-        timer: null
-      };
-      const tick = () => __async(null, null, function* () {
-        if (Date.now() >= state.expiresAt) {
-          stopVidxGoHeartbeat(key);
-          return;
-        }
-        try {
-          const shouldContinue = yield sendVidxGoHeartbeat(state);
-          if (!shouldContinue) stopVidxGoHeartbeat(key);
-        } catch (error) {
-          console.warn("[VidxGo] Heartbeat error:", error.message || error);
-        }
-      });
-      state.timer = setInterval(tick, VIDXGO_HEARTBEAT_INTERVAL_MS);
-      if (typeof state.timer.unref === "function") state.timer.unref();
-      vidxgoHeartbeats.set(key, state);
-      tick();
-    }
     function extractVidxGo(url, referer = null) {
       return __async(this, null, function* () {
         try {
@@ -295,7 +172,6 @@ var require_vidxgo = __commonJS({
           const streamUrl = yield bypassAndExtract(url, referer);
           if (streamUrl) {
             console.log("[VidxGo] Real stream URL extracted:", streamUrl);
-            startVidxGoHeartbeat(url, referer);
             const vidxgoOrigin = new URL(url).origin;
             return {
               url: streamUrl,
@@ -567,15 +443,8 @@ var IS_SERVER = typeof process !== "undefined" && process.versions && process.ve
 if (!IS_SERVER) {
   module.exports = {
     getStreams: (id, type, season, episode) => __async(null, null, function* () {
-      try {
-        const url = `https://easystreams.realbestia.com/resolve/vidxgo?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
-        const response = yield fetch(url);
-        const data = yield response.json();
-        return data.streams || [];
-      } catch (e) {
-        console.error("[VidxGo-Client] API Error:", e.message);
-        return [];
-      }
+      console.warn("[VidxGo-Client] Disabled: VidXGo requires EasyProxy stream proxy.");
+      return [];
     })
   };
 } else {
