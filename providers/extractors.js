@@ -175,13 +175,21 @@ var require_mixdrop = __commonJS({
             }
           }
           if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "";
+            }
+          })();
           return {
             url: streamUrl,
             referer: pageUrl,
             userAgent: USER_AGENT2,
             headers: {
               "User-Agent": USER_AGENT2,
-              "Referer": pageUrl
+              "Referer": pageUrl,
+              "Origin": origin
             }
           };
         } catch (e) {

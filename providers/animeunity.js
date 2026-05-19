@@ -179,13 +179,21 @@ var require_mixdrop = __commonJS({
             }
           }
           if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "";
+            }
+          })();
           return {
             url: streamUrl,
             referer: pageUrl,
             userAgent: USER_AGENT2,
             headers: {
               "User-Agent": USER_AGENT2,
-              "Referer": pageUrl
+              "Referer": pageUrl,
+              "Origin": origin
             }
           };
         } catch (e) {
@@ -7524,7 +7532,7 @@ var require_formatter = __commonJS({
         stream == null ? void 0 : stream.server,
         providerName
       ].filter(Boolean).join(" ").toLowerCase();
-      if (text.includes("loadm") || text.includes("loadm.cam")) {
+      if (text.includes("loadm") || text.includes("loadm.cam") || text.includes("mixdrop") || text.includes("mxcontent")) {
         return true;
       }
       return false;

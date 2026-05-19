@@ -57,7 +57,7 @@ function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behavior
         providerName
     ].filter(Boolean).join(' ').toLowerCase();
 
-    if (text.includes('loadm') || text.includes('loadm.cam')) {
+    if (text.includes('loadm') || text.includes('loadm.cam') || text.includes('mixdrop') || text.includes('mxcontent')) {
         return true;
     }
 

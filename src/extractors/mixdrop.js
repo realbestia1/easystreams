@@ -86,13 +86,18 @@ async function extractMixDrop(url, refererBase = 'https://m1xdrop.net/') {
 
     if (!streamUrl) return null;
 
+    const origin = (() => {
+      try { return new URL(pageUrl).origin; } catch { return ''; }
+    })();
+
     return {
       url: streamUrl,
       referer: pageUrl,
       userAgent: USER_AGENT,
       headers: {
         'User-Agent': USER_AGENT,
-        'Referer': pageUrl
+        'Referer': pageUrl,
+        'Origin': origin
       }
     };
   } catch (e) {

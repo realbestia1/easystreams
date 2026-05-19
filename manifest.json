@@ -1,11 +1,11 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.76",
+  "version": "1.1.77",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
       "name": "Guardoserie EC",
-      "version": "1.0.19",
+      "version": "1.0.20",
       "description": "Movies and Series from Guardoserie with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.1.17",
+      "version": "1.1.18",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-altadefinizionestreaming",
       "name": "AltadefinizioneStreaming",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Movies and Series from AltadefinizioneStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],
