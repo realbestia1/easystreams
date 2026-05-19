@@ -57,15 +57,19 @@ function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behavior
         providerName
     ].filter(Boolean).join(' ').toLowerCase();
 
-    if (text.includes('mixdrop') || text.includes('m1xdrop') || text.includes('mxcontent')) {
-        return true;
-    }
-
     if (text.includes('loadm') || text.includes('loadm.cam')) {
         return true;
     }
 
     return false;
+}
+
+function normalizeProviderId(providerName) {
+    const normalized = String(providerName || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+    return normalized || undefined;
 }
 
 function formatStream(stream, providerName) {
@@ -171,6 +175,8 @@ function formatStream(stream, providerName) {
     let finalTitle = `📁 ${stream.title || 'Stream'}`;
     if (desc) finalTitle += ` | ${desc}`;
     if (language) finalTitle += ` | ${language}`;
+    const playbackReferer = stream.referer || finalHeaders?.Referer || finalHeaders?.referer;
+    const playbackUserAgent = stream.userAgent || finalHeaders?.['User-Agent'] || finalHeaders?.['user-agent'];
 
     return {
         ...stream, // Keep original properties
@@ -186,6 +192,9 @@ function formatStream(stream, providerName) {
         // Mark as formatted
         _nuvio_formatted: true,
         behaviorHints: behaviorHints,
+        provider: stream.provider || normalizeProviderId(providerName),
+        referer: playbackReferer,
+        userAgent: playbackUserAgent,
         // Explicitly ensure root headers are preserved for Nuvio
         headers: finalHeaders
     };
