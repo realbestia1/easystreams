@@ -1341,7 +1341,7 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'cinemacity']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'cinemacity', 'vidxgo']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1646,10 +1646,12 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const sTitle = (s.title || "").toLowerCase();
                         const isStreamingCommunityProvider = name === 'streamingcommunity';
                         const isAnimeUnityProvider = name === 'animeunity';
+                        const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
                         const isStreamHgProviderStream = isStreamHgStream(s);
                         if (isStreamingCommunityProvider && !hasEasyProxy) return false;
                         if (isAnimeUnityProvider && !hasEasyProxy) return false;
+                        if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgProviderStream && !hasEasyProxy) return false;
                         const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
                         // Global filter for specific unwanted servers
@@ -1701,6 +1703,19 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                     proxyPassword,
                                     'streamhg',
                                     s.easyProxySourceUrl || s.url
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'vidxgo') {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vidxgo',
+                                    s.easyProxySourceUrl || s.url,
+                                    'm3u8'
                                 )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
