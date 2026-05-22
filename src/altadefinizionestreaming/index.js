@@ -94,8 +94,9 @@ async function addCdnStream(streams, tmdbId, type, season, episode, displayName)
     ? `${BASE_URL}/api/player-sources/movie/${tmdbId}`
     : `${BASE_URL}/api/player-sources/tv/${tmdbId}/${season}/${episode}`;
   const payload = await fetchJson(endpoint);
-  const source = payload?.sources?.find(s => String(s?.provider || "").toLowerCase() === "cdn" && s?.url)
-    || payload?.sources?.find(s => s?.url);
+  const isAllowed = s => s?.url && !/vixsrc\.to/i.test(String(s.url));
+  const source = payload?.sources?.find(s => String(s?.provider || "").toLowerCase() === "cdn" && isAllowed(s))
+    || payload?.sources?.find(s => isAllowed(s));
   if (!source?.url) return;
 
   streams.push({

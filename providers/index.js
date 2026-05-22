@@ -13437,7 +13437,8 @@ var require_altadefinizionestreaming = __commonJS({
         const normalizedType = String(type || "").toLowerCase();
         const endpoint = normalizedType === "movie" ? `${BASE_URL2}/api/player-sources/movie/${tmdbId}` : `${BASE_URL2}/api/player-sources/tv/${tmdbId}/${season}/${episode}`;
         const payload = yield fetchJson(endpoint);
-        const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && (s == null ? void 0 : s.url))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => s == null ? void 0 : s.url));
+        const isAllowed = (s) => (s == null ? void 0 : s.url) && !/vixsrc\.to/i.test(String(s.url));
+        const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && isAllowed(s))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => isAllowed(s)));
         if (!(source == null ? void 0 : source.url)) return;
         streams.push({
           name: "AltadefinizioneStreaming - CDN",
