@@ -25,10 +25,20 @@ def main():
     cookie_str = headers.pop('Cookie', None) or headers.pop('cookie', None)
     cookies = []
     if cookie_str:
-        for c in cookie_str.split(';'):
-            if '=' in c:
-                name, value = c.strip().split('=', 1)
-                cookies.append({'name': name, 'value': value})
+        from urllib.parse import urlparse
+        domain = urlparse(args.url).hostname
+        if domain:
+            if not domain.startswith('.'):
+                domain = '.' + domain
+            for c in cookie_str.split(';'):
+                if '=' in c:
+                    name, value = c.strip().split('=', 1)
+                    cookies.append({
+                        'name': name,
+                        'value': value,
+                        'domain': domain,
+                        'path': '/'
+                    })
 
     # Kwargs for the fetch method, as per Scrapling 0.2.x
     fetch_kwargs = {
@@ -44,11 +54,10 @@ def main():
         fetch_kwargs['useragent'] = user_agent
 
     try:
-        fetcher = StealthyFetcher()
         if args.method.upper() == 'POST':
-            response = fetcher.fetch(args.url, method='POST', body=args.data, **fetch_kwargs)
+            response = StealthyFetcher.fetch(args.url, method='POST', body=args.data, **fetch_kwargs)
         else:
-            response = fetcher.fetch(args.url, **fetch_kwargs)
+            response = StealthyFetcher.fetch(args.url, **fetch_kwargs)
 
         # Small extra wait to ensure cookies from late JS execution are captured
         import time
