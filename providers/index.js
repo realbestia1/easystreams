@@ -12395,15 +12395,20 @@ var require_cinemacity = __commonJS({
         }
         console.log("[CinemaCity] Fetching sitemap catalog...");
         const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== "undefined" && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
+        let sitemapProxy = typeof process !== "undefined" && process.env.CF_PROXY || typeof process !== "undefined" && process.env.CF_PROXY_URL || typeof process !== "undefined" && process.env.CINEMACITY_SITEMAP_PROXY || proxyUrl;
+        if (!sitemapProxy || !sitemapProxy.includes("workers.dev")) {
+          sitemapProxy = base64Decode("aHR0cHM6Ly9zdXBlcnZpZGVvLmNpY2Npby00OWIud29ya2Vycy5kZXY=");
+          console.log(`[CinemaCity] Non-worker proxy detected or none defined. Falling back to dedicated sitemap worker: ${sitemapProxy}`);
+        }
         let xml;
         const cookies = getSessionCookies();
         const headers = {
           "Accept": "application/xml,text/xml,text/html;q=0.9,*/*;q=0.8",
           "Cookie": cookies
         };
-        if (proxyUrl) {
-          const separator = proxyUrl.includes("?") ? "&" : "?";
-          const targetUrl2 = `${proxyUrl}${separator}url=${encodeURIComponent(SITEMAP_URL)}`;
+        if (sitemapProxy) {
+          const separator = sitemapProxy.includes("?") ? "&" : "?";
+          const targetUrl2 = `${sitemapProxy}${separator}url=${encodeURIComponent(SITEMAP_URL)}`;
           console.log(`[CinemaCity] Fetching sitemap via CF Proxy: ${targetUrl2}`);
           const response = yield fetchWithTimeout(targetUrl2, {
             timeout: FETCH_TIMEOUT,

@@ -91,7 +91,7 @@
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/cinemacity.js",
       "supportedTypes": ["movie", "tv"],
-      "enabled": false
+      "enabled": true
     },
     {
       "id": "easystreams-altadefinizionestreaming",
