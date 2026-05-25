@@ -514,17 +514,17 @@ if (!IS_SERVER) {
       }
       return null;
     });
-  }, getIdsFromKitsu = function(kitsuId, season, episode, providerContext = null) {
+  }, getIdsFromMapping = function(provider, externalId, season, episode) {
     return __async2(this, null, function* () {
       try {
-        if (!kitsuId) return null;
+        if (!externalId) return null;
         const params = new URLSearchParams();
         const parsedEpisode = parseInt(String(episode || ""), 10);
         const parsedSeason = parseInt(String(season || ""), 10);
         params.set("ep", Number.isInteger(parsedEpisode) && parsedEpisode > 0 ? String(parsedEpisode) : "1");
         if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
         params.set("lang", "it");
-        const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+        const url = `${getMappingApiUrl()}/${provider}/${encodeURIComponent(String(externalId).trim())}?${params.toString()}`;
         const response = yield fetch(url);
         if (!response.ok) return null;
         const payload = yield response.json();
@@ -543,7 +543,7 @@ if (!IS_SERVER) {
           rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
         };
       } catch (e) {
-        console.error("[VidxGo] Kitsu mapping error:", e);
+        console.error("[VidxGo] mapping error:", e);
         return null;
       }
     });
@@ -565,7 +565,7 @@ if (!IS_SERVER) {
         const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
         if (id.toString().startsWith("kitsu:") || contextKitsuId) {
           const kitsuId = contextKitsuId || id.toString().split(":")[1];
-          const mapped = yield getIdsFromKitsu(kitsuId, season, episode, providerContext);
+          const mapped = yield getIdsFromMapping("kitsu", kitsuId, season, episode);
           mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
           if (mapped) {
             if (mapped.tmdbId) tmdbId = mapped.tmdbId;
@@ -580,19 +580,37 @@ if (!IS_SERVER) {
         } else if (id.toString().startsWith("tt")) {
           imdbId = id.toString();
           tmdbId = contextTmdbId || tmdbId;
-          mark("imdb_to_tmdb_done", { ok: true });
+          const mapped = yield getIdsFromMapping("imdb", imdbId, season, episode);
+          if (mapped && mapped.tmdbId) tmdbId = mapped.tmdbId;
+          if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
+            effectiveSeason = mapped.mappedSeason;
+            effectiveEpisode = mapped.mappedEpisode;
+          } else if (mapped && mapped.rawEpisodeNumber) {
+            effectiveEpisode = mapped.rawEpisodeNumber;
+          }
+          mark("imdb_mapping_done", { ok: true });
         } else if (id.toString().startsWith("tmdb:")) {
           tmdbId = id.toString().replace("tmdb:", "");
+        }
+        if (!imdbId && tmdbId) {
+          const mapped = yield getIdsFromMapping("tmdb", tmdbId, season, episode);
+          if (mapped && mapped.imdbId) imdbId = mapped.imdbId;
+          if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
+            effectiveSeason = mapped.mappedSeason;
+            effectiveEpisode = mapped.mappedEpisode;
+          } else if (mapped && mapped.rawEpisodeNumber) {
+            effectiveEpisode = mapped.rawEpisodeNumber;
+          }
+          mark("tmdb_mapping_done", { ok: Boolean(imdbId) });
         }
         if (!imdbId && tmdbId) imdbId = contextImdbId || (yield getImdbId(tmdbId, type));
         mark("imdb_resolve_done", { ok: Boolean(imdbId) });
         if (!imdbId) return [];
-        const numericId = imdbId.replace("tt", "");
         const isMovie = String(type).toLowerCase() === "movie";
         const contentTitle = (yield getTitleFromIds(imdbId, tmdbId, type)) || (isMovie ? "Film" : "Serie");
         const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         const streams = [];
-        const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${numericId}` : `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
+        const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
         const shouldUseEasyProxy = Boolean(providerContext && providerContext.proxyUrl);
         let vidxgoStream = null;
         if (shouldUseEasyProxy) {
@@ -634,7 +652,7 @@ if (!IS_SERVER) {
       }
     });
   };
-  getMappingApiUrl2 = getMappingApiUrl, normalizeConfigBoolean2 = normalizeConfigBoolean, getMappingLanguage2 = getMappingLanguage, getQualityFromName2 = getQualityFromName, getImdbId2 = getImdbId, getTitleFromIds2 = getTitleFromIds, getIdsFromKitsu2 = getIdsFromKitsu, getStreams2 = getStreams;
+  getMappingApiUrl2 = getMappingApiUrl, normalizeConfigBoolean2 = normalizeConfigBoolean, getMappingLanguage2 = getMappingLanguage, getQualityFromName2 = getQualityFromName, getImdbId2 = getImdbId, getTitleFromIds2 = getTitleFromIds, getIdsFromMapping2 = getIdsFromMapping, getStreams2 = getStreams;
   __async2 = (__this, __arguments, generator) => {
     return new Promise((resolve, reject) => {
       var fulfilled = (value) => {
@@ -671,5 +689,5 @@ var getMappingLanguage2;
 var getQualityFromName2;
 var getImdbId2;
 var getTitleFromIds2;
-var getIdsFromKitsu2;
+var getIdsFromMapping2;
 var getStreams2;

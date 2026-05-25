@@ -13024,17 +13024,17 @@ var require_vidxgo2 = __commonJS({
           }
           return null;
         });
-      }, getIdsFromKitsu3 = function(kitsuId, season, episode, providerContext = null) {
+      }, getIdsFromMapping2 = function(provider, externalId, season, episode) {
         return __async2(this, null, function* () {
           try {
-            if (!kitsuId) return null;
+            if (!externalId) return null;
             const params = new URLSearchParams();
             const parsedEpisode = parseInt(String(episode || ""), 10);
             const parsedSeason = parseInt(String(season || ""), 10);
             params.set("ep", Number.isInteger(parsedEpisode) && parsedEpisode > 0 ? String(parsedEpisode) : "1");
             if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
             params.set("lang", "it");
-            const url = `${getMappingApiUrl3()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+            const url = `${getMappingApiUrl3()}/${provider}/${encodeURIComponent(String(externalId).trim())}?${params.toString()}`;
             const response = yield fetch(url);
             if (!response.ok) return null;
             const payload = yield response.json();
@@ -13053,7 +13053,7 @@ var require_vidxgo2 = __commonJS({
               rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
             };
           } catch (e) {
-            console.error("[VidxGo] Kitsu mapping error:", e);
+            console.error("[VidxGo] mapping error:", e);
             return null;
           }
         });
@@ -13075,7 +13075,7 @@ var require_vidxgo2 = __commonJS({
             const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
             if (id.toString().startsWith("kitsu:") || contextKitsuId) {
               const kitsuId = contextKitsuId || id.toString().split(":")[1];
-              const mapped = yield getIdsFromKitsu3(kitsuId, season, episode, providerContext);
+              const mapped = yield getIdsFromMapping2("kitsu", kitsuId, season, episode);
               mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
               if (mapped) {
                 if (mapped.tmdbId) tmdbId = mapped.tmdbId;
@@ -13090,19 +13090,37 @@ var require_vidxgo2 = __commonJS({
             } else if (id.toString().startsWith("tt")) {
               imdbId = id.toString();
               tmdbId = contextTmdbId || tmdbId;
-              mark("imdb_to_tmdb_done", { ok: true });
+              const mapped = yield getIdsFromMapping2("imdb", imdbId, season, episode);
+              if (mapped && mapped.tmdbId) tmdbId = mapped.tmdbId;
+              if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
+                effectiveSeason = mapped.mappedSeason;
+                effectiveEpisode = mapped.mappedEpisode;
+              } else if (mapped && mapped.rawEpisodeNumber) {
+                effectiveEpisode = mapped.rawEpisodeNumber;
+              }
+              mark("imdb_mapping_done", { ok: true });
             } else if (id.toString().startsWith("tmdb:")) {
               tmdbId = id.toString().replace("tmdb:", "");
+            }
+            if (!imdbId && tmdbId) {
+              const mapped = yield getIdsFromMapping2("tmdb", tmdbId, season, episode);
+              if (mapped && mapped.imdbId) imdbId = mapped.imdbId;
+              if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
+                effectiveSeason = mapped.mappedSeason;
+                effectiveEpisode = mapped.mappedEpisode;
+              } else if (mapped && mapped.rawEpisodeNumber) {
+                effectiveEpisode = mapped.rawEpisodeNumber;
+              }
+              mark("tmdb_mapping_done", { ok: Boolean(imdbId) });
             }
             if (!imdbId && tmdbId) imdbId = contextImdbId || (yield getImdbId2(tmdbId, type));
             mark("imdb_resolve_done", { ok: Boolean(imdbId) });
             if (!imdbId) return [];
-            const numericId = imdbId.replace("tt", "");
             const isMovie = String(type).toLowerCase() === "movie";
             const contentTitle = (yield getTitleFromIds2(imdbId, tmdbId, type)) || (isMovie ? "Film" : "Serie");
             const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
             const streams = [];
-            const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${numericId}` : `https://v.vidxgo.co/${numericId}/${effectiveSeason}/${effectiveEpisode}`;
+            const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
             const shouldUseEasyProxy = Boolean(providerContext && providerContext.proxyUrl);
             let vidxgoStream = null;
             if (shouldUseEasyProxy) {
@@ -13144,7 +13162,7 @@ var require_vidxgo2 = __commonJS({
           }
         });
       };
-      getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getTitleFromIds = getTitleFromIds2, getIdsFromKitsu2 = getIdsFromKitsu3, getStreams3 = getStreams4;
+      getMappingApiUrl2 = getMappingApiUrl3, normalizeConfigBoolean2 = normalizeConfigBoolean3, getMappingLanguage2 = getMappingLanguage3, getQualityFromName = getQualityFromName2, getImdbId = getImdbId2, getTitleFromIds = getTitleFromIds2, getIdsFromMapping = getIdsFromMapping2, getStreams3 = getStreams4;
       __async2 = (__this, __arguments, generator) => {
         return new Promise((resolve, reject) => {
           var fulfilled = (value) => {
@@ -13181,7 +13199,7 @@ var require_vidxgo2 = __commonJS({
     var getQualityFromName;
     var getImdbId;
     var getTitleFromIds;
-    var getIdsFromKitsu2;
+    var getIdsFromMapping;
     var getStreams3;
   }
 });

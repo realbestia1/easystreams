@@ -108,8 +108,8 @@
     },
     {
       "id": "easystreams-vidxgo-ec",
-      "name": "VidxGo",
-      "version": "1.0.0",
+      "name": "VidxGo EC",
+      "version": "1.0.1",
       "description": "Movies, Series and Anime from VidxGo",
       "resources": ["stream"],
       "contentLanguage": ["it"],
