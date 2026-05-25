@@ -1614,7 +1614,11 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                 const providerPromise = (async () => {
                     try {
                         const providerContext = buildProviderRequestContext(requestContext);
-                        providerContext.proxyUrl = easyProxyUrl;
+                        if (name === 'streamingcommunity' || name === 'animeunity') {
+                            providerContext.proxyUrl = null;
+                        } else {
+                            providerContext.proxyUrl = easyProxyUrl;
+                        }
                         providerContext.proxyUrls = easyProxyEntries.map((entry) => entry.url);
                         providerContext.proxyEntries = easyProxyEntries;
                         providerContext.proxyMode = easyProxyMode;
