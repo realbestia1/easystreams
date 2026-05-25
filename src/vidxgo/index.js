@@ -106,7 +106,7 @@ if (!IS_SERVER) {
     });
   }
 
-  function getIdsFromMapping(provider, externalId, season, episode) {
+  function getIdsFromMapping(provider, externalId, season, episode, lang = null) {
     return __async(this, null, function* () {
       try {
         if (!externalId) return null;
@@ -115,7 +115,7 @@ if (!IS_SERVER) {
         const parsedSeason = parseInt(String(season || ""), 10);
         params.set("ep", Number.isInteger(parsedEpisode) && parsedEpisode > 0 ? String(parsedEpisode) : "1");
         if (Number.isInteger(parsedSeason) && parsedSeason >= 0) params.set("s", String(parsedSeason));
-        params.set("lang", "it");
+        if (lang) params.set("lang", lang);
         const url = `${getMappingApiUrl()}/${provider}/${encodeURIComponent(String(externalId).trim())}?${params.toString()}`;
         const response = yield fetch(url);
         if (!response.ok) return null;
@@ -158,10 +158,11 @@ if (!IS_SERVER) {
         const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
         const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null;
         const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
+        const mappingLang = getMappingLanguage(providerContext);
 
         if (id.toString().startsWith("kitsu:") || contextKitsuId) {
           const kitsuId = contextKitsuId || id.toString().split(":")[1];
-          const mapped = yield getIdsFromMapping("kitsu", kitsuId, season, episode);
+          const mapped = yield getIdsFromMapping("kitsu", kitsuId, season, episode, mappingLang);
           mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
           if (mapped) {
             if (mapped.tmdbId) tmdbId = mapped.tmdbId;
@@ -176,7 +177,7 @@ if (!IS_SERVER) {
         } else if (id.toString().startsWith("tt")) {
           imdbId = id.toString();
           tmdbId = contextTmdbId || tmdbId;
-          const mapped = yield getIdsFromMapping("imdb", imdbId, season, episode);
+          const mapped = yield getIdsFromMapping("imdb", imdbId, season, episode, mappingLang);
           if (mapped && mapped.tmdbId) tmdbId = mapped.tmdbId;
           if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
             effectiveSeason = mapped.mappedSeason;
@@ -190,7 +191,7 @@ if (!IS_SERVER) {
         }
 
         if (!imdbId && tmdbId) {
-          const mapped = yield getIdsFromMapping("tmdb", tmdbId, season, episode);
+          const mapped = yield getIdsFromMapping("tmdb", tmdbId, season, episode, mappingLang);
           if (mapped && mapped.imdbId) imdbId = mapped.imdbId;
           if (mapped && mapped.mappedSeason && mapped.mappedEpisode) {
             effectiveSeason = mapped.mappedSeason;

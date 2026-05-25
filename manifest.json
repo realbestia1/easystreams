@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.81",
+  "version": "1.1.82",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
@@ -109,7 +109,7 @@
     {
       "id": "easystreams-vidxgo-ec",
       "name": "VidxGo EC",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Movies, Series and Anime from VidxGo",
       "resources": ["stream"],
       "contentLanguage": ["it"],
