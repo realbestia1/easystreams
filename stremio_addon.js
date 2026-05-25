@@ -1408,14 +1408,14 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
             plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         }
     } else if (normalizedType === 'anime') {
-        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
+        plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
     } else {
         if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
                 : ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
             plan = ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         }

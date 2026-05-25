@@ -13520,7 +13520,7 @@ function getStreams2(id, type, season, episode) {
         selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
       }
     } else if (normalizedType === "anime") {
-      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
+      selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "vidxgo");
     } else if (normalizedType === "tv" || normalizedType === "series") {
       if (likelyAnime) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
