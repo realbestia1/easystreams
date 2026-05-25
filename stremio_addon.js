@@ -1642,8 +1642,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const server = (s.server || "").toLowerCase();
                         const sName = (s.name || "").toLowerCase();
                         const sTitle = (s.title || "").toLowerCase();
-                        const isStreamingCommunityProvider = name === 'streamingcommunity';
-                        const isAnimeUnityProvider = name === 'animeunity';
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
                         const isStreamHgProviderStream = isStreamHgStream(s);
@@ -1665,32 +1663,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     .map(async (s) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
-                        if (name === 'streamingcommunity' && hasEasyProxy) {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixsrc',
-                                    s.easyProxySourceUrl || s.url,
-                                    'm3u8'
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (name === 'animeunity' && hasEasyProxy) {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixcloud',
-                                    s.easyProxySourceUrl || s.url
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (isStreamHgStream(s)) {
+                        if (isStreamHgStream(s)) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,
