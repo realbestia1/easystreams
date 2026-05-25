@@ -105,19 +105,6 @@
       "filename": "providers/altadefinizionestreaming.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
-    },
-    {
-      "id": "easystreams-vidxgo-ec",
-      "name": "VidxGo EC",
-      "version": "1.0.2",
-      "description": "Movies, Series and Anime from VidxGo",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
-      "filename": "providers/vidxgo_ec.js",
-      "supportedTypes": ["movie", "tv"],
-      "enabled": true
     }
   ]
 }
