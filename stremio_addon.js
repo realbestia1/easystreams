@@ -1339,7 +1339,7 @@ const providers = {
     streamingcommunity: require('./src/streamingcommunity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1647,8 +1647,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
                         const isStreamHgProviderStream = isStreamHgStream(s);
-                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
-                        if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgProviderStream && !hasEasyProxy) return false;
                         const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
@@ -1667,7 +1665,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     .map(async (s) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
-                        if (name === 'streamingcommunity') {
+                        if (name === 'streamingcommunity' && hasEasyProxy) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,
@@ -1680,7 +1678,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (name === 'animeunity') {
+                        } else if (name === 'animeunity' && hasEasyProxy) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,
