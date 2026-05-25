@@ -114,7 +114,7 @@
       "resources": ["stream"],
       "contentLanguage": ["it"],
       "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
+      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
       "filename": "providers/vidxgo.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
