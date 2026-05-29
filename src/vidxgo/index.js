@@ -22,7 +22,7 @@ if (!IS_SERVER) {
   function getMappingLanguage(providerContext = null) { const explicit = String(providerContext?.mappingLanguage || "").trim().toLowerCase(); if (explicit === "it") return "it"; return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? "it" : null; }
   const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
-  const { extractVidxGo } = require('../extractors/vidxgo');
+  const { extractVidxGo, VIDXGO_HEADERS, CORRUPT_PLAYER_PATTERN } = require('../extractors/vidxgo');
   require('../fetch_helper.js');
   const { checkQualityFromPlaylist } = require('../quality_helper.js');
   const { formatStream } = require('../formatter.js');
@@ -216,6 +216,21 @@ if (!IS_SERVER) {
 
         const shouldUseEasyProxy = Boolean(providerContext && providerContext.proxyUrl);
         let vidxgoStream = null;
+
+        // Lightweight corrupt check before any branch
+        try {
+          const checkResp = yield fetch(vidxgoUrl, {
+            headers: { "Referer": "https://altadefinizione.you/", ...VIDXGO_HEADERS },
+            redirect: 'follow'
+          });
+          if (checkResp.ok) {
+            const checkHtml = yield checkResp.text();
+            if (CORRUPT_PLAYER_PATTERN.test(checkHtml)) {
+              console.warn("[VidxGo] Source is marked corrupt or not available");
+              return [];
+            }
+          }
+        } catch (_) {}
 
         if (shouldUseEasyProxy) {
           vidxgoStream = {

@@ -83,4 +83,4 @@ async function extractVidxGo(url, referer = 'https://altadefinizione.you/') {
     return null;
   }
 }
-module.exports = { extractVidxGo };
+module.exports = { extractVidxGo, VIDXGO_HEADERS, CORRUPT_PLAYER_PATTERN };
