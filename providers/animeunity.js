@@ -7411,6 +7411,8 @@ var require_vidxgo = __commonJS({
       return result.toString("utf-8");
     }
     var XOR_PATTERN = /var\s+\w+\s*=\s*'([\w]+)'\s*,?\s*d\s*=\s*atob\s*\(\s*'([A-Za-z0-9+/=]+)'\s*\)/g;
+    var CURRENT_SRC_PATTERN = /\bcurrentSrc\s*=\s*["'](https?:[^"']+?\.m3u8[^"']*)["']/;
+    var CORRUPT_PLAYER_PATTERN = /player-container[^>]*\bcorrupt\b/i;
     function extractVidxGo(url, referer = "https://altadefinizione.you/") {
       return __async(this, null, function* () {
         try {
@@ -7423,10 +7425,11 @@ var require_vidxgo = __commonJS({
           }
           const html = yield resp.text();
           let match;
+          XOR_PATTERN.lastIndex = 0;
           while ((match = XOR_PATTERN.exec(html)) !== null) {
             try {
               const decrypted = xorDecrypt(match[2], match[1]);
-              const streamMatch = decrypted.match(/currentSrc[^"]+"(https:[^";]+)/);
+              const streamMatch = decrypted.match(CURRENT_SRC_PATTERN);
               if (streamMatch) {
                 const streamUrl = streamMatch[1].replace(/\\/g, "");
                 const vidxgoOrigin = new URL(url).origin;
@@ -7451,6 +7454,10 @@ var require_vidxgo = __commonJS({
               continue;
             }
           }
+          if (CORRUPT_PLAYER_PATTERN.test(html)) {
+            console.warn("[VidxGo] Source is marked corrupt or not available");
+            return null;
+          }
           console.warn("[VidxGo] No stream URL found in page");
           return { url, headers: { "User-Agent": USER_AGENT2, "Referer": referer } };
         } catch (e) {
@@ -7459,7 +7466,7 @@ var require_vidxgo = __commonJS({
         }
       });
     }
-    module2.exports = { extractVidxGo };
+    module2.exports = { extractVidxGo, VIDXGO_HEADERS, CORRUPT_PLAYER_PATTERN };
   }
 });
 

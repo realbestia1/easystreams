@@ -621,19 +621,9 @@ if (!IS_SERVER) {
         const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
         const shouldUseEasyProxy = Boolean(providerContext && providerContext.proxyUrl);
         let vidxgoStream = null;
-        try {
-          const checkResp = yield fetch(vidxgoUrl, {
-            headers: __spreadValues({ "Referer": "https://altadefinizione.you/" }, VIDXGO_HEADERS),
-            redirect: "follow"
-          });
-          if (checkResp.ok) {
-            const checkHtml = yield checkResp.text();
-            if (CORRUPT_PLAYER_PATTERN.test(checkHtml)) {
-              console.warn("[VidxGo] Source is marked corrupt or not available");
-              return [];
-            }
-          }
-        } catch (_) {
+        const extracted = yield extractVidxGo(vidxgoUrl, "https://altadefinizione.you/");
+        if (!extracted) {
+          return [];
         }
         if (shouldUseEasyProxy) {
           vidxgoStream = {
@@ -642,7 +632,7 @@ if (!IS_SERVER) {
             headers: null
           };
         } else {
-          vidxgoStream = yield extractVidxGo(vidxgoUrl, "https://altadefinizione.you/");
+          vidxgoStream = extracted;
         }
         if (vidxgoStream && vidxgoStream.url) {
           let quality = "HD";
@@ -697,7 +687,7 @@ if (!IS_SERVER) {
   };
   const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
   const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-  const { extractVidxGo, VIDXGO_HEADERS, CORRUPT_PLAYER_PATTERN } = require_vidxgo();
+  const { extractVidxGo } = require_vidxgo();
   require_fetch_helper();
   const { checkQualityFromPlaylist } = require_quality_helper();
   const { formatStream } = require_formatter();
