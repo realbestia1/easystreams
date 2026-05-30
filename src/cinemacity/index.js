@@ -534,7 +534,6 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                                 if (ep && ep.file) {
                                     const dlUrl = buildDownloadUrl(ep.file, movieTitle);
                                     if (dlUrl) return dlUrl;
-                                    return ep.file;
                                 }
                             }
                         }
@@ -543,7 +542,6 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                         if (fileVal && fileVal.startsWith('http')) {
                             const dlUrl = buildDownloadUrl(fileVal, movieTitle);
                             if (dlUrl) return dlUrl;
-                            return fileVal;
                         }
                     }
                 } catch (e) {}

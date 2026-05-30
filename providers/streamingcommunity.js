@@ -99,7 +99,7 @@ var require_formatter = __commonJS({
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
-      if (!language) {
+      if (language === void 0 || language === null) {
         if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else language = "\u{1F1EE}\u{1F1F9}";
@@ -564,17 +564,18 @@ function getStreams(id, type, season, episode, providerContext = null) {
         const streamHeaders = getPlaylistHeaders(embedUrl);
         console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
         let quality = "1080p";
+        let hasItalianAudio = false;
         try {
           const playlistResponse = yield fetch(streamUrl, {
             headers: streamHeaders
           });
           if (playlistResponse.ok) {
             const playlistText = yield playlistResponse.text();
-            const hasItalian = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+            hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
             const detected = checkQualityFromText(playlistText);
             if (detected) quality = detected;
             const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-            if (!hasItalian && !originalLanguageItalian) {
+            if (!hasItalianAudio && !originalLanguageItalian) {
               console.log(`[StreamingCommunity] No Italian audio found. Checking fallback.`);
               const fallbackOk = yield hasGuardaFallbackResults(id, normalizedType, resolvedSeason, episode, providerContext);
               if (!fallbackOk) return [];
@@ -584,6 +585,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
         }
         const normalizedQuality = getQualityFromName(quality);
+        const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
         const result = {
           name: `StreamingCommunity`,
           title: finalDisplayName,
@@ -596,6 +598,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
             notWebReady: false
           }
         };
+        if (hasItalianAudio || hasOriginalItalian) result.language = "Italian";
+        else result.language = "";
         return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
       } else {
         console.log("[StreamingCommunity] Could not find playlist info in HTML");
