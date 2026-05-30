@@ -1340,7 +1340,7 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo', 'altadefinizionestreaming']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1652,7 +1652,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgProviderStream && !hasEasyProxy) return false;
-                        const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
+                        const canProxyMixdrop = Boolean(easyProxyUrl) && (isMixdropStreamUrl(s.url) || isMixdropStream(s));
                         // Global filter for specific unwanted servers
                         return (
                             (canProxyMixdrop || (
@@ -1729,6 +1729,19 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                     'mixdrop',
                                     s.easyProxySourceUrl || s.url,
                                     mixdropExtension
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'altadefinizionestreaming' && !isMixdropStream(s)) {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'adn',
+                                    s.easyProxySourceUrl || s.url,
+                                    'm3u8'
                                 )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
