@@ -229,6 +229,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     return [];
   }
 
+
+
   try {
     const isProxyMode = Boolean(providerContext?.proxyUrl);
     const proxySocks = STREAMINGCOMMUNITY_PROXY || (typeof process !== 'undefined' && process.env.SOCKS5_PROXY) || '';
@@ -284,11 +286,14 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
     let quality = "1080p";
     let hasItalianAudio = false;
+    let playlistFetched = false;
     try {
       const playlistResponse = await fetch(streamUrl, {
-        headers: streamHeaders
+        headers: streamHeaders,
+        dispatcher: proxyAgent || undefined
       });
       if (playlistResponse.ok) {
+        playlistFetched = true;
         const playlistText = await playlistResponse.text();
         hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
         const detected = checkQualityFromText(playlistText);
@@ -306,7 +311,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
     const normalizedQuality = getQualityFromName(quality);
     const hasOriginalItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
-    const resultLanguage = (hasItalianAudio || hasOriginalItalian) ? 'Italian' : '';
+    const isItalianAudio = playlistFetched ? hasItalianAudio : true;
+    const resultLanguage = (isItalianAudio || hasOriginalItalian) ? 'Italian' : '';
 
     if (providerContext?.proxyUrl) {
       const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
@@ -316,7 +322,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         title: finalDisplayName,
         url: rawPageUrl,
         easyProxySourceUrl: rawPageUrl,
-        quality: "1080p",
+        quality: normalizedQuality,
         type: "direct",
         language: resultLanguage,
         behaviorHints: {
@@ -325,6 +331,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       };
       return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
     }
+
+
 
     const result = {
       name: `StreamingCommunity`,

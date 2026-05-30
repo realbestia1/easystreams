@@ -561,11 +561,14 @@ function getStreams(id, type, season, episode, providerContext = null) {
       console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
       let quality = "1080p";
       let hasItalianAudio = false;
+      let playlistFetched = false;
       try {
         const playlistResponse = yield fetch(streamUrl, {
-          headers: streamHeaders
+          headers: streamHeaders,
+          dispatcher: proxyAgent || void 0
         });
         if (playlistResponse.ok) {
+          playlistFetched = true;
           const playlistText = yield playlistResponse.text();
           hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
           const detected = checkQualityFromText(playlistText);
@@ -580,7 +583,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
       }
       const normalizedQuality = getQualityFromName(quality);
       const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-      const resultLanguage = hasItalianAudio || hasOriginalItalian ? "Italian" : "";
+      const isItalianAudio = playlistFetched ? hasItalianAudio : true;
+      const resultLanguage = isItalianAudio || hasOriginalItalian ? "Italian" : "";
       if (providerContext == null ? void 0 : providerContext.proxyUrl) {
         const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
         console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
@@ -589,7 +593,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           title: finalDisplayName,
           url: rawPageUrl,
           easyProxySourceUrl: rawPageUrl,
-          quality: "1080p",
+          quality: normalizedQuality,
           type: "direct",
           language: resultLanguage,
           behaviorHints: {
