@@ -269,6 +269,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         easyProxySourceUrl: rawPageUrl,
         quality: "1080p",
         type: "direct",
+        language: '',
         behaviorHints: {
           notWebReady: false
         }

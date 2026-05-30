@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.84",
+  "version": "1.1.85",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
@@ -70,7 +70,7 @@
     {
       "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.37",
+      "version": "1.1.38",
       "description": "Movies and Series from StreamingCommunity",
       "resources": ["stream"],
       "contentLanguage": ["it"],

@@ -9189,6 +9189,7 @@ var require_streamingcommunity = __commonJS({
               easyProxySourceUrl: rawPageUrl,
               quality: "1080p",
               type: "direct",
+              language: "",
               behaviorHints: {
                 notWebReady: false
               }
