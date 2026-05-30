@@ -162,35 +162,78 @@ async function fetchSitemapEntries(providerContext = null) {
     console.log("[CinemaCity] Fetching sitemap catalog...");
     let sitemapProxy = 'https://' + base64Decode('Y2M' + 'ubGVhbmhod' + 'TA2MTIwNi53b3JrZXJzLmRldg==');
 
-    let xml;
+    const sitemapPath = SITEMAP_URL.startsWith('http') ? new URL(SITEMAP_URL).pathname : SITEMAP_URL;
+
     if (sitemapProxy) {
-        const sitemapPath = SITEMAP_URL.startsWith('http') ? new URL(SITEMAP_URL).pathname : SITEMAP_URL;
+        // Try paginated fetch first (new worker supports ?page=N&perPage=500)
+        const firstPageUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy.slice(0, -1)}${sitemapPath}?page=1&perPage=500` : `${sitemapProxy}${sitemapPath}?page=1&perPage=500`;
+        console.log(`[CinemaCity] Fetching sitemap page 1 via CF Proxy: ${firstPageUrl}`);
+        const firstResp = await fetchWithTimeout(firstPageUrl, {
+            timeout: FETCH_TIMEOUT,
+            headers: { "User-Agent": USER_AGENT }
+        });
+        if (firstResp.ok) {
+            const totalEntries = parseInt(firstResp.headers.get('x-total-entries') || '0', 10);
+            const firstXml = await firstResp.text();
+            let allEntries = parseSitemapEntries(firstXml);
+
+            if (totalEntries > 0) {
+                // Pagination supported - fetch remaining pages
+                const perPage = 500;
+                const totalPages = Math.ceil(totalEntries / perPage);
+                const pageFetches = [];
+                for (let p = 2; p <= totalPages; p++) {
+                    const pageUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy.slice(0, -1)}${sitemapPath}?page=${p}&perPage=500` : `${sitemapProxy}${sitemapPath}?page=${p}&perPage=500`;
+                    pageFetches.push(
+                        fetchWithTimeout(pageUrl, { timeout: FETCH_TIMEOUT, headers: { "User-Agent": USER_AGENT } })
+                            .then(r => r.ok ? r.text() : '')
+                            .then(xml => { if (xml) allEntries = allEntries.concat(parseSitemapEntries(xml)); })
+                            .catch(() => {})
+                    );
+                }
+                await Promise.all(pageFetches);
+            } else if (allEntries.length >= 1800) {
+                // Old worker returned full sitemap on first request - use it directly
+                console.log(`[CinemaCity] Full sitemap received (${allEntries.length} entries)`);
+                sitemapCache = { entries: allEntries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
+                return allEntries;
+            }
+
+            if (allEntries.length > 0) {
+                sitemapCache = { entries: allEntries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
+                console.log(`[CinemaCity] Sitemap catalog loaded: ${allEntries.length} entries`);
+                return allEntries;
+            }
+        }
+
+        // Fallback to full fetch without pagination params
         const targetUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy}${sitemapPath.replace(/^\//, '')}` : `${sitemapProxy}${sitemapPath}`;
-        console.log(`[CinemaCity] Fetching sitemap via CF Proxy: ${targetUrl}`);
+        console.log(`[CinemaCity] Fetching sitemap via CF Proxy (full): ${targetUrl}`);
         const response = await fetchWithTimeout(targetUrl, {
             timeout: FETCH_TIMEOUT,
             headers: { "User-Agent": USER_AGENT }
         });
-        if (!response.ok) {
-            throw new Error(`Proxy HTTP ${response.status}`);
-        }
-        xml = await response.text();
+        if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
+        const xml = await response.text();
+        const entries = parseSitemapEntries(xml);
+        sitemapCache = { entries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
+        console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
+        return entries;
     } else {
         const response = await fetchWithTimeout(SITEMAP_URL, {
             timeout: FETCH_TIMEOUT,
             headers: { "User-Agent": USER_AGENT }
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        xml = await response.text();
+        const xml = await response.text();
+        const entries = parseSitemapEntries(xml);
+        sitemapCache = {
+            entries,
+            expiresAt: Date.now() + SITEMAP_CACHE_MS
+        };
+        console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
+        return entries;
     }
-
-    const entries = parseSitemapEntries(xml);
-    sitemapCache = {
-        entries,
-        expiresAt: Date.now() + SITEMAP_CACHE_MS
-    };
-    console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
-    return entries;
 }
 
 function scoreSitemapEntry(entry, expectedTitles, expectedYear) {
