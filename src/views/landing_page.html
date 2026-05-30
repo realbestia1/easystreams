@@ -387,6 +387,17 @@
                     </label>
                 </div>
 
+                <div class="config-panel">
+                    <div class="config-panel-title">Layout & Compatibility</div>
+                    <label class="config-toggle" for="aiostreamsMode">
+                        <input type="checkbox" id="aiostreamsMode" name="aiostreamsMode">
+                        <div>
+                            <strong>AIOStreams Mode</strong>
+                            <span>Formats stream titles and names to be compatible with AIOStreams custom formatting and regex parsing.</span>
+                        </div>
+                    </label>
+                </div>
+
                 <button id="settingsToggle" type="button" class="settings-btn">Settings: providers</button>
                 <div id="settingsPanel" class="config-panel settings-panel">
                     <div class="config-panel-title">Providers</div>
@@ -412,6 +423,7 @@
             const installBtn = document.getElementById('installLink');
             const copyBtn = document.getElementById('copyLink');
             const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
+            const aiostreamsModeToggle = document.getElementById('aiostreamsMode');
             const easyProxyList = document.getElementById('easyProxyList');
             const addEasyProxyBtn = document.getElementById('addEasyProxy');
             const easyProxyModeInput = document.getElementById('easyProxyMode');
@@ -491,6 +503,11 @@
                         || config.easyCatalogsLangIt === true;
                 }
 
+                if (aiostreamsModeToggle) {
+                    aiostreamsModeToggle.checked = ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(String(config.aiostreamsMode || '').toLowerCase())
+                        || config.aiostreamsMode === true;
+                }
+
                 if (easyProxyModeInput && config.easyProxyMode) {
                     easyProxyModeInput.value = String(config.easyProxyMode);
                 }
@@ -522,6 +539,9 @@
                 if (easyCatalogsToggle && easyCatalogsToggle.checked) {
                     config.easyCatalogsLangIt = 'on';
                 }
+                if (aiostreamsModeToggle && aiostreamsModeToggle.checked) {
+                    config.aiostreamsMode = 'on';
+                }
                 const easyProxyEntries = getEasyProxyEntries();
                 if (easyProxyEntries.length > 0) {
                     config.easyProxies = easyProxyEntries;
@@ -549,6 +569,9 @@
             }
             if (easyCatalogsToggle) {
                 easyCatalogsToggle.addEventListener('change', updateInstallLinks);
+            }
+            if (aiostreamsModeToggle) {
+                aiostreamsModeToggle.addEventListener('change', updateInstallLinks);
             }
             if (addEasyProxyBtn) {
                 addEasyProxyBtn.addEventListener('click', () => {
