@@ -160,14 +160,8 @@ async function fetchSitemapEntries(providerContext = null) {
     }
 
     console.log("[CinemaCity] Fetching sitemap catalog...");
-    const proxyUrl = providerContext && providerContext.proxyUrl || (typeof global !== 'undefined' && global.CF_PROXY_URL ? global.CF_PROXY_URL : null);
-    
-    // Prioritize process.env.CF_PROXY (the general worker proxy) for sitemap XML,
-    // then fallback to global/context proxy URL.
-    let sitemapProxy = (typeof process !== 'undefined' && process.env.CF_PROXY) ||
-                       (typeof process !== 'undefined' && process.env.CF_PROXY_URL) ||
-                       (typeof process !== 'undefined' && process.env.CINEMACITY_SITEMAP_PROXY) ||
-                       proxyUrl;
+    let sitemapProxy = (typeof process !== 'undefined' && process.env.CINEMACITY_SITEMAP_PROXY) ||
+                       (providerContext && providerContext.proxyUrl);
 
     if (!sitemapProxy) {
         sitemapProxy = 'https://' + base64Decode('Y2M' + 'ubGVhbmhod' + 'TA2MTIwNi53b3JrZXJzLmRldg==');
