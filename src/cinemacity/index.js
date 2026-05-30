@@ -456,13 +456,6 @@ function buildDownloadUrl(fileVal, movieTitle) {
     const video = parts.find(p => p.includes('1080p') && p.endsWith('.mp4')) || parts.find(p => p.endsWith('.mp4'));
     const itaAudio = parts.find(p => /italian|italiano/i.test(p) && p.endsWith('.m4a'));
     if (!itaAudio || !video) return null;
-    const itaSubs = parts.filter(p => /italian|italiano/i.test(p) && p.endsWith('.vtt'));
-
-    const params = new URLSearchParams();
-    params.set('action', 'download');
-    if (video) params.set('video', video);
-    if (itaAudio) params.set('audio', itaAudio);
-    if (itaSubs.length > 0) params.set('subtitle', itaSubs.join(','));
 
     const qualityTag = (() => {
         const res = (video.match(/(\d{3,4}p)/i) || [])[1] || '';
@@ -470,10 +463,9 @@ function buildDownloadUrl(fileVal, movieTitle) {
         const lang = (itaAudio.match(/italian|italiano/i) || [])[0] || 'Italian';
         return [res, src.toUpperCase(), lang.charAt(0).toUpperCase() + lang.slice(1)].filter(Boolean).join('.');
     })();
-    params.set('name', (movieTitle || 'video').replace(/[^a-zA-Z0-9.-]/g, '.').replace(/\.{2,}/g, '.').replace(/^\.+|\.+$/g, '') + '.' + qualityTag);
 
     const m3u8Entry = parts.find(p => p.includes('.m3u8'));
-    return cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8') + '?' + params.toString();
+    return cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8');
 }
 
 function extractStreamFromAtob(html, movieTitle, season, episode) {
@@ -682,8 +674,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             title: title,
             url: streamUrl,
             quality: "1080p",
-            type: "direct",
-            behaviorHints: { notWebReady: false }
+            type: "hls",
+            behaviorHints: { notWebReady: true }
         };
 
         return [formatStream(result, "CinemaCity")];
