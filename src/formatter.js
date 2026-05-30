@@ -95,7 +95,7 @@ function formatStream(stream, providerName) {
 
     // Extract language if not present
     let language = stream.language;
-    if (!language) {
+    if (language === undefined || language === null) {
         if (stream.name && (stream.name.includes('SUB ITA') || stream.name.includes('SUB'))) language = '🇯🇵 🇮🇹';
         else if (stream.title && (stream.title.includes('SUB ITA') || stream.title.includes('SUB'))) language = '🇯🇵 🇮🇹';
         else language = '🇮🇹';

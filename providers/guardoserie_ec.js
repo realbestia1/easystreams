@@ -100,7 +100,7 @@ var require_formatter = __commonJS({
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
-      if (!language) {
+      if (language === void 0 || language === null) {
         if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else language = "\u{1F1EE}\u{1F1F9}";
@@ -269,6 +269,26 @@ var require_quality_helper = __commonJS({
         }
       });
     }
+    function checkItalianAudioInPlaylist(_0) {
+      return __async(this, arguments, function* (url, headers = {}) {
+        try {
+          if (!url.includes(".m3u8")) return false;
+          const finalHeaders = __spreadValues({}, headers);
+          if (!finalHeaders["User-Agent"]) finalHeaders["User-Agent"] = USER_AGENT;
+          const timeoutConfig = createTimeoutSignal(3e3);
+          try {
+            const response = yield fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
+            if (!response.ok) return false;
+            const text = yield response.text();
+            return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
+          } finally {
+            if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();
+          }
+        } catch (e) {
+          return false;
+        }
+      });
+    }
     function checkQualityFromText(text) {
       if (!text) return null;
       if (/RESOLUTION=\d+x2160/i.test(text) || /RESOLUTION=2160/i.test(text)) return "4K";
@@ -289,7 +309,7 @@ var require_quality_helper = __commonJS({
       if (urlPath.includes("360")) return "360p";
       return null;
     }
-    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText };
+    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText, checkItalianAudioInPlaylist };
   }
 });
 
@@ -8621,36 +8641,47 @@ var require_guardoserie = __commonJS({
               if (playerLink.includes("loadm")) {
                 const domain = "guardoserie.horse";
                 const extracted = yield extractLoadm(playerLink, domain);
-                return (extracted || []).map((s) => formatStream({
-                  url: s.url,
-                  headers: s.headers,
-                  name: `Guardoserie - Loadm`,
-                  title: displayName,
-                  quality: "HD",
-                  type: "direct",
-                  behaviorHints: s.behaviorHints
-                }, "Guardoserie"));
+                return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(s.url, s.headers);
+                  if (detected) quality = detected;
+                  return formatStream({
+                    url: s.url,
+                    headers: s.headers,
+                    name: `Guardoserie - Loadm`,
+                    title: displayName,
+                    quality: getQualityFromName2(quality),
+                    type: "direct",
+                    behaviorHints: s.behaviorHints
+                  }, "Guardoserie");
+                })));
               } else if (playerLink.includes("uqload")) {
                 const extracted = yield extractUqload(playerLink);
                 if (extracted == null ? void 0 : extracted.url) {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  if (detected) quality = detected;
                   return [formatStream({
                     url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - Uqload`,
                     title: displayName,
-                    quality: "HD",
+                    quality: getQualityFromName2(quality),
                     type: "direct"
                   }, "Guardoserie")];
                 }
               } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
                 const extracted = yield extractMixDrop(playerLink);
                 if (extracted == null ? void 0 : extracted.url) {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  if (detected) quality = detected;
                   return [formatStream({
                     url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - MixDrop`,
                     title: displayName,
-                    quality: "HD",
+                    quality: getQualityFromName2(quality),
                     type: "direct"
                   }, "Guardoserie")];
                 }

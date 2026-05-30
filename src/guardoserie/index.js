@@ -628,36 +628,47 @@ if (!IS_SERVER) {
                 if (playerLink.includes('loadm')) {
                     const domain = 'guardoserie.horse';
                     const extracted = await extractLoadm(playerLink, domain);
-                    return (extracted || []).map(s => formatStream({
-                        url: s.url,
-                        headers: s.headers,
-                        name: `Guardoserie - Loadm`,
-                        title: displayName,
-                        quality: "HD",
-                        type: "direct",
-                        behaviorHints: s.behaviorHints
-                    }, 'Guardoserie'));
+                    return await Promise.all((extracted || []).map(async s => {
+                        let quality = "HD";
+                        const detected = await checkQualityFromPlaylist(s.url, s.headers);
+                        if (detected) quality = detected;
+                        return formatStream({
+                            url: s.url,
+                            headers: s.headers,
+                            name: `Guardoserie - Loadm`,
+                            title: displayName,
+                            quality: getQualityFromName(quality),
+                            type: "direct",
+                            behaviorHints: s.behaviorHints
+                        }, 'Guardoserie');
+                    }));
                 } else if (playerLink.includes('uqload')) {
                     const extracted = await extractUqload(playerLink);
                     if (extracted?.url) {
+                        let quality = "HD";
+                        const detected = await checkQualityFromPlaylist(extracted.url, extracted.headers);
+                        if (detected) quality = detected;
                         return [formatStream({
                             url: extracted.url,
                             headers: extracted.headers,
                             name: `Guardoserie - Uqload`,
                             title: displayName,
-                            quality: "HD",
+                            quality: getQualityFromName(quality),
                             type: "direct"
                         }, 'Guardoserie')];
                     }
                 } else if (playerLink.includes('mixdrop') || playerLink.includes('m1xdrop')) {
                     const extracted = await extractMixDrop(playerLink);
                     if (extracted?.url) {
+                        let quality = "HD";
+                        const detected = await checkQualityFromPlaylist(extracted.url, extracted.headers);
+                        if (detected) quality = detected;
                         return [formatStream({
                             url: extracted.url,
                             headers: extracted.headers,
                             name: `Guardoserie - MixDrop`,
                             title: displayName,
-                            quality: "HD",
+                            quality: getQualityFromName(quality),
                             type: "direct"
                         }, 'Guardoserie')];
                     }

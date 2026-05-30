@@ -4,6 +4,7 @@ const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
 
 const { extractMixDrop } = require('../extractors/mixdrop');
 const { formatStream } = require('../formatter.js');
+const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require('../quality_helper.js');
 
 async function fetchJson(url) {
   try {
@@ -99,17 +100,21 @@ async function addCdnStream(streams, tmdbId, type, season, episode, displayName)
     || payload?.sources?.find(s => isAllowed(s));
   if (!source?.url) return;
 
+  const headers = { "User-Agent": USER_AGENT, "Referer": `${BASE_URL}/` };
+  let quality = "720p";
+  const detectedQuality = await checkQualityFromPlaylist(source.url, headers);
+  if (detectedQuality) quality = detectedQuality;
+  const hasItalian = await checkItalianAudioInPlaylist(source.url, headers);
+
   streams.push({
     name: "AltadefinizioneStreaming - CDN",
     title: displayName,
     url: source.url,
     easyProxySourceUrl: endpoint,
-    headers: {
-      "User-Agent": USER_AGENT,
-      "Referer": `${BASE_URL}/`
-    },
-    quality: "720p",
-    type: "direct"
+    headers: headers,
+    quality: quality,
+    type: "direct",
+    language: hasItalian ? undefined : ''
   });
 }
 

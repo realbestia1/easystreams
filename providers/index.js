@@ -395,7 +395,7 @@ var require_formatter = __commonJS({
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
-      if (!language) {
+      if (language === void 0 || language === null) {
         if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else language = "\u{1F1EE}\u{1F1F9}";
@@ -504,6 +504,26 @@ var require_quality_helper = __commonJS({
         }
       });
     }
+    function checkItalianAudioInPlaylist(_0) {
+      return __async(this, arguments, function* (url, headers = {}) {
+        try {
+          if (!url.includes(".m3u8")) return false;
+          const finalHeaders = __spreadValues({}, headers);
+          if (!finalHeaders["User-Agent"]) finalHeaders["User-Agent"] = USER_AGENT;
+          const timeoutConfig = createTimeoutSignal2(3e3);
+          try {
+            const response = yield fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
+            if (!response.ok) return false;
+            const text = yield response.text();
+            return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
+          } finally {
+            if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();
+          }
+        } catch (e) {
+          return false;
+        }
+      });
+    }
     function checkQualityFromText(text) {
       if (!text) return null;
       if (/RESOLUTION=\d+x2160/i.test(text) || /RESOLUTION=2160/i.test(text)) return "4K";
@@ -524,7 +544,7 @@ var require_quality_helper = __commonJS({
       if (urlPath.includes("360")) return "360p";
       return null;
     }
-    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText };
+    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText, checkItalianAudioInPlaylist };
   }
 });
 
@@ -8860,36 +8880,47 @@ var require_guardoserie = __commonJS({
               if (playerLink.includes("loadm")) {
                 const domain = "guardoserie.horse";
                 const extracted = yield extractLoadm(playerLink, domain);
-                return (extracted || []).map((s) => formatStream({
-                  url: s.url,
-                  headers: s.headers,
-                  name: `Guardoserie - Loadm`,
-                  title: displayName,
-                  quality: "HD",
-                  type: "direct",
-                  behaviorHints: s.behaviorHints
-                }, "Guardoserie"));
+                return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(s.url, s.headers);
+                  if (detected) quality = detected;
+                  return formatStream({
+                    url: s.url,
+                    headers: s.headers,
+                    name: `Guardoserie - Loadm`,
+                    title: displayName,
+                    quality: getQualityFromName2(quality),
+                    type: "direct",
+                    behaviorHints: s.behaviorHints
+                  }, "Guardoserie");
+                })));
               } else if (playerLink.includes("uqload")) {
                 const extracted = yield extractUqload(playerLink);
                 if (extracted == null ? void 0 : extracted.url) {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  if (detected) quality = detected;
                   return [formatStream({
                     url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - Uqload`,
                     title: displayName,
-                    quality: "HD",
+                    quality: getQualityFromName2(quality),
                     type: "direct"
                   }, "Guardoserie")];
                 }
               } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
                 const extracted = yield extractMixDrop(playerLink);
                 if (extracted == null ? void 0 : extracted.url) {
+                  let quality = "HD";
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                  if (detected) quality = detected;
                   return [formatStream({
                     url: extracted.url,
                     headers: extracted.headers,
                     name: `Guardoserie - MixDrop`,
                     title: displayName,
-                    quality: "HD",
+                    quality: getQualityFromName2(quality),
                     type: "direct"
                   }, "Guardoserie")];
                 }
@@ -9078,23 +9109,6 @@ var require_streamingcommunity = __commonJS({
         }
       });
     }
-    function hasGuardaFallbackResults(id, type, season, episode, providerContext) {
-      return __async(this, null, function* () {
-        const normalizedType = String(type).toLowerCase();
-        const checks = [];
-        if (normalizedType === "movie" && guardahd2 && typeof guardahd2.getStreams === "function") {
-          checks.push(
-            guardahd2.getStreams(id, normalizedType, season, episode).then((streams) => Array.isArray(streams) && streams.length > 0).catch((e) => {
-              console.warn("[StreamingCommunity] GuardaHD fallback check failed:", e);
-              return false;
-            })
-          );
-        }
-        if (checks.length === 0) return false;
-        const results = yield Promise.all(checks);
-        return results.some(Boolean);
-      });
-    }
     function getStreams2(id, type, season, episode, providerContext = null) {
       return __async(this, null, function* () {
         const requestedType = String(type).toLowerCase();
@@ -9198,26 +9212,26 @@ var require_streamingcommunity = __commonJS({
             const streamHeaders = getPlaylistHeaders(embedUrl);
             console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
             let quality = "1080p";
+            let hasItalianAudio = false;
             try {
               const playlistResponse = yield fetch(streamUrl, {
                 headers: streamHeaders
               });
               if (playlistResponse.ok) {
                 const playlistText = yield playlistResponse.text();
-                const hasItalian = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+                hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
                 const detected = checkQualityFromText(playlistText);
                 if (detected) quality = detected;
                 const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-                if (!hasItalian && !originalLanguageItalian) {
-                  console.log(`[StreamingCommunity] No Italian audio found. Checking fallback.`);
-                  const fallbackOk = yield hasGuardaFallbackResults(id, normalizedType, resolvedSeason, episode, providerContext);
-                  if (!fallbackOk) return [];
+                if (!hasItalianAudio && !originalLanguageItalian) {
+                  console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
                 }
               }
             } catch (e) {
               console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
             }
             const normalizedQuality = getQualityFromName(quality);
+            const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
             const result = {
               name: `StreamingCommunity`,
               title: finalDisplayName,
@@ -9230,6 +9244,8 @@ var require_streamingcommunity = __commonJS({
                 notWebReady: false
               }
             };
+            if (hasItalianAudio || hasOriginalItalian) result.language = "Italian";
+            else result.language = "";
             return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
           } else {
             console.log("[StreamingCommunity] Could not find playlist info in HTML");
@@ -12665,16 +12681,11 @@ var require_cinemacity = __commonJS({
       const rest = fileVal.substring(baseEnd + "/public_files/".length);
       const parts = rest.split(",");
       const video = parts.find((p) => p.includes("1080p") && p.endsWith(".mp4")) || parts.find((p) => p.endsWith(".mp4"));
+      if (!video) return null;
       const itaAudio = parts.find((p) => /italian|italiano/i.test(p) && p.endsWith(".m4a"));
-      if (!itaAudio || !video) return null;
-      const qualityTag = (() => {
-        const res = (video.match(/(\d{3,4}p)/i) || [])[1] || "";
-        const src = (video.match(/web-?dl|bluray|hdtv|dvdrip|brrip|ts|tc|cam|webrip|hdrip/i) || [])[0] || "";
-        const lang = (itaAudio.match(/italian|italiano/i) || [])[0] || "Italian";
-        return [res, src.toUpperCase(), lang.charAt(0).toUpperCase() + lang.slice(1)].filter(Boolean).join(".");
-      })();
       const m3u8Entry = parts.find((p) => p.includes(".m3u8"));
-      return cdnBase + rest + (m3u8Entry ? "" : ".urlset/master.m3u8");
+      const url = cdnBase + rest + (m3u8Entry ? "" : ".urlset/master.m3u8");
+      return { url, hasItalian: !!itaAudio };
     }
     function extractStreamFromAtob(html, movieTitle, season, episode) {
       const atobRegex = /atob\s*\(\s*['"]([^"']{20,})['"]\s*\)/gi;
@@ -12697,7 +12708,6 @@ var require_cinemacity = __commonJS({
                     if (ep && ep.file) {
                       const dlUrl = buildDownloadUrl(ep.file, movieTitle);
                       if (dlUrl) return dlUrl;
-                      return ep.file;
                     }
                   }
                 }
@@ -12705,7 +12715,6 @@ var require_cinemacity = __commonJS({
                 if (fileVal && fileVal.startsWith("http")) {
                   const dlUrl = buildDownloadUrl(fileVal, movieTitle);
                   if (dlUrl) return dlUrl;
-                  return fileVal;
                 }
               }
             } catch (e) {
@@ -12820,21 +12829,26 @@ var require_cinemacity = __commonJS({
             return [];
           }
           const links = extractDownloadLinks(html);
+          let hasItalian = false;
           if (links.length === 0) {
             const useSeason = providerType === "tv" ? season : null;
             const useEpisode = providerType === "tv" ? episode : null;
-            const atobUrl = extractStreamFromAtob(html, movieTitle, useSeason, useEpisode);
-            if (atobUrl) links.push({ url: atobUrl, text: "" });
+            const atobResult = extractStreamFromAtob(html, movieTitle, useSeason, useEpisode);
+            if (atobResult) {
+              links.push({ url: atobResult.url, text: "" });
+              hasItalian = atobResult.hasItalian;
+            }
           }
           let selectedUrl = null;
           if (links.length === 0) {
-            console.log(`[CinemaCity] No Italian audio found, skipping`);
+            console.log(`[CinemaCity] No streams available`);
             return [];
           }
           for (const link of links) {
             const text = link.text;
             if (text.includes("ita") || text.includes("italian") || text.includes("italiano")) {
               selectedUrl = link.url;
+              hasItalian = true;
               break;
             }
           }
@@ -12854,6 +12868,7 @@ var require_cinemacity = __commonJS({
             url: streamUrl,
             quality: "1080p",
             type: "hls",
+            language: hasItalian ? void 0 : "",
             behaviorHints: { notWebReady: true },
             headers: {
               "Referer": "https://cinemacity.cc/",
@@ -13078,8 +13093,12 @@ var require_vidxgo2 = __commonJS({
             }
             if (vidxgoStream && vidxgoStream.url) {
               let quality = "HD";
-              const detectedQuality = shouldUseEasyProxy ? null : yield checkQualityFromPlaylist(vidxgoStream.url, vidxgoStream.headers);
-              if (detectedQuality) quality = detectedQuality;
+              let hasItalian = false;
+              if (!shouldUseEasyProxy) {
+                const detectedQuality = yield checkQualityFromPlaylist(vidxgoStream.url, vidxgoStream.headers);
+                if (detectedQuality) quality = detectedQuality;
+                hasItalian = yield checkItalianAudioInPlaylist(vidxgoStream.url, vidxgoStream.headers);
+              }
               streams.push({
                 url: vidxgoStream.url,
                 easyProxySourceUrl: vidxgoUrl,
@@ -13087,7 +13106,8 @@ var require_vidxgo2 = __commonJS({
                 name: "VidxGo",
                 title: displayName,
                 quality: getQualityFromName2(quality),
-                type: "direct"
+                type: "direct",
+                language: hasItalian ? void 0 : ""
               });
             }
             mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
@@ -13131,7 +13151,7 @@ var require_vidxgo2 = __commonJS({
       const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
       const { extractVidxGo } = require_vidxgo();
       require_fetch_helper();
-      const { checkQualityFromPlaylist } = require_quality_helper();
+      const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
       const { formatStream } = require_formatter();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       module2.exports = { getStreams: getStreams3 };
@@ -13156,6 +13176,7 @@ var require_altadefinizionestreaming = __commonJS({
     var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     var { extractMixDrop } = require_mixdrop();
     var { formatStream } = require_formatter();
+    var { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
     function fetchJson(url) {
       return __async(this, null, function* () {
         try {
@@ -13241,17 +13262,20 @@ var require_altadefinizionestreaming = __commonJS({
         const isAllowed = (s) => (s == null ? void 0 : s.url) && !/vixsrc\.to/i.test(String(s.url));
         const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && isAllowed(s))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => isAllowed(s)));
         if (!(source == null ? void 0 : source.url)) return;
+        const headers = { "User-Agent": USER_AGENT, "Referer": `${BASE_URL}/` };
+        let quality = "720p";
+        const detectedQuality = yield checkQualityFromPlaylist(source.url, headers);
+        if (detectedQuality) quality = detectedQuality;
+        const hasItalian = yield checkItalianAudioInPlaylist(source.url, headers);
         streams.push({
           name: "AltadefinizioneStreaming - CDN",
           title: displayName,
           url: source.url,
           easyProxySourceUrl: endpoint,
-          headers: {
-            "User-Agent": USER_AGENT,
-            "Referer": `${BASE_URL}/`
-          },
-          quality: "720p",
-          type: "direct"
+          headers,
+          quality,
+          type: "direct",
+          language: hasItalian ? void 0 : ""
         });
       });
     }

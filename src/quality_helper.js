@@ -34,6 +34,23 @@ async function checkQualityFromPlaylist(url, headers = {}) {
   }
 }
 
+async function checkItalianAudioInPlaylist(url, headers = {}) {
+  try {
+    if (!url.includes('.m3u8')) return false;
+    const finalHeaders = { ...headers };
+    if (!finalHeaders['User-Agent']) finalHeaders['User-Agent'] = USER_AGENT;
+    const timeoutConfig = createTimeoutSignal(3000);
+    try {
+      const response = await fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
+      if (!response.ok) return false;
+      const text = await response.text();
+      return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
+    } finally {
+      if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();
+    }
+  } catch { return false; }
+}
+
 function checkQualityFromText(text) {
     if (!text) return null;
     if (/RESOLUTION=\d+x2160/i.test(text) || /RESOLUTION=2160/i.test(text)) return '4K';
@@ -58,4 +75,4 @@ function getQualityFromUrl(url) {
     return null; // Don't default to HD, return null so provider can decide fallback
 }
 
-module.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText };
+module.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText, checkItalianAudioInPlaylist };

@@ -289,6 +289,26 @@ var require_quality_helper = __commonJS({
         }
       });
     }
+    function checkItalianAudioInPlaylist(_0) {
+      return __async(this, arguments, function* (url, headers = {}) {
+        try {
+          if (!url.includes(".m3u8")) return false;
+          const finalHeaders = __spreadValues({}, headers);
+          if (!finalHeaders["User-Agent"]) finalHeaders["User-Agent"] = USER_AGENT;
+          const timeoutConfig = createTimeoutSignal(3e3);
+          try {
+            const response = yield fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
+            if (!response.ok) return false;
+            const text = yield response.text();
+            return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
+          } finally {
+            if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();
+          }
+        } catch (e) {
+          return false;
+        }
+      });
+    }
     function checkQualityFromText(text) {
       if (!text) return null;
       if (/RESOLUTION=\d+x2160/i.test(text) || /RESOLUTION=2160/i.test(text)) return "4K";
@@ -309,7 +329,7 @@ var require_quality_helper = __commonJS({
       if (urlPath.includes("360")) return "360p";
       return null;
     }
-    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText };
+    module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText, checkItalianAudioInPlaylist };
   }
 });
 
@@ -358,7 +378,7 @@ var require_formatter = __commonJS({
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
-      if (!language) {
+      if (language === void 0 || language === null) {
         if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
         else language = "\u{1F1EE}\u{1F1F9}";
@@ -640,8 +660,12 @@ var require_vidxgo2 = __commonJS({
             }
             if (vidxgoStream && vidxgoStream.url) {
               let quality = "HD";
-              const detectedQuality = shouldUseEasyProxy ? null : yield checkQualityFromPlaylist(vidxgoStream.url, vidxgoStream.headers);
-              if (detectedQuality) quality = detectedQuality;
+              let hasItalian = false;
+              if (!shouldUseEasyProxy) {
+                const detectedQuality = yield checkQualityFromPlaylist(vidxgoStream.url, vidxgoStream.headers);
+                if (detectedQuality) quality = detectedQuality;
+                hasItalian = yield checkItalianAudioInPlaylist(vidxgoStream.url, vidxgoStream.headers);
+              }
               streams.push({
                 url: vidxgoStream.url,
                 easyProxySourceUrl: vidxgoUrl,
@@ -649,7 +673,8 @@ var require_vidxgo2 = __commonJS({
                 name: "VidxGo",
                 title: displayName,
                 quality: getQualityFromName2(quality),
-                type: "direct"
+                type: "direct",
+                language: hasItalian ? void 0 : ""
               });
             }
             mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
@@ -693,7 +718,7 @@ var require_vidxgo2 = __commonJS({
       const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
       const { extractVidxGo } = require_vidxgo();
       require_fetch_helper();
-      const { checkQualityFromPlaylist } = require_quality_helper();
+      const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
       const { formatStream } = require_formatter();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       module2.exports = { getStreams: getStreams3 };

@@ -497,18 +497,13 @@ function buildDownloadUrl(fileVal, movieTitle) {
 
     const parts = rest.split(',');
     const video = parts.find(p => p.includes('1080p') && p.endsWith('.mp4')) || parts.find(p => p.endsWith('.mp4'));
-    const itaAudio = parts.find(p => /italian|italiano/i.test(p) && p.endsWith('.m4a'));
-    if (!itaAudio || !video) return null;
+    if (!video) return null;
 
-    const qualityTag = (() => {
-        const res = (video.match(/(\d{3,4}p)/i) || [])[1] || '';
-        const src = (video.match(/web-?dl|bluray|hdtv|dvdrip|brrip|ts|tc|cam|webrip|hdrip/i) || [])[0] || '';
-        const lang = (itaAudio.match(/italian|italiano/i) || [])[0] || 'Italian';
-        return [res, src.toUpperCase(), lang.charAt(0).toUpperCase() + lang.slice(1)].filter(Boolean).join('.');
-    })();
+    const itaAudio = parts.find(p => /italian|italiano/i.test(p) && p.endsWith('.m4a'));
 
     const m3u8Entry = parts.find(p => p.includes('.m3u8'));
-    return cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8');
+    const url = cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8');
+    return { url, hasItalian: !!itaAudio };
 }
 
 function extractStreamFromAtob(html, movieTitle, season, episode) {
@@ -534,7 +529,6 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                                 if (ep && ep.file) {
                                     const dlUrl = buildDownloadUrl(ep.file, movieTitle);
                                     if (dlUrl) return dlUrl;
-                                    return ep.file;
                                 }
                             }
                         }
@@ -543,7 +537,6 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                         if (fileVal && fileVal.startsWith('http')) {
                             const dlUrl = buildDownloadUrl(fileVal, movieTitle);
                             if (dlUrl) return dlUrl;
-                            return fileVal;
                         }
                     }
                 } catch (e) {}
@@ -681,22 +674,27 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         }
 
         const links = extractDownloadLinks(html);
+        let hasItalian = false;
         if (links.length === 0) {
             const useSeason = providerType === 'tv' ? season : null;
             const useEpisode = providerType === 'tv' ? episode : null;
-            const atobUrl = extractStreamFromAtob(html, movieTitle, useSeason, useEpisode);
-            if (atobUrl) links.push({ url: atobUrl, text: '' });
+            const atobResult = extractStreamFromAtob(html, movieTitle, useSeason, useEpisode);
+            if (atobResult) {
+                links.push({ url: atobResult.url, text: '' });
+                hasItalian = atobResult.hasItalian;
+            }
         }
 
         let selectedUrl = null;
         if (links.length === 0) {
-            console.log(`[CinemaCity] No Italian audio found, skipping`);
+            console.log(`[CinemaCity] No streams available`);
             return [];
         }
         for (const link of links) {
             const text = link.text;
             if (text.includes('ita') || text.includes('italian') || text.includes('italiano')) {
                 selectedUrl = link.url;
+                hasItalian = true;
                 break;
             }
         }
@@ -718,6 +716,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             url: streamUrl,
             quality: "1080p",
             type: "hls",
+            language: hasItalian ? undefined : '',
             behaviorHints: { notWebReady: true },
             headers: {
                 'Referer': 'https://cinemacity.cc/',

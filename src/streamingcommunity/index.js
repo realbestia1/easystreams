@@ -298,22 +298,21 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
       // StreamingCommunity generally serves FHD when playlist does not expose a clear resolution tag.
       let quality = "1080p";
+      let hasItalianAudio = false;
       try {
         const playlistResponse = await fetch(streamUrl, {
           headers: streamHeaders
         });
         if (playlistResponse.ok) {
           const playlistText = await playlistResponse.text();
-          const hasItalian = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
           const detected = checkQualityFromText(playlistText);
           if (detected) quality = detected;
 
           const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
 
-          if (!hasItalian && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Checking fallback.`);
-            const fallbackOk = await hasGuardaFallbackResults(id, normalizedType, resolvedSeason, episode, providerContext);
-            if (!fallbackOk) return [];
+          if (!hasItalianAudio && !originalLanguageItalian) {
+            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
           }
         }
       } catch (e) {
@@ -321,6 +320,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       }
 
       const normalizedQuality = getQualityFromName(quality);
+      const hasOriginalItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
       const result = {
         name: `StreamingCommunity`,
         title: finalDisplayName,
@@ -333,6 +333,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
           notWebReady: false
         }
       };
+      if (hasItalianAudio || hasOriginalItalian) result.language = 'Italian';
+      else result.language = '';
 
       return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
     } else {
