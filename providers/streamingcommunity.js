@@ -136,10 +136,11 @@ var require_formatter = __commonJS({
         behaviorHints.proxyHeaders.request = finalHeaders;
         behaviorHints.headers = finalHeaders;
       }
+      const providerExplicitNotWebReady = stream.behaviorHints && "notWebReady" in stream.behaviorHints;
       const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
       if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
         behaviorHints.notWebReady = true;
-      } else {
+      } else if (!providerExplicitNotWebReady) {
         delete behaviorHints.notWebReady;
       }
       const finalName = pName;
@@ -298,6 +299,13 @@ function getStreamingCommunityBaseUrl() {
 var { formatStream } = require_formatter();
 require_fetch_helper();
 var { checkQualityFromText } = require_quality_helper();
+var STREAMINGCOMMUNITY_PROXY = typeof process !== "undefined" && process.env.STREAMINGCOMMUNITY_PROXY || "";
+var ProxyAgent = null;
+try {
+  ProxyAgent = require("undici").ProxyAgent;
+} catch (_) {
+  ProxyAgent = null;
+}
 function safeRequire(modulePath) {
   try {
     return require(modulePath);
@@ -496,9 +504,22 @@ function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
     try {
+      const isProxyMode = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
+      const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
+      const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === "function";
+      let proxyAgent = null;
+      if (useProxyFetch) {
+        try {
+          proxyAgent = new ProxyAgent(proxySocks);
+          console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
+        } catch (e) {
+          console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
+        }
+      }
       console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
       const response = yield fetch(apiUrl, {
-        headers: commonHeaders
+        headers: commonHeaders,
+        dispatcher: proxyAgent || void 0
       });
       if (!response.ok) {
         console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
@@ -518,7 +539,6 @@ function getStreams(id, type, season, episode, providerContext = null) {
           title: finalDisplayName,
           url: rawPageUrl,
           easyProxySourceUrl: rawPageUrl,
-          // Stremio addon uses EasyProxy path for StreamingCommunity, so expose default quality here too.
           quality: "1080p",
           type: "direct",
           behaviorHints: {
@@ -529,7 +549,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
       }
       console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
       const embedResponse = yield fetch(embedUrl, {
-        headers: getEmbedHeaders(embedUrl)
+        headers: getEmbedHeaders(embedUrl),
+        dispatcher: proxyAgent || void 0
       });
       if (!embedResponse.ok) {
         console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);

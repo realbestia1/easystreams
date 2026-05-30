@@ -130,13 +130,13 @@ function execPythonBypass(url, provider, options = {}) {
                 return resolve(result);
             }
 
+            if (result && result.status === 'error') {
+                return reject(new Error(result.message || "Unknown Scrapling error"));
+            }
+
             if (code !== 0) {
                 console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
                 return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
-            }
-
-            if (result && result.status === 'error') {
-                return reject(new Error(result.message));
             }
             
             if (!result) {

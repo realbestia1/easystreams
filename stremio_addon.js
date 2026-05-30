@@ -1337,9 +1337,10 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
+    cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1397,15 +1398,15 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
     if (normalizedType === 'movie') {
         if (isKitsuRequest) {
             // For Kitsu movies, use anime providers first and keep non-anime fallbacks.
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd'];
         } else if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd']
+                : ['streamingcommunity', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
+            plan = ['streamingcommunity', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1413,11 +1414,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
+                : ['streamingcommunity', 'cinemacity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
+            plan = ['streamingcommunity', 'cinemacity', 'guardoserie', 'altadefinizionestreaming', 'vidxgo'];
         }
     }
 
@@ -1614,11 +1615,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                 const providerPromise = (async () => {
                     try {
                         const providerContext = buildProviderRequestContext(requestContext);
-                        if (name === 'streamingcommunity' || name === 'animeunity') {
-                            providerContext.proxyUrl = null;
-                        } else {
-                            providerContext.proxyUrl = easyProxyUrl;
-                        }
+                        providerContext.proxyUrl = easyProxyUrl;
                         providerContext.proxyUrls = easyProxyEntries.map((entry) => entry.url);
                         providerContext.proxyEntries = easyProxyEntries;
                         providerContext.proxyMode = easyProxyMode;
@@ -1646,9 +1643,13 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const server = (s.server || "").toLowerCase();
                         const sName = (s.name || "").toLowerCase();
                         const sTitle = (s.title || "").toLowerCase();
+                        const isStreamingCommunityProvider = name === 'streamingcommunity';
+                        const isAnimeUnityProvider = name === 'animeunity';
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
                         const isStreamHgProviderStream = isStreamHgStream(s);
+                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
+                        if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgProviderStream && !hasEasyProxy) return false;
                         const canProxyMixdrop = Boolean(easyProxyUrl) && isMixdropStreamUrl(s.url);
@@ -1667,7 +1668,32 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     .map(async (s) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
-                        if (isStreamHgStream(s)) {
+                        if (name === 'streamingcommunity') {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vixsrc',
+                                    s.easyProxySourceUrl || s.url,
+                                    'm3u8'
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'animeunity') {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vixcloud',
+                                    s.easyProxySourceUrl || s.url
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (isStreamHgStream(s)) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,

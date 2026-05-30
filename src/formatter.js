@@ -164,10 +164,11 @@ function formatStream(stream, providerName) {
         behaviorHints.headers = finalHeaders;
     }
 
+    const providerExplicitNotWebReady = stream.behaviorHints && 'notWebReady' in stream.behaviorHints;
     const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
     if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
         behaviorHints.notWebReady = true;
-    } else {
+    } else if (!providerExplicitNotWebReady) {
         delete behaviorHints.notWebReady;
     }
 

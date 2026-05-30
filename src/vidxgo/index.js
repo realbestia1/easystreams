@@ -217,6 +217,14 @@ if (!IS_SERVER) {
         const shouldUseEasyProxy = Boolean(providerContext && providerContext.proxyUrl);
         let vidxgoStream = null;
 
+        // Corrupt check: always try full extraction first.
+        // If corrupt, extractVidxGo returns null -> return [] immediately.
+        // If valid and EasyProxy active, discard extracted result (EasyProxy will re-extract).
+        const extracted = yield extractVidxGo(vidxgoUrl, 'https://altadefinizione.you/');
+        if (!extracted) {
+          return [];
+        }
+
         if (shouldUseEasyProxy) {
           vidxgoStream = {
             url: vidxgoUrl,
@@ -224,7 +232,7 @@ if (!IS_SERVER) {
             headers: null
           };
         } else {
-          vidxgoStream = yield extractVidxGo(vidxgoUrl, 'https://altadefinizione.you/');
+          vidxgoStream = extracted;
         }
 
         if (vidxgoStream && vidxgoStream.url) {

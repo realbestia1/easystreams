@@ -46,7 +46,7 @@ async function buildIndexBundle(minify = false) {
             platform: 'neutral',
             target: ['es2016'],
             format: 'cjs',
-            external: ['cheerio', 'cheerio-select', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'form-data', 'axios', 'child_process'],
+                external: ['cheerio', 'cheerio-select', 'undici', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'form-data', 'axios', 'child_process'],
             define: {
                 'process.env.NODE_ENV': minify ? '"production"' : '"development"'
             }
@@ -85,7 +85,7 @@ async function transpileProviders(specificFiles = [], minify = false) {
                 platform: 'neutral',
                 target: ['es2016'], // Target older ES version for Hermes compatibility
                 format: 'cjs',
-                external: ['fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'form-data', 'axios'],
+                external: ['undici', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'form-data', 'axios'],
                 define: {
                     'process.env.NODE_ENV': minify ? '"production"' : '"development"'
                 }
@@ -146,7 +146,7 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
                 // Bundle everything except potentially very large or platform-specific libs
                 // For React Native/Nuvio, we generally want to bundle crypto-js 
                 // but keep cheerio external if we want to avoid huge files (and we should avoid using it)
-                external: ['fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'axios', 'child_process']
+                external: ['undici', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'axios', 'child_process']
             });
             console.log(`✅ Built ${provider}`);
         } catch (e) {

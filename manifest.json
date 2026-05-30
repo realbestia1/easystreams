@@ -1,11 +1,11 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.82",
+  "version": "1.1.83",
   "scrapers": [
     {
       "id": "easystreams-guardoserie-ec",
       "name": "Guardoserie EC",
-      "version": "1.0.21",
+      "version": "1.0.22",
       "description": "Movies and Series from Guardoserie with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -18,7 +18,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.1.19",
+      "version": "1.1.20",
       "description": "Movies from GuardaHD",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -31,7 +31,7 @@
     {
       "id": "easystreams-animeunity-ec",
       "name": "AnimeUnity EC",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "description": "Anime from AnimeUnity with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -44,7 +44,7 @@
     {
       "id": "easystreams-animeworld-ec",
       "name": "AnimeWorld EC",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "description": "Anime from AnimeWorld with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -57,7 +57,7 @@
     {
       "id": "easystreams-animesaturn-ec",
       "name": "AnimeSaturn EC",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "description": "Anime from AnimeSaturn with EasyCatalogs mapping",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -70,7 +70,7 @@
     {
       "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.35",
+      "version": "1.1.36",
       "description": "Movies and Series from StreamingCommunity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -83,7 +83,7 @@
     {
       "id": "easystreams-cinemacity",
       "name": "CinemaCity",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "description": "Movies and Series from CinemaCity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -96,7 +96,7 @@
     {
       "id": "easystreams-altadefinizionestreaming",
       "name": "AltadefinizioneStreaming",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "Movies and Series from AltadefinizioneStreaming",
       "resources": ["stream"],
       "contentLanguage": ["it"],
