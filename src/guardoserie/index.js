@@ -639,6 +639,7 @@ if (!IS_SERVER) {
                             title: displayName,
                             quality: getQualityFromName(quality),
                             type: "direct",
+                            language: 'Italian',
                             behaviorHints: s.behaviorHints
                         }, 'Guardoserie');
                     }));
@@ -654,7 +655,8 @@ if (!IS_SERVER) {
                             name: `Guardoserie - Uqload`,
                             title: displayName,
                             quality: getQualityFromName(quality),
-                            type: "direct"
+                            type: "direct",
+                            language: 'Italian'
                         }, 'Guardoserie')];
                     }
                 } else if (playerLink.includes('mixdrop') || playerLink.includes('m1xdrop')) {
@@ -669,7 +671,8 @@ if (!IS_SERVER) {
                             name: `Guardoserie - MixDrop`,
                             title: displayName,
                             quality: getQualityFromName(quality),
-                            type: "direct"
+                            type: "direct",
+                            language: 'Italian'
                         }, 'Guardoserie')];
                     }
                 }

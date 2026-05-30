@@ -395,10 +395,14 @@ var require_formatter = __commonJS({
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       let title = `\u{1F4C1} ${stream.title || "Stream"}`;
       let language = stream.language;
-      if (language === void 0 || language === null) {
-        if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else language = "\u{1F1EE}\u{1F1F9}";
+      if (language === "Italian") {
+        language = "\u{1F1EE}\u{1F1F9}";
+      } else if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) {
+        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+      } else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) {
+        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+      } else if (language === void 0 || language === null) {
+        language = "";
       }
       let details = [];
       if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
@@ -478,7 +482,6 @@ var require_quality_helper = __commonJS({
     function checkQualityFromPlaylist(_0) {
       return __async(this, arguments, function* (url, headers = {}) {
         try {
-          if (!url.includes(".m3u8")) return null;
           const finalHeaders = __spreadValues({}, headers);
           if (!finalHeaders["User-Agent"]) {
             finalHeaders["User-Agent"] = USER_AGENT;
@@ -491,6 +494,7 @@ var require_quality_helper = __commonJS({
             });
             if (!response.ok) return null;
             const text = yield response.text();
+            if (!text.startsWith("#EXTM3U")) return null;
             const quality = checkQualityFromText(text);
             if (quality) console.log(`[QualityHelper] Detected ${quality} from playlist: ${url}`);
             return quality;
@@ -507,7 +511,6 @@ var require_quality_helper = __commonJS({
     function checkItalianAudioInPlaylist(_0) {
       return __async(this, arguments, function* (url, headers = {}) {
         try {
-          if (!url.includes(".m3u8")) return false;
           const finalHeaders = __spreadValues({}, headers);
           if (!finalHeaders["User-Agent"]) finalHeaders["User-Agent"] = USER_AGENT;
           const timeoutConfig = createTimeoutSignal2(3e3);
@@ -515,6 +518,9 @@ var require_quality_helper = __commonJS({
             const response = yield fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
             if (!response.ok) return false;
             const text = yield response.text();
+            if (!text.startsWith("#EXTM3U")) return false;
+            const hasAudioTags = /#EXT-X-MEDIA:TYPE=AUDIO/i.test(text);
+            if (!hasAudioTags) return true;
             return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
           } finally {
             if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();
@@ -736,7 +742,8 @@ var require_guardahd = __commonJS({
                     easyProxySourceUrl: streamUrl,
                     headers: extracted.headers,
                     quality: normalizedQuality,
-                    type: "direct"
+                    type: "direct",
+                    language: "Italian"
                   });
                 }
               } else if (streamUrl.includes("dhcplay") || streamUrl.includes("vibuxer")) {
@@ -755,7 +762,8 @@ var require_guardahd = __commonJS({
                     easyProxySourceUrl: streamUrl,
                     headers: extracted.headers,
                     quality: normalizedQuality,
-                    type: "direct"
+                    type: "direct",
+                    language: "Italian"
                   });
                 }
               } else if (streamUrl.includes("dropload") || streamUrl.includes("dr0pstream")) {
@@ -8891,6 +8899,7 @@ var require_guardoserie = __commonJS({
                     title: displayName,
                     quality: getQualityFromName2(quality),
                     type: "direct",
+                    language: "Italian",
                     behaviorHints: s.behaviorHints
                   }, "Guardoserie");
                 })));
@@ -8906,7 +8915,8 @@ var require_guardoserie = __commonJS({
                     name: `Guardoserie - Uqload`,
                     title: displayName,
                     quality: getQualityFromName2(quality),
-                    type: "direct"
+                    type: "direct",
+                    language: "Italian"
                   }, "Guardoserie")];
                 }
               } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
@@ -8921,7 +8931,8 @@ var require_guardoserie = __commonJS({
                     name: `Guardoserie - MixDrop`,
                     title: displayName,
                     quality: getQualityFromName2(quality),
-                    type: "direct"
+                    type: "direct",
+                    language: "Italian"
                   }, "Guardoserie")];
                 }
               }
@@ -9179,23 +9190,6 @@ var require_streamingcommunity = __commonJS({
             console.log("[StreamingCommunity] Could not find embed src in API payload");
             return [];
           }
-          if (providerContext == null ? void 0 : providerContext.proxyUrl) {
-            const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
-            console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
-            const result = {
-              name: `StreamingCommunity`,
-              title: finalDisplayName,
-              url: rawPageUrl,
-              easyProxySourceUrl: rawPageUrl,
-              quality: "1080p",
-              type: "direct",
-              language: "",
-              behaviorHints: {
-                notWebReady: false
-              }
-            };
-            return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
-          }
           console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
           const embedResponse = yield fetch(embedUrl, {
             headers: getEmbedHeaders(embedUrl),
@@ -9208,50 +9202,66 @@ var require_streamingcommunity = __commonJS({
           const embedHtml = yield embedResponse.text();
           if (!embedHtml) return [];
           const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
-          if (masterPlaylist) {
-            const streamUrl = `${masterPlaylist.url}?token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
-            const streamHeaders = getPlaylistHeaders(embedUrl);
-            console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
-            let quality = "1080p";
-            let hasItalianAudio = false;
-            try {
-              const playlistResponse = yield fetch(streamUrl, {
-                headers: streamHeaders
-              });
-              if (playlistResponse.ok) {
-                const playlistText = yield playlistResponse.text();
-                hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-                const detected = checkQualityFromText(playlistText);
-                if (detected) quality = detected;
-                const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-                if (!hasItalianAudio && !originalLanguageItalian) {
-                  console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
-                }
+          if (!masterPlaylist) {
+            console.log("[StreamingCommunity] Could not find playlist info in HTML");
+            return [];
+          }
+          const streamUrl = `${masterPlaylist.url}?token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          const streamHeaders = getPlaylistHeaders(embedUrl);
+          console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
+          let quality = "1080p";
+          let hasItalianAudio = false;
+          try {
+            const playlistResponse = yield fetch(streamUrl, {
+              headers: streamHeaders
+            });
+            if (playlistResponse.ok) {
+              const playlistText = yield playlistResponse.text();
+              hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+              const detected = checkQualityFromText(playlistText);
+              if (detected) quality = detected;
+              const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+              if (!hasItalianAudio && !originalLanguageItalian) {
+                console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
               }
-            } catch (e) {
-              console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
             }
-            const normalizedQuality = getQualityFromName(quality);
-            const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-            const result = {
+          } catch (e) {
+            console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
+          }
+          const normalizedQuality = getQualityFromName(quality);
+          const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+          const resultLanguage = hasItalianAudio || hasOriginalItalian ? "Italian" : "";
+          if (providerContext == null ? void 0 : providerContext.proxyUrl) {
+            const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
+            console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
+            const result2 = {
               name: `StreamingCommunity`,
               title: finalDisplayName,
-              url: streamUrl,
-              easyProxySourceUrl: embedUrl,
-              quality: normalizedQuality,
+              url: rawPageUrl,
+              easyProxySourceUrl: rawPageUrl,
+              quality: "1080p",
               type: "direct",
-              headers: streamHeaders,
+              language: resultLanguage,
               behaviorHints: {
                 notWebReady: false
               }
             };
-            if (hasItalianAudio || hasOriginalItalian) result.language = "Italian";
-            else result.language = "";
-            return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
-          } else {
-            console.log("[StreamingCommunity] Could not find playlist info in HTML");
-            return [];
+            return [formatStream(result2, "StreamingCommunity")].filter((s) => s !== null);
           }
+          const result = {
+            name: `StreamingCommunity`,
+            title: finalDisplayName,
+            url: streamUrl,
+            easyProxySourceUrl: embedUrl,
+            quality: normalizedQuality,
+            type: "direct",
+            headers: streamHeaders,
+            behaviorHints: {
+              notWebReady: false
+            },
+            language: resultLanguage
+          };
+          return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
         } catch (error) {
           console.error("[StreamingCommunity] Error:", error);
           return [];
@@ -12869,7 +12879,7 @@ var require_cinemacity = __commonJS({
             url: streamUrl,
             quality: "1080p",
             type: "hls",
-            language: hasItalian ? void 0 : "",
+            language: hasItalian ? "Italian" : "",
             behaviorHints: { notWebReady: true },
             headers: {
               "Referer": "https://cinemacity.cc/",
@@ -13108,7 +13118,7 @@ var require_vidxgo2 = __commonJS({
                 title: displayName,
                 quality: getQualityFromName2(quality),
                 type: "direct",
-                language: hasItalian ? void 0 : ""
+                language: hasItalian ? "Italian" : ""
               });
             }
             mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
@@ -13166,6 +13176,282 @@ var require_vidxgo2 = __commonJS({
     var getTitleFromIds;
     var getIdsFromMapping;
     var getStreams2;
+  }
+});
+
+// src/netmirror/index.js
+var require_netmirror = __commonJS({
+  "src/netmirror/index.js"(exports2, module2) {
+    var { fetchWithTimeout } = require_fetch_helper();
+    var { checkQualityFromText } = require_quality_helper();
+    var { formatStream } = require_formatter();
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    var TMDB_BASE_URL = "https://api.themoviedb.org/3";
+    var CONFIG_URL = "https://raw.githubusercontent.com/SaurabhKaperwan/Utils/refs/heads/main/urls.json";
+    var FALLBACK_API_BASE = "https://tv.imgcdn.kim/newtv";
+    var FETCH_TIMEOUT = 12e3;
+    var PROBE_TIMEOUT = 5e3;
+    var SERVICES = [
+      { code: "nf", name: "Netflix" },
+      { code: "pv", name: "PrimeVideo" },
+      { code: "hs", name: "Hotstar" }
+    ];
+    var LANG_ALIASES = {
+      it: ["italian", "italiano", "ita"],
+      en: ["english", "eng", "en-us", "en-gb", "original"],
+      es: ["spanish", "espanol", "espanol", "spa", "es-419", "es-la", "latin"],
+      fr: ["french", "francais", "fre", "fra"],
+      de: ["german", "deutsch", "ger", "deu"],
+      pt: ["portuguese", "portugues", "por", "pt-br", "pt-pt", "brazilian"],
+      hi: ["hindi", "hin"],
+      ta: ["tamil", "tam"],
+      te: ["telugu", "tel"],
+      ja: ["japanese", "jpn", "ja-jp"],
+      ko: ["korean", "kor", "ko-kr"],
+      ar: ["arabic", "ara"],
+      tr: ["turkish", "turkce", "tur"],
+      ru: ["russian", "rus"],
+      pl: ["polish", "polski", "pol"],
+      nl: ["dutch", "nederlands", "nld", "nl-nl"]
+    };
+    var cachedApiBase = null;
+    function normalizeType(type) {
+      const normalized = String(type || "").toLowerCase();
+      if (normalized === "series" || normalized === "tv") return "tv";
+      if (normalized === "movie") return "movie";
+      return null;
+    }
+    function normalizeText(value) {
+      return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    }
+    function unique(values) {
+      return [...new Set(values.map((v) => String(v || "").trim()).filter(Boolean))];
+    }
+    function normalizeLangToken(token) {
+      const value = String(token || "").trim().toLowerCase();
+      if (!value) return null;
+      const prefix = value.split(/[-_]/)[0];
+      if (LANG_ALIASES[value]) return value;
+      if (LANG_ALIASES[prefix]) return prefix;
+      for (const code of Object.keys(LANG_ALIASES)) {
+        if (LANG_ALIASES[code].some((alias) => value === alias || value.includes(alias))) return code;
+      }
+      return null;
+    }
+    function parseAudioLanguages(m3u8Text) {
+      const languages = /* @__PURE__ */ new Set();
+      if (!m3u8Text) return languages;
+      const re = /#EXT-X-MEDIA:([^\n\r]+)/gi;
+      let match;
+      while ((match = re.exec(m3u8Text)) !== null) {
+        const attrs = match[1];
+        if (!/TYPE=AUDIO/i.test(attrs)) continue;
+        const language = (attrs.match(/LANGUAGE="([^"]+)"/i) || [])[1];
+        const name = (attrs.match(/NAME="([^"]+)"/i) || [])[1];
+        const code = normalizeLangToken(language) || normalizeLangToken(name);
+        if (code) languages.add(code);
+      }
+      return languages;
+    }
+    function fetchJson(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        const response = yield fetchWithTimeout(url, __spreadProps(__spreadValues({}, options), { timeout: options.timeout || FETCH_TIMEOUT }));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return yield response.json();
+      });
+    }
+    function fetchText(url, headers) {
+      return __async(this, null, function* () {
+        try {
+          const response = yield fetchWithTimeout(url, { headers, timeout: PROBE_TIMEOUT });
+          if (!response.ok) return "";
+          return yield response.text();
+        } catch (e) {
+          return "";
+        }
+      });
+    }
+    function getApiBase() {
+      return __async(this, null, function* () {
+        if (cachedApiBase) return cachedApiBase;
+        try {
+          const data = yield fetchJson(CONFIG_URL, { timeout: FETCH_TIMEOUT });
+          cachedApiBase = data && data.nfmirror ? data.nfmirror : FALLBACK_API_BASE;
+        } catch (e) {
+          cachedApiBase = FALLBACK_API_BASE;
+        }
+        return cachedApiBase;
+      });
+    }
+    function resolveTmdbId(id, mediaType, providerContext) {
+      return __async(this, null, function* () {
+        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
+        if (contextTmdbId) return contextTmdbId;
+        const raw = String(id || "").trim();
+        if (/^tmdb:\d+$/i.test(raw)) return raw.split(":")[1];
+        if (/^\d+$/.test(raw)) return raw;
+        const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null;
+        const imdbId = /^tt\d+$/i.test(raw) ? raw : contextImdbId;
+        if (!imdbId) return null;
+        try {
+          const url = `${TMDB_BASE_URL}/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+          const data = yield fetchJson(url);
+          const results = mediaType === "tv" ? data.tv_results : data.movie_results;
+          const fallback = mediaType === "tv" ? data.movie_results : data.tv_results;
+          const item = Array.isArray(results) && results[0] || Array.isArray(fallback) && fallback[0] || null;
+          return item && item.id ? String(item.id) : null;
+        } catch (e) {
+          return null;
+        }
+      });
+    }
+    function getMediaDetails(tmdbId, mediaType) {
+      return __async(this, null, function* () {
+        const endpoint = mediaType === "tv" ? "tv" : "movie";
+        const url = `${TMDB_BASE_URL}/${endpoint}/${encodeURIComponent(tmdbId)}?api_key=${TMDB_API_KEY2}&language=en-US`;
+        return yield fetchJson(url);
+      });
+    }
+    function getCandidateTitles(media, mediaType) {
+      if (mediaType === "tv") {
+        return unique([media.name, media.original_name]);
+      }
+      return unique([media.title, media.original_title]);
+    }
+    function buildServiceHeaders(service) {
+      return {
+        ott: service.code,
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0 /OS.GatuNewTV v1.0",
+        "x-requested-with": "NetmirrorNewTV v1.0"
+      };
+    }
+    function findTitleMatch(searchResults, title) {
+      const target = normalizeText(title);
+      if (!target) return null;
+      let match = searchResults.find((item) => normalizeText(item && item.t) === target);
+      if (match) return match;
+      return searchResults.find((item) => {
+        const candidate = normalizeText(item && item.t);
+        return candidate && (candidate.includes(target) || target.includes(candidate));
+      }) || null;
+    }
+    function searchService(apiBase, service, titles) {
+      return __async(this, null, function* () {
+        const headers = buildServiceHeaders(service);
+        for (const title of titles) {
+          const searchUrl = `${apiBase}/search.php?s=${encodeURIComponent(title)}`;
+          const searchJson = yield fetchJson(searchUrl, { headers });
+          const results = Array.isArray(searchJson && searchJson.searchResult) ? searchJson.searchResult : [];
+          const match = findTitleMatch(results, title);
+          if (match && match.id) return { id: match.id, title, headers };
+        }
+        return null;
+      });
+    }
+    function resolveEpisodeId(apiBase, netId, headers, season, episode) {
+      return __async(this, null, function* () {
+        const postData = yield fetchJson(`${apiBase}/post.php?id=${encodeURIComponent(netId)}`, { headers });
+        const seasons = Array.isArray(postData && postData.season) ? postData.season : [];
+        const seasonToken = `Season ${Number.parseInt(String(season || 1), 10) || 1}`;
+        const seasonEntry = seasons.find((item) => item && item.id && String(item.s || "").includes(seasonToken));
+        if (!seasonEntry) return null;
+        const wantedEpisode = String(Number.parseInt(String(episode || 1), 10) || 1);
+        let page = 1;
+        while (page < 10) {
+          const epData = yield fetchJson(`${apiBase}/episodes.php?id=${encodeURIComponent(seasonEntry.id)}&page=${page}`, { headers });
+          const list = Array.isArray(epData && epData.episodes) ? epData.episodes : [];
+          const match = list.find((item) => item && item.id && String(item.ep || "") === wantedEpisode);
+          if (match) return match.id;
+          if (Number.parseInt(String(epData && epData.nextPageShow || "0"), 10) !== 1) break;
+          page++;
+        }
+        return null;
+      });
+    }
+    function extractServiceStreams(apiBase, service, titles, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        try {
+          const found = yield searchService(apiBase, service, titles);
+          if (!found) return [];
+          let finalId = found.id;
+          if (mediaType === "tv") {
+            finalId = yield resolveEpisodeId(apiBase, found.id, found.headers, season, episode);
+            if (!finalId) return [];
+          }
+          const playerData = yield fetchJson(`${apiBase}/player.php?id=${encodeURIComponent(finalId)}`, { headers: found.headers });
+          if (!playerData || !playerData.video_link) return [];
+          const referer = playerData.referer || `${apiBase}/`;
+          const playbackHeaders = {
+            Referer: referer,
+            "User-Agent": found.headers["user-agent"]
+          };
+          const probeHeaders = {
+            Referer: referer,
+            "User-Agent": "Mozilla/5.0 (Android) ExoPlayer",
+            Accept: "*/*",
+            "Accept-Encoding": "identity",
+            Connection: "keep-alive"
+          };
+          const masterText = yield fetchText(playerData.video_link, probeHeaders);
+          if (!masterText || !/#EXT-X-STREAM-INF/i.test(masterText)) {
+            console.warn(`[NetMirror] ${service.name}: invalid playlist (no video streams), skipping`);
+            return [];
+          }
+          const audioLanguages = parseAudioLanguages(masterText);
+          const hasItalian = audioLanguages.has("it");
+          const quality = checkQualityFromText(masterText) || "720p";
+          return [{
+            name: `NetMirror - ${service.name}`,
+            title: titles[0] || "Stream",
+            url: playerData.video_link,
+            quality,
+            type: "hls",
+            language: hasItalian ? "Italian" : "",
+            headers: playbackHeaders,
+            behaviorHints: { notWebReady: true },
+            provider: "netmirror"
+          }];
+        } catch (e) {
+          console.warn(`[NetMirror] ${service.name} failed: ${e.message}`);
+          return [];
+        }
+      });
+    }
+    function dedupeStreams(streams) {
+      const seen = /* @__PURE__ */ new Set();
+      return streams.filter((stream) => {
+        const key = stream && stream.url;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    function getStreams2(id, type, season, episode, providerContext = null) {
+      return __async(this, null, function* () {
+        const mediaType = normalizeType(type);
+        if (mediaType !== "movie" && mediaType !== "tv") return [];
+        const tmdbId = yield resolveTmdbId(id, mediaType, providerContext);
+        if (!tmdbId) return [];
+        try {
+          const media = yield getMediaDetails(tmdbId, mediaType);
+          const titles = getCandidateTitles(media, mediaType);
+          if (titles.length === 0) return [];
+          const apiBase = yield getApiBase();
+          const results = yield Promise.all(
+            SERVICES.map((service) => extractServiceStreams(apiBase, service, titles, mediaType, season, episode))
+          );
+          const streams = dedupeStreams(results.flat());
+          const italianStream = streams.find((s) => s.language === "Italian");
+          if (italianStream) return [formatStream(italianStream, "NetMirror")].filter(Boolean);
+          if (streams.length > 0) return [formatStream(streams[0], "NetMirror")].filter(Boolean);
+          return [];
+        } catch (e) {
+          console.error("[NetMirror] Error:", e.message);
+          return [];
+        }
+      });
+    }
+    module2.exports = { getStreams: getStreams2 };
   }
 });
 
@@ -13276,7 +13562,7 @@ var require_altadefinizionestreaming = __commonJS({
           headers,
           quality,
           type: "direct",
-          language: hasItalian ? void 0 : ""
+          language: hasItalian ? "Italian" : ""
         });
       });
     }
@@ -13304,7 +13590,8 @@ var require_altadefinizionestreaming = __commonJS({
           easyProxySourceUrl: mixdropUrl,
           headers: extracted.headers,
           quality: "720p",
-          type: "direct"
+          type: "direct",
+          language: "Italian"
         });
       });
     }
@@ -13340,6 +13627,7 @@ var animeworld = require_animeworld();
 var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
 var vidxgo = require_vidxgo2();
+var netmirror = require_netmirror();
 var altadefinizionestreaming = require_altadefinizionestreaming();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
@@ -13490,7 +13778,7 @@ function getStreams(id, type, season, episode) {
       if (likelyAnime || isKitsuRequest) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity", "guardahd");
       } else {
-        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
+        selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardahd", "guardoserie", "altadefinizionestreaming");
       }
     } else if (normalizedType === "anime") {
       selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "vidxgo");
@@ -13499,13 +13787,13 @@ function getStreams(id, type, season, episode) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
+          selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardoserie", "altadefinizionestreaming");
         } else {
-          selectedProviders.push("streamingcommunity", "guardoserie", "altadefinizionestreaming", "vidxgo", "cinemacity");
+          selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardoserie", "altadefinizionestreaming");
         }
       }
     } else {
-      selectedProviders.push("streamingcommunity", "guardahd", "guardoserie", "cinemacity");
+      selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardahd", "guardoserie");
     }
     for (const providerName of [...new Set(selectedProviders)]) {
       if (providerName === "streamingcommunity") {
@@ -13547,6 +13835,12 @@ function getStreams(id, type, season, episode) {
       if (providerName === "vidxgo") {
         promises.push(
           vidxgo.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "VidxGo", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "VidxGo", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "netmirror") {
+        promises.push(
+          netmirror.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "NetMirror", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "NetMirror", error: e, status: "rejected" }))
         );
         continue;
       }

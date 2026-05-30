@@ -259,25 +259,6 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
 
-    if (providerContext?.proxyUrl) {
-      const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
-      console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
-      const result = {
-        name: `StreamingCommunity`,
-        title: finalDisplayName,
-        url: rawPageUrl,
-        easyProxySourceUrl: rawPageUrl,
-        quality: "1080p",
-        type: "direct",
-        language: '',
-        behaviorHints: {
-          notWebReady: false
-        }
-      };
-
-      return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
-    }
-
     console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
     const embedResponse = await fetch(embedUrl, {
       headers: getEmbedHeaders(embedUrl),
@@ -292,56 +273,74 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     if (!embedHtml) return [];
 
     const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
-    if (masterPlaylist) {
-      const streamUrl = `${masterPlaylist.url}?token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
-      const streamHeaders = getPlaylistHeaders(embedUrl);
-      console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
+    if (!masterPlaylist) {
+      console.log("[StreamingCommunity] Could not find playlist info in HTML");
+      return [];
+    }
 
-      // StreamingCommunity generally serves FHD when playlist does not expose a clear resolution tag.
-      let quality = "1080p";
-      let hasItalianAudio = false;
-      try {
-        const playlistResponse = await fetch(streamUrl, {
-          headers: streamHeaders
-        });
-        if (playlistResponse.ok) {
-          const playlistText = await playlistResponse.text();
-          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-          const detected = checkQualityFromText(playlistText);
-          if (detected) quality = detected;
+    const streamUrl = `${masterPlaylist.url}?token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+    const streamHeaders = getPlaylistHeaders(embedUrl);
+    console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
 
-          const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+    let quality = "1080p";
+    let hasItalianAudio = false;
+    try {
+      const playlistResponse = await fetch(streamUrl, {
+        headers: streamHeaders
+      });
+      if (playlistResponse.ok) {
+        const playlistText = await playlistResponse.text();
+        hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+        const detected = checkQualityFromText(playlistText);
+        if (detected) quality = detected;
 
-          if (!hasItalianAudio && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
-          }
+        const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+
+        if (!hasItalianAudio && !originalLanguageItalian) {
+          console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
         }
-      } catch (e) {
-        console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
       }
+    } catch (e) {
+      console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
+    }
 
-      const normalizedQuality = getQualityFromName(quality);
-      const hasOriginalItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+    const normalizedQuality = getQualityFromName(quality);
+    const hasOriginalItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+    const resultLanguage = (hasItalianAudio || hasOriginalItalian) ? 'Italian' : '';
+
+    if (providerContext?.proxyUrl) {
+      const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
+      console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
       const result = {
         name: `StreamingCommunity`,
         title: finalDisplayName,
-        url: streamUrl,
-        easyProxySourceUrl: embedUrl,
-        quality: normalizedQuality,
+        url: rawPageUrl,
+        easyProxySourceUrl: rawPageUrl,
+        quality: "1080p",
         type: "direct",
-        headers: streamHeaders,
+        language: resultLanguage,
         behaviorHints: {
           notWebReady: false
         }
       };
-      if (hasItalianAudio || hasOriginalItalian) result.language = 'Italian';
-      else result.language = '';
-
       return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
-    } else {
-      console.log("[StreamingCommunity] Could not find playlist info in HTML");
-      return [];
     }
+
+    const result = {
+      name: `StreamingCommunity`,
+      title: finalDisplayName,
+      url: streamUrl,
+      easyProxySourceUrl: embedUrl,
+      quality: normalizedQuality,
+      type: "direct",
+      headers: streamHeaders,
+      behaviorHints: {
+        notWebReady: false
+      },
+      language: resultLanguage
+    };
+
+    return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
   } catch (error) {
     console.error("[StreamingCommunity] Error:", error);
     return [];

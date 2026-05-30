@@ -114,7 +114,7 @@ async function addCdnStream(streams, tmdbId, type, season, episode, displayName)
     headers: headers,
     quality: quality,
     type: "direct",
-    language: hasItalian ? undefined : ''
+    language: hasItalian ? 'Italian' : ''
   });
 }
 
@@ -145,7 +145,8 @@ async function addMixDropStream(streams, tmdbId, type, season, episode, displayN
     easyProxySourceUrl: mixdropUrl,
     headers: extracted.headers,
     quality: "720p",
-    type: "direct"
+    type: "direct",
+    language: 'Italian'
   });
 }
 

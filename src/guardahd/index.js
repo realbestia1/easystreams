@@ -209,7 +209,8 @@ function getStreams(id, type, season, episode) {
                 easyProxySourceUrl: streamUrl,
                 headers: extracted.headers,
                 quality: normalizedQuality,
-                type: "direct"
+                type: "direct",
+                language: 'Italian'
               });
             }
           } else if (streamUrl.includes("dhcplay") || streamUrl.includes("vibuxer")) {
@@ -228,7 +229,8 @@ function getStreams(id, type, season, episode) {
                 easyProxySourceUrl: streamUrl,
                 headers: extracted.headers,
                 quality: normalizedQuality,
-                type: "direct"
+                type: "direct",
+                language: 'Italian'
               });
             }
           } else if (streamUrl.includes("dropload") || streamUrl.includes("dr0pstream")) {

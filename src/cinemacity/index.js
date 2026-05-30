@@ -716,7 +716,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             url: streamUrl,
             quality: "1080p",
             type: "hls",
-            language: hasItalian ? undefined : '',
+            language: hasItalian ? 'Italian' : '',
             behaviorHints: { notWebReady: true },
             headers: {
                 'Referer': 'https://cinemacity.cc/',

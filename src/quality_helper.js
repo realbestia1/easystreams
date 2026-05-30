@@ -3,8 +3,6 @@ const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
 
 async function checkQualityFromPlaylist(url, headers = {}) {
   try {
-    if (!url.includes('.m3u8')) return null;
-    
     const finalHeaders = { ...headers };
     if (!finalHeaders['User-Agent']) {
         finalHeaders['User-Agent'] = USER_AGENT;
@@ -19,6 +17,8 @@ async function checkQualityFromPlaylist(url, headers = {}) {
 
       if (!response.ok) return null;
       const text = await response.text();
+
+      if (!text.startsWith('#EXTM3U')) return null;
 
       const quality = checkQualityFromText(text);
       
@@ -36,7 +36,6 @@ async function checkQualityFromPlaylist(url, headers = {}) {
 
 async function checkItalianAudioInPlaylist(url, headers = {}) {
   try {
-    if (!url.includes('.m3u8')) return false;
     const finalHeaders = { ...headers };
     if (!finalHeaders['User-Agent']) finalHeaders['User-Agent'] = USER_AGENT;
     const timeoutConfig = createTimeoutSignal(3000);
@@ -44,6 +43,9 @@ async function checkItalianAudioInPlaylist(url, headers = {}) {
       const response = await fetch(url, { headers: finalHeaders, signal: timeoutConfig.signal });
       if (!response.ok) return false;
       const text = await response.text();
+      if (!text.startsWith('#EXTM3U')) return false;
+      const hasAudioTags = /#EXT-X-MEDIA:TYPE=AUDIO/i.test(text);
+      if (!hasAudioTags) return true;
       return /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(text);
     } finally {
       if (typeof timeoutConfig.cleanup === "function") timeoutConfig.cleanup();

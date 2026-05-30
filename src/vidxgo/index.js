@@ -251,7 +251,7 @@ if (!IS_SERVER) {
             title: displayName,
             quality: getQualityFromName(quality),
             type: "direct",
-            language: hasItalian ? undefined : ''
+            language: hasItalian ? 'Italian' : ''
           });
         }
         mark("vidxgo_extracted", { ok: Boolean(vidxgoStream && vidxgoStream.url) });
