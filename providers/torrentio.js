@@ -234,11 +234,11 @@ function extractStreams(tmdbId, mediaType, season, episode) {
           formattedStream = __spreadProps(__spreadValues({}, formattedStream), {
             url: magnet,
             infoHash: stream.infoHash,
+            behaviorHints: stream.behaviorHints || {},  
             isInstalledAddonStream: true,
             // Should trigger local debrid resolution in Nuvio
             needsLocalDebridResolve: true,
             // Should trigger local debrid resolution in Nuvio
-            behaviorHints
           });
           results.push(formattedStream);
         } catch (e) {
