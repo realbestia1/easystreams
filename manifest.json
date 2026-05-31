@@ -118,6 +118,19 @@
       "filename": "providers/netmirror.js",
       "supportedTypes": ["movie", "tv", "series"],
       "enabled": true
+    },
+    {
+      "id": "easystreams-torrentio",
+      "name": "Torrentio",
+      "version": "0.0.1",
+      "description": "Movies and Series from Torrentio",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["magnets", "m3u8"],
+      "idPrefixes": ["tmdb:", "tt"],
+      "filename": "providers/torrentio.js",
+      "supportedTypes": ["movie", "tv", "series"],
+      "enabled": true
     }
   ]
 }
