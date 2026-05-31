@@ -206,7 +206,7 @@ function extractStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     var _a;
     try {
-      const imdbId = yield getImdbId(tmdbId, mediaType);
+      const imdbId = tmdbId.startsWith('tt') ? tmdbId : yield getImdbId(tmdbId, mediaType);
       if (!imdbId) {
         console.log("[TorrentIO-ITA] IMDB ID not found");
         return [];

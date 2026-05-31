@@ -8,7 +8,7 @@ import {formatStream} from '../formatter.js';
 
 export async function extractStreams(tmdbId, mediaType, season, episode) {
     try {
-        const imdbId = await getImdbId(tmdbId, mediaType);
+        const imdbId = tmdbId.startsWith('tt') ? tmdbId : await getImdbId(tmdbId, mediaType);
         if (!imdbId) {
             console.log("[TorrentIO-ITA] IMDB ID not found");
             return [];
