@@ -482,7 +482,10 @@ var require_cf_bypass = __commonJS({
         return bypassPromise;
       });
     }
-    module2.exports = { getClearance, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+    function hasActiveBypass(provider) {
+      return activeBypasses.has(provider);
+    }
+    module2.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -8159,7 +8162,7 @@ if (!IS_SERVER) {
   };
 } else {
   let getGuardoserieBaseUrl = function() {
-    return "https://guardoserie.run";
+    return "https://guardoserie.watch";
   }, getMappingApiUrl = function() {
     return "https://animemapping.realbestia.com";
   }, normalizeConfigBoolean = function(value) {
@@ -8333,7 +8336,7 @@ if (!IS_SERVER) {
   };
   getGuardoserieBaseUrl2 = getGuardoserieBaseUrl, getMappingApiUrl2 = getMappingApiUrl, normalizeConfigBoolean2 = normalizeConfigBoolean, getMappingLanguage2 = getMappingLanguage, extractEpisodeUrlFromSeriesPage2 = extractEpisodeUrlFromSeriesPage, normalizePlayerLink2 = normalizePlayerLink, extractPlayerLinksFromHtml2 = extractPlayerLinksFromHtml, getQualityFromName2 = getQualityFromName, normalizeBaseUrl2 = normalizeBaseUrl, resolveCandidateUrl2 = resolveCandidateUrl, isSameHost2 = isSameHost, extractSearchResultsFromHtml2 = extractSearchResultsFromHtml, decodeEntitiesBasic2 = decodeEntitiesBasic, normalizeTitle2 = normalizeTitle, slugifyTitle2 = slugifyTitle, extractTitleFromHtml2 = extractTitleFromHtml, htmlMatchesTitle2 = htmlMatchesTitle;
   const { smartFetch } = require_cf_handler();
-  let guardoserieDisabledUntil = 0;
+  const { hasActiveBypass } = require_cf_bypass();
   const { USER_AGENT, getProxiedUrl } = require_common();
   const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
   const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
@@ -8423,9 +8426,23 @@ if (!IS_SERVER) {
         if (!STEP_BENCH_ENABLED) return;
         bench.push(__spreadValues({ step, t: Date.now() - benchStart }, meta));
       };
-      if (Date.now() < guardoserieDisabledUntil && !(providerContext == null ? void 0 : providerContext.format)) {
-        console.log(`[Guardoserie] Provider temporaneamente disabilitato per l'addon fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
-        return [];
+      const sessionFile = `${process.cwd()}/cf-session-guardoserie.json`;
+      const fs = require("fs");
+      if (!fs.existsSync(sessionFile)) {
+        if (hasActiveBypass("guardoserie")) {
+          console.log(`[Guardoserie] Bypass CF in corso, attendi...`);
+          for (let i = 0; i < 30; i++) {
+            yield new Promise((r) => setTimeout(r, 1e3));
+            if (fs.existsSync(sessionFile)) break;
+          }
+          if (!fs.existsSync(sessionFile)) {
+            console.log(`[Guardoserie] Timeout bypass CF, salto provider`);
+            return [];
+          }
+        } else {
+          console.log(`[Guardoserie] Nessuna sessione CF, salto provider`);
+          return [];
+        }
       }
       try {
         const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
@@ -8483,14 +8500,26 @@ if (!IS_SERVER) {
         const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title;
         const originalTitle = showInfo.original_title || showInfo.original_name;
         const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
+        const posterPath = showInfo.poster_path || "";
         console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
+        const genQueries = (t) => {
+          const q = (t || "").toLowerCase().trim();
+          if (!q || q.length < 3) return [];
+          const results = [q];
+          const clean = q.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+          const words = clean.split(/\s+/).filter((w) => w.length > 2);
+          if (words.length > 1) results.push(words.slice(0, 2).join(" "));
+          if (words.length > 0 && words[0] !== q) results.push(words[0]);
+          const parenMatch = q.match(/^(.+?)\s*[\(\[].+?[\)\]]/);
+          if (parenMatch && parenMatch[1].trim().length > 2) results.push(parenMatch[1].trim());
+          return [...new Set(results)].filter((q2) => q2.length > 2);
+        };
+        const allQueries = [.../* @__PURE__ */ new Set([...genQueries(title), ...genQueries(originalTitle)])].slice(0, 4);
         const searchProvider = (query) => __async(null, null, function* () {
-          var _a2, _b2;
           const searchStartedAt = Date.now();
           try {
-            yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie" });
+            yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie", skipBypassOnFailure: true, timeout: 5e3 });
           } catch (e) {
-            console.log(`[Guardoserie] Could not initialize session from homepage`);
           }
           const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
           const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
@@ -8506,29 +8535,38 @@ if (!IS_SERVER) {
               },
               provider: "guardoserie",
               skipBypassOnFailure: true,
-              timeout: 1e3
+              timeout: 3e3
             });
             const results = extractSearchResultsFromHtml(ajaxHtml, baseUrl);
-            mark("search_query_done", { q: query, ms: Date.now() - searchStartedAt, results: results.length, source: "ajax" });
+            mark("search_ajax", { q: query, ms: Date.now() - searchStartedAt, results: results.length });
             return results;
           } catch (e) {
-            if ((e.code === "ECONNABORTED" || ((_a2 = e.message) == null ? void 0 : _a2.includes("timeout"))) && !(providerContext == null ? void 0 : providerContext.format)) {
-              guardoserieDisabledUntil = Date.now() + 36e5;
-              console.log(`[Guardoserie] AJAX Search timeout (1s). Provider disabilitato per l'addon per 1 ora.`);
-            } else if (e.code === "ECONNABORTED" || ((_b2 = e.message) == null ? void 0 : _b2.includes("timeout"))) {
-              console.log(`[Guardoserie] AJAX Search timeout (1s) durante resolve. Non blocco il provider.`);
-            } else {
-              console.log(`[Guardoserie] AJAX Search failed: ${e.message}`);
-            }
             return [];
           }
         });
-        const queries = Array.from(new Set([title, originalTitle].filter((q) => q && q.length > 2).map((q) => q.toLowerCase()))).slice(0, 2);
-        const searchPromises = queries.map((q) => searchProvider(q));
-        const allResultsArray = yield Promise.all(searchPromises);
-        let allResults = allResultsArray.flat();
-        mark("search_phase_done", { queries: queries.length, results: allResults.length });
-        allResults = Array.from(new Map(allResults.map((item) => [item.url, item])).values());
+        const searchWp = (query) => __async(null, null, function* () {
+          try {
+            const html = yield smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, {
+              method: "GET",
+              headers: { "Referer": `${baseUrl}/`, "Accept": "text/html" },
+              provider: "guardoserie",
+              skipBypassOnFailure: true,
+              timeout: 5e3
+            });
+            if (!html || html.length < 200) return [];
+            return extractSearchResultsFromHtml(html, baseUrl);
+          } catch (e) {
+            return [];
+          }
+        });
+        let allResults = Array.from(new Map((yield Promise.all(
+          allQueries.map((q) => Promise.all([searchProvider(q), searchWp(q)]))
+        )).flat(2).map((r) => [r.url, r])).values());
+        mark("search_done", { queries: allQueries.length, results: allResults.length });
+        if (allResults.length === 0) {
+          console.log(`[Guardoserie] Nessun risultato per ${title}`);
+          return [];
+        }
         const nTitle = normalizeTitle(title);
         const nOrig = normalizeTitle(originalTitle || "");
         const scoreTitleMatch = (nResult) => {
@@ -8549,15 +8587,11 @@ if (!IS_SERVER) {
         allResults.sort((a, b) => {
           const nA = normalizeTitle(a.title);
           const nB = normalizeTitle(b.title);
-          const exactA = nA === nTitle || nA === nOrig;
-          const exactB = nB === nTitle || nB === nOrig;
-          if (exactA && !exactB) return -1;
-          if (!exactA && exactB) return 1;
+          if ((nA === nTitle || nA === nOrig) && !(nB === nTitle || nB === nOrig)) return -1;
+          if (!(nA === nTitle || nA === nOrig) && (nB === nTitle || nB === nOrig)) return 1;
           return 0;
         });
         targetUrl = null;
-        let bestNoYearMatch = null;
-        let bestNoYearScore = 0;
         const topResults = allResults.slice(0, 5);
         const verificationPromises = topResults.map((result) => __async(null, null, function* () {
           const nResult = normalizeTitle(result.title);
@@ -8567,12 +8601,18 @@ if (!IS_SERVER) {
             const pageHtml = yield smartFetch(result.url, getGuardoserieBaseUrl(), {
               provider: "guardoserie"
             });
+            const posterFile = posterPath ? posterPath.split("/").pop() : "";
+            const hasExactPoster = posterFile && pageHtml.includes(posterFile);
+            const hasTmdbId = tmdbId && new RegExp(`[\\"\\'\\/]${tmdbId}[\\"\\'\\/]`).test(pageHtml);
             let foundYear = null;
             const pubYearMatch = pageHtml.match(/pubblicazione.*?release-year\/(\d{4})/i);
             if (pubYearMatch) foundYear = pubYearMatch[1];
             if (!foundYear) {
               const anyYearMatch = pageHtml.match(/release-year\/(\d{4})/i);
               if (anyYearMatch) foundYear = anyYearMatch[1];
+            }
+            if (hasTmdbId || hasExactPoster) {
+              return { url: result.url, score: 3, exact: true };
             }
             if (foundYear) {
               const targetYear = parseInt(year);
@@ -8581,7 +8621,8 @@ if (!IS_SERVER) {
               if (fYear === targetYear || Math.abs(fYear - targetYear) <= maxDiff) {
                 return { url: result.url, score: matchScore, exact: true };
               }
-            } else if (matchScore >= 2) {
+            }
+            if (matchScore >= 2) {
               return { url: result.url, score: matchScore, exact: false };
             }
           } catch (e) {

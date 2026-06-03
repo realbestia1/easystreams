@@ -201,4 +201,8 @@ async function getClearance(url, provider = 'default', options = {}) {
     return bypassPromise;
 }
 
-module.exports = { getClearance, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+function hasActiveBypass(provider) {
+    return activeBypasses.has(provider);
+}
+
+module.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
