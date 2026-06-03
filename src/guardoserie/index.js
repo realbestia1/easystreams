@@ -437,6 +437,7 @@ if (!IS_SERVER) {
             const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title;
             const originalTitle = showInfo.original_title || showInfo.original_name;
             const year = (showInfo.first_air_date || showInfo.release_date || '').split('-')[0];
+            const posterPath = showInfo.poster_path || '';
 
             console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
 
