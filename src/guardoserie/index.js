@@ -371,6 +371,25 @@ if (!IS_SERVER) {
             console.log(`[Guardoserie] Provider temporaneamente disabilitato per l'addon fino a: ${new Date(guardoserieDisabledUntil).toISOString()}`);
             return [];
         }
+        // Se warmup CF in corso, aspetta; se nessuna sessione, salta
+        const sessionFile = `${process.cwd()}/cf-session-guardoserie.json`;
+        const fs = require('fs');
+        if (!fs.existsSync(sessionFile)) {
+            if (hasActiveBypass('guardoserie')) {
+                console.log(`[Guardoserie] Bypass CF in corso, attendi...`);
+                for (let i = 0; i < 30; i++) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    if (fs.existsSync(sessionFile)) break;
+                }
+                if (!fs.existsSync(sessionFile)) {
+                    console.log(`[Guardoserie] Timeout bypass CF, salto provider`);
+                    return [];
+                }
+            } else {
+                console.log(`[Guardoserie] Nessuna sessione CF, salto provider`);
+                return [];
+            }
+        }
         try {
             const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
             if (!baseUrl) {
