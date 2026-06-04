@@ -8444,6 +8444,14 @@ var require_guardoserie = __commonJS({
               }
             } else {
               console.log(`[Guardoserie] Nessuna sessione CF, salto provider`);
+              const { getClearance } = require_cf_bypass();
+              getClearance(getGuardoserieBaseUrl2(), "guardoserie", {
+                waitUntil: "network_idle"
+              }).then(() => {
+                console.log(`[Guardoserie] Sessione CF rigenerata con successo in background!`);
+              }).catch((e) => {
+                console.error(`[Guardoserie] Errore rigenerazione sessione in background:`, e.message);
+              });
               return [];
             }
           }

@@ -382,6 +382,15 @@ if (!IS_SERVER) {
                 }
             } else {
                 console.log(`[Guardoserie] Nessuna sessione CF, salto provider`);
+                // Avvia la ricreazione della sessione in background per le richieste successive
+                const { getClearance } = require('../../cf_bypass');
+                getClearance(getGuardoserieBaseUrl(), 'guardoserie', {
+                    waitUntil: 'network_idle'
+                }).then(() => {
+                    console.log(`[Guardoserie] Sessione CF rigenerata con successo in background!`);
+                }).catch(e => {
+                    console.error(`[Guardoserie] Errore rigenerazione sessione in background:`, e.message);
+                });
                 return [];
             }
         }
