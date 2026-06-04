@@ -9255,7 +9255,8 @@ var require_streamingcommunity = __commonJS({
             console.log("[StreamingCommunity] Could not find playlist info in HTML");
             return [];
           }
-          const streamUrl = `${masterPlaylist.url}?token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          const separator = masterPlaylist.url.includes("?") ? "&" : "?";
+          const streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
           const streamHeaders = getPlaylistHeaders(embedUrl);
           console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
           let quality = "1080p";
