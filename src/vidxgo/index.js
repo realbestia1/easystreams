@@ -58,9 +58,11 @@ if (!IS_SERVER) {
         
         return [{
           url: targetUrl,
-          name: "VidxGo",
+          name: "📡 VidxGo",
           title: `📁 ${displayName} | 📡 VidxGo | ⚡ Proxied`,
-          qualityTag: "HD",
+          quality: "1080p",
+          qualityTag: "1080p",
+          language: "Italian",
           type: "direct",
           headers: null,
           behaviorHints: {

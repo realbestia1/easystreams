@@ -508,9 +508,11 @@ var require_vidxgo2 = __commonJS({
             const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
             return [{
               url: targetUrl,
-              name: "VidxGo",
+              name: "\u{1F4E1} VidxGo",
               title: `\u{1F4C1} ${displayName} | \u{1F4E1} VidxGo | \u26A1 Proxied`,
-              qualityTag: "HD",
+              quality: "1080p",
+              qualityTag: "1080p",
+              language: "Italian",
               type: "direct",
               headers: null,
               behaviorHints: {
