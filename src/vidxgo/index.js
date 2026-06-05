@@ -3,8 +3,75 @@ const IS_SERVER = typeof process !== 'undefined' && process.versions && process.
 if (!IS_SERVER) {
   module.exports = {
     getStreams: async (id, type, season, episode) => {
-      console.warn('[VidxGo-Client] Disabled: VidXGo requires EasyProxy stream proxy.');
-      return [];
+      const settings = (typeof globalThis !== 'undefined' && globalThis.SCRAPER_SETTINGS) || {};
+      const proxyUrl = settings.proxyUrl;
+      const proxyPassword = settings.proxyPassword;
+      
+      if (!proxyUrl || !proxyPassword) {
+        console.warn('[VidxGo-Client] Disabled: proxyUrl and proxyPassword must be configured.');
+        return [];
+      }
+      
+      try {
+        let imdbId = id.toString().replace("tmdb:", "");
+        const isMovie = String(type).toLowerCase() === "movie";
+        
+        // If it's a numeric TMDB ID, resolve to IMDB ID first
+        if (/^\d+$/.test(imdbId)) {
+          const endpoint = isMovie ? "movie" : "tv";
+          const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+          const url = `https://api.themoviedb.org/3/${endpoint}/${imdbId}?api_key=${TMDB_API_KEY}`;
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.imdb_id) {
+              imdbId = data.imdb_id;
+            } else {
+              const extUrl = `https://api.themoviedb.org/3/${endpoint}/${imdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+              const extResponse = await fetch(extUrl);
+              if (extResponse.ok) {
+                const extData = await extResponse.json();
+                if (extData.imdb_id) imdbId = extData.imdb_id;
+              }
+            }
+          }
+        }
+        
+        if (!imdbId.startsWith("tt")) {
+          console.warn("[VidxGo-Client] Could not resolve IMDB ID for ID:", id);
+          return [];
+        }
+        
+        const effectiveSeason = parseInt(String(season || ""), 10) || 1;
+        const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
+        
+        const vidxgoUrl = isMovie
+          ? `https://v.vidxgo.co/${imdbId}`
+          : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
+          
+        const cleanProxyUrl = proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
+        
+        const targetUrl = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
+        
+        const contentTitle = isMovie ? "Film" : "Serie";
+        const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
+        
+        return [{
+          url: targetUrl,
+          name: "VidxGo",
+          title: `📁 ${displayName} | 📡 VidxGo | ⚡ Proxied`,
+          qualityTag: "HD",
+          type: "direct",
+          headers: null,
+          behaviorHints: {
+            proxyHeaders: null,
+            headers: null
+          }
+        }];
+      } catch (e) {
+        console.error("[VidxGo-Client] Error:", e);
+        return [];
+      }
     }
   };
 } else {
