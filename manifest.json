@@ -118,6 +118,33 @@
       "filename": "providers/netmirror.js",
       "supportedTypes": ["movie", "tv", "series"],
       "enabled": true
+    },
+    {
+      "id": "easystreams-vidxgo",
+      "name": "VidxGo",
+      "version": "1.1.0",
+      "description": "Movies and Series from VidxGo via EasyProxy",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["kitsu:", "tmdb:", "tt"],
+      "filename": "providers/vidxgo.js",
+      "supportedTypes": ["movie", "tv", "series", "anime"],
+      "enabled": true,
+      "settings": [
+        {
+          "key": "proxyUrl",
+          "type": "text",
+          "name": "Proxy URL",
+          "description": "Enter the base URL of your EasyProxy server"
+        },
+        {
+          "key": "proxyPassword",
+          "type": "password",
+          "name": "Proxy Password",
+          "description": "Enter your EasyProxy authentication password"
+        }
+      ]
     }
   ]
 }
