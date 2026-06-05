@@ -62,7 +62,8 @@ if (!IS_SERVER) {
           title: `📁 ${displayName} | 📡 VidxGo | ⚡ Proxied`,
           quality: "1080p",
           qualityTag: "1080p",
-          language: "Italian",
+          language: "it",
+          size: "proxied",
           type: "direct",
           headers: null,
           behaviorHints: {

@@ -509,7 +509,8 @@ if (!IS_SERVER) {
           title: `\u{1F4C1} ${displayName} | \u{1F4E1} VidxGo | \u26A1 Proxied`,
           quality: "1080p",
           qualityTag: "1080p",
-          language: "Italian",
+          language: "it",
+          size: "proxied",
           type: "direct",
           headers: null,
           behaviorHints: {
