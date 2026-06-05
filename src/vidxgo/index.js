@@ -1,4 +1,5 @@
 const IS_SERVER = typeof process !== 'undefined' && process.versions && process.versions.node;
+const { formatStream } = require('../formatter.js');
 
 if (!IS_SERVER) {
   module.exports = {
@@ -56,13 +57,12 @@ if (!IS_SERVER) {
         const contentTitle = isMovie ? "Film" : "Serie";
         const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         
-        return [{
+        const result = {
           url: targetUrl,
-          name: "📡 VidxGo",
-          title: `📁 ${displayName} | 📡 VidxGo | ⚡ Proxied`,
+          name: "VidxGo",
+          title: displayName,
           quality: "1080p",
-          qualityTag: "1080p",
-          language: "it",
+          language: "Italian",
           size: "proxied",
           type: "direct",
           headers: null,
@@ -70,7 +70,8 @@ if (!IS_SERVER) {
             proxyHeaders: null,
             headers: null
           }
-        }];
+        };
+        return [formatStream(result, "VidxGo")].filter(s => s !== null);
       } catch (e) {
         console.error("[VidxGo-Client] Error:", e);
         return [];
@@ -95,7 +96,6 @@ if (!IS_SERVER) {
   const { extractVidxGo } = require('../extractors/vidxgo');
   require('../fetch_helper.js');
   const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require('../quality_helper.js');
-  const { formatStream } = require('../formatter.js');
   const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
 
   function getQualityFromName(qualityStr) {

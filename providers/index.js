@@ -12955,6 +12955,7 @@ var require_cinemacity = __commonJS({
 var require_vidxgo2 = __commonJS({
   "src/vidxgo/index.js"(exports2, module2) {
     var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
+    var { formatStream } = require_formatter();
     if (!IS_SERVER) {
       module2.exports = {
         getStreams: (id, type, season, episode) => __async(null, null, function* () {
@@ -12998,13 +12999,12 @@ var require_vidxgo2 = __commonJS({
             const targetUrl2 = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
             const contentTitle = isMovie ? "Film" : "Serie";
             const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
-            return [{
+            const result = {
               url: targetUrl2,
-              name: "\u{1F4E1} VidxGo",
-              title: `\u{1F4C1} ${displayName} | \u{1F4E1} VidxGo | \u26A1 Proxied`,
+              name: "VidxGo",
+              title: displayName,
               quality: "1080p",
-              qualityTag: "1080p",
-              language: "it",
+              language: "Italian",
               size: "proxied",
               type: "direct",
               headers: null,
@@ -13012,7 +13012,8 @@ var require_vidxgo2 = __commonJS({
                 proxyHeaders: null,
                 headers: null
               }
-            }];
+            };
+            return [formatStream(result, "VidxGo")].filter((s) => s !== null);
           } catch (e) {
             console.error("[VidxGo-Client] Error:", e);
             return [];
@@ -13274,7 +13275,6 @@ var require_vidxgo2 = __commonJS({
       const { extractVidxGo } = require_vidxgo();
       require_fetch_helper();
       const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
-      const { formatStream } = require_formatter();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       module2.exports = { getStreams: getStreams3 };
     }
