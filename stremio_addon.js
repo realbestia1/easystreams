@@ -1251,28 +1251,12 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
     const isImdbId = /^tt\d+$/i.test(idStr);
     const isKitsuId = /^kitsu:\d+$/i.test(idStr);
     const isTmdbLikeId = idStr.startsWith('tmdb:') || /^\d+$/.test(idStr);
-    const shouldFetchMappingApi =
-        type === 'anime' ||
-        isKitsuId ||
-        isImdbId ||
-        isTmdbLikeId ||
-        ENABLE_SERIES_MAPPING_LOOKUP;
-
     try {
         if (idStr.startsWith('kitsu:')) {
             context.idType = 'kitsu';
             const parts = idStr.split(':');
             if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
                 context.kitsuId = parts[1];
-                let mappingSignalsFound = false;
-                if (shouldFetchMappingApi) {
-                    const byKitsu = await fetchMappingByProvider('kitsu', context.kitsuId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
-                    if (byKitsu) {
-                        applyMappingHintsToContext(context, byKitsu);
-                        mappingSignalsFound = hasUsefulMappingSignals(byKitsu);
-                    }
-                }
-                context.mappingLookupMiss = shouldFetchMappingApi && !mappingSignalsFound;
             }
         } else if (idStr.startsWith('tmdb:')) {
             context.idType = 'tmdb';
@@ -1280,20 +1264,9 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
             if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
                 context.tmdbId = parts[1];
             }
-        } else if (/^tt\d+$/i.test(idStr)) {
+        } else if (isImdbId) {
             context.idType = 'imdb';
             context.imdbId = idStr;
-            let mappingSignalsFound = false;
-
-            if (shouldFetchMappingApi) {
-                const byImdb = await fetchMappingByProvider('imdb', idStr, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
-                if (byImdb) {
-                    applyMappingHintsToContext(context, byImdb);
-                    mappingSignalsFound = hasUsefulMappingSignals(byImdb);
-                }
-            }
-            context.mappingLookupMiss = shouldFetchMappingApi && !mappingSignalsFound;
-
             if (!context.tmdbId) {
                 const fallbackTmdbId = await fetchTmdbIdFromImdbForCanonicalKey(idStr);
                 if (fallbackTmdbId !== null && fallbackTmdbId !== undefined) {
@@ -1305,11 +1278,42 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
             context.tmdbId = idStr;
         }
 
-        if (shouldFetchMappingApi && context.tmdbId) {
-            const byTmdb = await fetchMappingByProvider('tmdb', context.tmdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
-            if (byTmdb) {
-                applyMappingHintsToContext(context, byTmdb);
+        // Detect if it is an anime request
+        let isAnime = type === 'anime' || isKitsuId;
+        if (!isAnime && context.tmdbId) {
+            isAnime = await detectAnimeByTmdb(normalizedType, context);
+        }
+
+        // Only fetch from mapping API if it is anime (or if ENABLE_SERIES_MAPPING_LOOKUP is true)
+        const shouldFetchMappingApi = isAnime || ENABLE_SERIES_MAPPING_LOOKUP;
+
+        if (shouldFetchMappingApi) {
+            let mappingSignalsFound = false;
+
+            if (context.kitsuId) {
+                const byKitsu = await fetchMappingByProvider('kitsu', context.kitsuId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byKitsu) {
+                    applyMappingHintsToContext(context, byKitsu);
+                    mappingSignalsFound = hasUsefulMappingSignals(byKitsu);
+                }
+            } else if (context.imdbId) {
+                const byImdb = await fetchMappingByProvider('imdb', context.imdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byImdb) {
+                    applyMappingHintsToContext(context, byImdb);
+                    mappingSignalsFound = hasUsefulMappingSignals(byImdb);
+                }
             }
+
+            context.mappingLookupMiss = !mappingSignalsFound;
+
+            if (context.tmdbId) {
+                const byTmdb = await fetchMappingByProvider('tmdb', context.tmdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byTmdb) {
+                    applyMappingHintsToContext(context, byTmdb);
+                }
+            }
+        } else {
+            context.mappingLookupMiss = false;
         }
 
     } catch (error) {
