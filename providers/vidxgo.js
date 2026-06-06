@@ -54,6 +54,130 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 
+// src/formatter.js
+var require_formatter = __commonJS({
+  "src/formatter.js"(exports2, module2) {
+    function normalizePlaybackHeaders(headers) {
+      if (!headers || typeof headers !== "object") return headers;
+      const normalized = {};
+      for (const [key, value] of Object.entries(headers)) {
+        if (value == null) continue;
+        const lowerKey = String(key).toLowerCase();
+        if (lowerKey === "user-agent") normalized["User-Agent"] = value;
+        else if (lowerKey === "referer" || lowerKey === "referrer") normalized["Referer"] = value;
+        else if (lowerKey === "origin") normalized["Origin"] = value;
+        else if (lowerKey === "accept") normalized["Accept"] = value;
+        else if (lowerKey === "accept-language") normalized["Accept-Language"] = value;
+        else normalized[key] = value;
+      }
+      return normalized;
+    }
+    function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behaviorHints) {
+      const text = [
+        stream == null ? void 0 : stream.url,
+        stream == null ? void 0 : stream.name,
+        stream == null ? void 0 : stream.title,
+        stream == null ? void 0 : stream.server,
+        providerName
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (text.includes("loadm") || text.includes("loadm.cam") || text.includes("mixdrop") || text.includes("mxcontent")) {
+        return true;
+      }
+      return false;
+    }
+    function normalizeProviderId(providerName) {
+      const normalized = String(providerName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return normalized || void 0;
+    }
+    function formatStream2(stream, providerName) {
+      let quality = stream.quality || "";
+      if (quality === "2160p") quality = "\u{1F525}4K UHD";
+      else if (quality === "1440p") quality = "\u2728 QHD";
+      else if (quality === "1080p") quality = "\u{1F680} FHD";
+      else if (quality === "720p") quality = "\u{1F4BF} HD";
+      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
+      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
+      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
+      let language = stream.language;
+      if (language === "Italian") {
+        language = "\u{1F1EE}\u{1F1F9}";
+      } else if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) {
+        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+      } else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) {
+        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+      } else if (language === void 0 || language === null) {
+        language = "";
+      }
+      let details = [];
+      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
+      const desc = details.join(" | ");
+      let pName = stream.name || stream.server || providerName;
+      if (pName) {
+        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
+      }
+      if (pName === providerName) {
+        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
+      }
+      if (pName) {
+        pName = `\u{1F4E1} ${pName}`;
+      }
+      const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === "object" ? __spreadValues({}, stream.behaviorHints) : {};
+      let finalHeaders = stream.headers;
+      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
+        finalHeaders = behaviorHints.proxyHeaders.request;
+      } else if (behaviorHints.headers) {
+        finalHeaders = behaviorHints.headers;
+      }
+      finalHeaders = normalizePlaybackHeaders(finalHeaders);
+      const isStreamingCommunityProvider = String(providerName || "").toLowerCase() === "streamingcommunity" || String((stream == null ? void 0 : stream.name) || "").toLowerCase().includes("streamingcommunity");
+      if (isStreamingCommunityProvider && !finalHeaders) {
+        delete behaviorHints.proxyHeaders;
+        delete behaviorHints.headers;
+        delete behaviorHints.notWebReady;
+      }
+      if (finalHeaders) {
+        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
+        behaviorHints.proxyHeaders.request = finalHeaders;
+        behaviorHints.headers = finalHeaders;
+      }
+      const providerExplicitNotWebReady = stream.behaviorHints && "notWebReady" in stream.behaviorHints;
+      const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
+      if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
+        behaviorHints.notWebReady = true;
+      } else if (!providerExplicitNotWebReady) {
+        delete behaviorHints.notWebReady;
+      }
+      const finalName = pName;
+      let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
+      if (desc) finalTitle += ` | ${desc}`;
+      if (language) finalTitle += ` | ${language}`;
+      const playbackReferer = stream.referer || (finalHeaders == null ? void 0 : finalHeaders.Referer) || (finalHeaders == null ? void 0 : finalHeaders.referer);
+      const playbackUserAgent = stream.userAgent || (finalHeaders == null ? void 0 : finalHeaders["User-Agent"]) || (finalHeaders == null ? void 0 : finalHeaders["user-agent"]);
+      return __spreadProps(__spreadValues({}, stream), {
+        // Keep original properties
+        name: finalName,
+        title: finalTitle,
+        // Metadata for Stremio UI reconstruction (safer names for RN)
+        providerName: pName,
+        qualityTag: quality,
+        description: desc,
+        originalTitle: stream.title || "Stream",
+        // Ensure language is set for Stremio/Nuvio sorting
+        language,
+        // Mark as formatted
+        _nuvio_formatted: true,
+        behaviorHints,
+        provider: stream.provider || normalizeProviderId(providerName),
+        referer: playbackReferer,
+        userAgent: playbackUserAgent,
+        // Explicitly ensure root headers are preserved for Nuvio
+        headers: finalHeaders
+      });
+    }
+    module2.exports = { formatStream: formatStream2 };
+  }
+});
+
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
@@ -334,137 +458,71 @@ var require_quality_helper = __commonJS({
   }
 });
 
-// src/formatter.js
-var require_formatter = __commonJS({
-  "src/formatter.js"(exports2, module2) {
-    function normalizePlaybackHeaders(headers) {
-      if (!headers || typeof headers !== "object") return headers;
-      const normalized = {};
-      for (const [key, value] of Object.entries(headers)) {
-        if (value == null) continue;
-        const lowerKey = String(key).toLowerCase();
-        if (lowerKey === "user-agent") normalized["User-Agent"] = value;
-        else if (lowerKey === "referer" || lowerKey === "referrer") normalized["Referer"] = value;
-        else if (lowerKey === "origin") normalized["Origin"] = value;
-        else if (lowerKey === "accept") normalized["Accept"] = value;
-        else if (lowerKey === "accept-language") normalized["Accept-Language"] = value;
-        else normalized[key] = value;
-      }
-      return normalized;
-    }
-    function shouldForceNotWebReadyForPlugin(stream, providerName, headers, behaviorHints) {
-      const text = [
-        stream == null ? void 0 : stream.url,
-        stream == null ? void 0 : stream.name,
-        stream == null ? void 0 : stream.title,
-        stream == null ? void 0 : stream.server,
-        providerName
-      ].filter(Boolean).join(" ").toLowerCase();
-      if (text.includes("loadm") || text.includes("loadm.cam") || text.includes("mixdrop") || text.includes("mxcontent")) {
-        return true;
-      }
-      return false;
-    }
-    function normalizeProviderId(providerName) {
-      const normalized = String(providerName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
-      return normalized || void 0;
-    }
-    function formatStream(stream, providerName) {
-      let quality = stream.quality || "";
-      if (quality === "2160p") quality = "\u{1F525}4K UHD";
-      else if (quality === "1440p") quality = "\u2728 QHD";
-      else if (quality === "1080p") quality = "\u{1F680} FHD";
-      else if (quality === "720p") quality = "\u{1F4BF} HD";
-      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
-      else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
-      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
-      let language = stream.language;
-      if (language === "Italian") {
-        language = "\u{1F1EE}\u{1F1F9}";
-      } else if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) {
-        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-      } else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) {
-        language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-      } else if (language === void 0 || language === null) {
-        language = "";
-      }
-      let details = [];
-      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
-      const desc = details.join(" | ");
-      let pName = stream.name || stream.server || providerName;
-      if (pName) {
-        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
-      }
-      if (pName === providerName) {
-        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
-      }
-      if (pName) {
-        pName = `\u{1F4E1} ${pName}`;
-      }
-      const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === "object" ? __spreadValues({}, stream.behaviorHints) : {};
-      let finalHeaders = stream.headers;
-      if (behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request) {
-        finalHeaders = behaviorHints.proxyHeaders.request;
-      } else if (behaviorHints.headers) {
-        finalHeaders = behaviorHints.headers;
-      }
-      finalHeaders = normalizePlaybackHeaders(finalHeaders);
-      const isStreamingCommunityProvider = String(providerName || "").toLowerCase() === "streamingcommunity" || String((stream == null ? void 0 : stream.name) || "").toLowerCase().includes("streamingcommunity");
-      if (isStreamingCommunityProvider && !finalHeaders) {
-        delete behaviorHints.proxyHeaders;
-        delete behaviorHints.headers;
-        delete behaviorHints.notWebReady;
-      }
-      if (finalHeaders) {
-        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
-        behaviorHints.proxyHeaders.request = finalHeaders;
-        behaviorHints.headers = finalHeaders;
-      }
-      const providerExplicitNotWebReady = stream.behaviorHints && "notWebReady" in stream.behaviorHints;
-      const shouldForceNotWebReady = shouldForceNotWebReadyForPlugin(stream, providerName, finalHeaders, behaviorHints);
-      if (!isStreamingCommunityProvider && shouldForceNotWebReady) {
-        behaviorHints.notWebReady = true;
-      } else if (!providerExplicitNotWebReady) {
-        delete behaviorHints.notWebReady;
-      }
-      const finalName = pName;
-      let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
-      if (desc) finalTitle += ` | ${desc}`;
-      if (language) finalTitle += ` | ${language}`;
-      const playbackReferer = stream.referer || (finalHeaders == null ? void 0 : finalHeaders.Referer) || (finalHeaders == null ? void 0 : finalHeaders.referer);
-      const playbackUserAgent = stream.userAgent || (finalHeaders == null ? void 0 : finalHeaders["User-Agent"]) || (finalHeaders == null ? void 0 : finalHeaders["user-agent"]);
-      return __spreadProps(__spreadValues({}, stream), {
-        // Keep original properties
-        name: finalName,
-        title: finalTitle,
-        // Metadata for Stremio UI reconstruction (safer names for RN)
-        providerName: pName,
-        qualityTag: quality,
-        description: desc,
-        originalTitle: stream.title || "Stream",
-        // Ensure language is set for Stremio/Nuvio sorting
-        language,
-        // Mark as formatted
-        _nuvio_formatted: true,
-        behaviorHints,
-        provider: stream.provider || normalizeProviderId(providerName),
-        referer: playbackReferer,
-        userAgent: playbackUserAgent,
-        // Explicitly ensure root headers are preserved for Nuvio
-        headers: finalHeaders
-      });
-    }
-    module2.exports = { formatStream };
-  }
-});
-
 // src/vidxgo/index.js
 var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
+var { formatStream } = require_formatter();
 if (!IS_SERVER) {
   module.exports = {
     getStreams: (id, type, season, episode) => __async(null, null, function* () {
-      console.warn("[VidxGo-Client] Disabled: VidXGo requires EasyProxy stream proxy.");
-      return [];
+      const settings = typeof globalThis !== "undefined" && globalThis.SCRAPER_SETTINGS || {};
+      const proxyUrl = settings.proxyUrl;
+      const proxyPassword = settings.proxyPassword;
+      if (!proxyUrl || !proxyPassword) {
+        console.warn("[VidxGo-Client] Disabled: proxyUrl and proxyPassword must be configured.");
+        return [];
+      }
+      try {
+        let imdbId = id.toString().replace("tmdb:", "");
+        const isMovie = String(type).toLowerCase() === "movie";
+        if (/^\d+$/.test(imdbId)) {
+          const endpoint = isMovie ? "movie" : "tv";
+          const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+          const url = `https://api.themoviedb.org/3/${endpoint}/${imdbId}?api_key=${TMDB_API_KEY}`;
+          const response = yield fetch(url);
+          if (response.ok) {
+            const data = yield response.json();
+            if (data.imdb_id) {
+              imdbId = data.imdb_id;
+            } else {
+              const extUrl = `https://api.themoviedb.org/3/${endpoint}/${imdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+              const extResponse = yield fetch(extUrl);
+              if (extResponse.ok) {
+                const extData = yield extResponse.json();
+                if (extData.imdb_id) imdbId = extData.imdb_id;
+              }
+            }
+          }
+        }
+        if (!imdbId.startsWith("tt")) {
+          console.warn("[VidxGo-Client] Could not resolve IMDB ID for ID:", id);
+          return [];
+        }
+        const effectiveSeason = parseInt(String(season || ""), 10) || 1;
+        const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
+        const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
+        const cleanProxyUrl = proxyUrl.endsWith("/") ? proxyUrl.slice(0, -1) : proxyUrl;
+        const targetUrl = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
+        const contentTitle = isMovie ? "Film" : "Serie";
+        const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
+        const result = {
+          url: targetUrl,
+          name: "VidxGo",
+          title: displayName,
+          quality: "1080p",
+          language: "Italian",
+          size: "proxied",
+          type: "direct",
+          headers: null,
+          behaviorHints: {
+            proxyHeaders: null,
+            headers: null
+          }
+        };
+        return [formatStream(result, "VidxGo")].filter((s) => s !== null);
+      } catch (e) {
+        console.error("[VidxGo-Client] Error:", e);
+        return [];
+      }
     })
   };
 } else {
@@ -722,7 +780,6 @@ if (!IS_SERVER) {
   const { extractVidxGo } = require_vidxgo();
   require_fetch_helper();
   const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
-  const { formatStream } = require_formatter();
   const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
   module.exports = { getStreams };
 }
