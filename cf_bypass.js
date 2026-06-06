@@ -106,6 +106,23 @@ function execPythonBypass(url, provider, options = {}) {
         let stdout = '';
         let stderr = '';
 
+        const executionTimeout = (parseInt(options.timeout, 10) || 60000) + 10000; // 10 seconds grace period over python timeout
+        let watchdog = setTimeout(() => {
+            console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+            watchdog = null;
+            try {
+                child.kill('SIGKILL');
+            } catch (e) {}
+        }, executionTimeout);
+
+        child.on('error', (err) => {
+            if (watchdog) {
+                clearTimeout(watchdog);
+                watchdog = null;
+            }
+            reject(new Error(`Impossibile avviare Python (${pythonExe}): ${err.message}`));
+        });
+
         child.stdout.on('data', (data) => {
             stdout += data.toString();
         });
@@ -115,6 +132,10 @@ function execPythonBypass(url, provider, options = {}) {
         });
 
         child.on('close', (code) => {
+            if (watchdog) {
+                clearTimeout(watchdog);
+                watchdog = null;
+            }
             // Check if we have valid JSON in stdout despite the exit code or stderr
             // This handles cases where libraries print warnings to stderr and exit with non-zero codes
             let result;
