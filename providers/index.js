@@ -887,6 +887,22 @@ var require_cf_bypass = __commonJS({
         const child = spawn(pythonExe, args);
         let stdout = "";
         let stderr = "";
+        const executionTimeout = (parseInt(options.timeout, 10) || 6e4) + 1e4;
+        let watchdog = setTimeout(() => {
+          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+          watchdog = null;
+          try {
+            child.kill("SIGKILL");
+          } catch (e) {
+          }
+        }, executionTimeout);
+        child.on("error", (err) => {
+          if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+          }
+          reject(new Error(`Impossibile avviare Python (${pythonExe}): ${err.message}`));
+        });
         child.stdout.on("data", (data) => {
           stdout += data.toString();
         });
@@ -894,6 +910,10 @@ var require_cf_bypass = __commonJS({
           stderr += data.toString();
         });
         child.on("close", (code) => {
+          if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+          }
           let result;
           try {
             if (stdout.trim()) {
