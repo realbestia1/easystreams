@@ -887,6 +887,22 @@ var require_cf_bypass = __commonJS({
         const child = spawn(pythonExe, args);
         let stdout = "";
         let stderr = "";
+        const executionTimeout = (parseInt(options.timeout, 10) || 6e4) + 1e4;
+        let watchdog = setTimeout(() => {
+          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+          watchdog = null;
+          try {
+            child.kill("SIGKILL");
+          } catch (e) {
+          }
+        }, executionTimeout);
+        child.on("error", (err) => {
+          if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+          }
+          reject(new Error(`Impossibile avviare Python (${pythonExe}): ${err.message}`));
+        });
         child.stdout.on("data", (data) => {
           stdout += data.toString();
         });
@@ -894,6 +910,10 @@ var require_cf_bypass = __commonJS({
           stderr += data.toString();
         });
         child.on("close", (code) => {
+          if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+          }
           let result;
           try {
             if (stdout.trim()) {
@@ -12955,11 +12975,69 @@ var require_cinemacity = __commonJS({
 var require_vidxgo2 = __commonJS({
   "src/vidxgo/index.js"(exports2, module2) {
     var IS_SERVER = typeof process !== "undefined" && process.versions && process.versions.node;
+    var { formatStream } = require_formatter();
     if (!IS_SERVER) {
       module2.exports = {
         getStreams: (id, type, season, episode) => __async(null, null, function* () {
-          console.warn("[VidxGo-Client] Disabled: VidXGo requires EasyProxy stream proxy.");
-          return [];
+          const settings = typeof globalThis !== "undefined" && globalThis.SCRAPER_SETTINGS || {};
+          const proxyUrl = settings.proxyUrl;
+          const proxyPassword = settings.proxyPassword;
+          if (!proxyUrl || !proxyPassword) {
+            console.warn("[VidxGo-Client] Disabled: proxyUrl and proxyPassword must be configured.");
+            return [];
+          }
+          try {
+            let imdbId = id.toString().replace("tmdb:", "");
+            const isMovie = String(type).toLowerCase() === "movie";
+            if (/^\d+$/.test(imdbId)) {
+              const endpoint = isMovie ? "movie" : "tv";
+              const TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+              const url = `https://api.themoviedb.org/3/${endpoint}/${imdbId}?api_key=${TMDB_API_KEY2}`;
+              const response = yield fetch(url);
+              if (response.ok) {
+                const data = yield response.json();
+                if (data.imdb_id) {
+                  imdbId = data.imdb_id;
+                } else {
+                  const extUrl = `https://api.themoviedb.org/3/${endpoint}/${imdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
+                  const extResponse = yield fetch(extUrl);
+                  if (extResponse.ok) {
+                    const extData = yield extResponse.json();
+                    if (extData.imdb_id) imdbId = extData.imdb_id;
+                  }
+                }
+              }
+            }
+            if (!imdbId.startsWith("tt")) {
+              console.warn("[VidxGo-Client] Could not resolve IMDB ID for ID:", id);
+              return [];
+            }
+            const effectiveSeason = parseInt(String(season || ""), 10) || 1;
+            const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
+            const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
+            const cleanProxyUrl = proxyUrl.endsWith("/") ? proxyUrl.slice(0, -1) : proxyUrl;
+            const targetUrl2 = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
+            const contentTitle = isMovie ? "Film" : "Serie";
+            const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
+            const result = {
+              url: targetUrl2,
+              name: "VidxGo",
+              title: displayName,
+              quality: "1080p",
+              language: "Italian",
+              size: "proxied",
+              type: "direct",
+              headers: null,
+              behaviorHints: {
+                proxyHeaders: null,
+                headers: null
+              }
+            };
+            return [formatStream(result, "VidxGo")].filter((s) => s !== null);
+          } catch (e) {
+            console.error("[VidxGo-Client] Error:", e);
+            return [];
+          }
         })
       };
     } else {
@@ -13217,7 +13295,6 @@ var require_vidxgo2 = __commonJS({
       const { extractVidxGo } = require_vidxgo();
       require_fetch_helper();
       const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
-      const { formatStream } = require_formatter();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       module2.exports = { getStreams: getStreams3 };
     }
