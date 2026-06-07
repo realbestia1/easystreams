@@ -62,7 +62,7 @@ function getMappingLanguage(providerContext = null) {
 
 async function fetchViaWorker(url) {
     const path = url.startsWith('http') ? new URL(url).pathname + new URL(url).search : url;
-    const targetUrl = ('https://' + base64Decode('Y2MubGVh' + 'bmhodTA2' + 'MTIwNi53b3JrZXJzLmRldg==')).replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
+    const targetUrl = ('https://' + base64Decode('Y2MucmVh' + 'bGJlc3Rp' + 'YS5jb20=')).replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
     const response = await fetchWithTimeout(targetUrl, {
         timeout: FETCH_TIMEOUT,
         headers: { "User-Agent": USER_AGENT }
