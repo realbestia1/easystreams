@@ -12467,7 +12467,7 @@ var require_cinemacity = __commonJS({
           return sitemapCache.entries;
         }
         console.log("[CinemaCity] Fetching sitemap catalog...");
-        let sitemapProxy = "https://" + base64Decode("Y2MubGVhbmhodTA2MTIwNi53b3JrZXJzLmRldg==");
+        let sitemapProxy = "https://" + base64Decode("Y2MucmVhbGJlc3RpYS5jb20=");
         const sitemapPath = SITEMAP_URL.startsWith("http") ? new URL(SITEMAP_URL).pathname : SITEMAP_URL;
         if (sitemapProxy) {
           const firstPageUrl = sitemapProxy.endsWith("/") ? `${sitemapProxy.slice(0, -1)}${sitemapPath}?page=1&perPage=500` : `${sitemapProxy}${sitemapPath}?page=1&perPage=500`;

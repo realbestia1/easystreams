@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.91",
+  "version": "1.1.92",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -83,7 +83,7 @@
     {
       "id": "easystreams-cinemacity",
       "name": "CinemaCity",
-      "version": "1.0.37",
+      "version": "1.0.38",
       "description": "Movies and Series from CinemaCity",
       "resources": ["stream"],
       "contentLanguage": ["it"],

@@ -160,7 +160,7 @@ async function fetchSitemapEntries(providerContext = null) {
     }
 
     console.log("[CinemaCity] Fetching sitemap catalog...");
-    let sitemapProxy = 'https://' + base64Decode('Y2M' + 'ubGVhbmhod' + 'TA2MTIwNi53b3JrZXJzLmRldg==');
+    let sitemapProxy = 'https://' + base64Decode('Y2MucmVh' + 'bGJlc3Rp' + 'YS5jb20=');
 
     const sitemapPath = SITEMAP_URL.startsWith('http') ? new URL(SITEMAP_URL).pathname : SITEMAP_URL;
 
