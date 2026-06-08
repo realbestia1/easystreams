@@ -1790,7 +1790,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         if (isStreamingCommunityProvider && !hasEasyProxy) return false;
                         if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
-                        
+                        if (isStreamHgStream(s) && !hasEasyProxy) return false;
                         const canProxyMixdrop = Boolean(easyProxyUrl) && (isMixdropStreamUrl(s.url) || isMixdropStream(s));
                         // Global filter for specific unwanted servers
                         return (
@@ -1828,6 +1828,18 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                     proxyUrl,
                                     proxyPassword,
                                     'vixcloud',
+                                    s.easyProxySourceUrl || s.url
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (isStreamHgStream(s)) {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'streamhg',
                                     s.easyProxySourceUrl || s.url
                                 )
                             );
