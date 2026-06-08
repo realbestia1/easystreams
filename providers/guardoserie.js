@@ -8031,7 +8031,8 @@ var require_streamhg = __commonJS({
           streamUrl = resolveAbsoluteUrl(streamUrl, finalUrl);
           if (!streamUrl) return null;
           return {
-            url: streamUrl
+            url: streamUrl,
+            headers: { "Referer": getOrigin(finalUrl) + "/", "User-Agent": USER_AGENT }
           };
         } catch (e) {
           console.error("[Extractors] StreamHG extraction error:", e);
