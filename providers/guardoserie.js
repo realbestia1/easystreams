@@ -8183,7 +8183,7 @@ if (!IS_SERVER) {
   };
 } else {
   let getGuardoserieBaseUrl = function() {
-    return "https://guardoserie.watch";
+    return "https://guardoserie.world";
   }, getMappingApiUrl = function() {
     return "https://animemapping.realbestia.com";
   }, normalizeConfigBoolean = function(value) {
@@ -8711,7 +8711,7 @@ if (!IS_SERVER) {
       const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
         try {
           if (playerLink.includes("loadm")) {
-            const domain = "guardoserie.horse";
+            const domain = "guardoserie.world";
             const extracted = yield extractLoadm(playerLink, domain);
             return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
               let quality = "HD";
