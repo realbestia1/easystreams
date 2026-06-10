@@ -240,4 +240,4 @@ function hasActiveBypass(provider) {
     return activeBypasses.has(provider);
 }
 
-module.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+module.exports = { getClearance, hasActiveBypass, execPythonBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };

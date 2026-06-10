@@ -6,7 +6,27 @@ const { formatStream } = require('../formatter.js');
 require('../fetch_helper.js');
 const { checkQualityFromText } = require('../quality_helper.js');
 
-const { getClearance } = require('../../cf_bypass');
+const { execPythonBypass } = require('../../cf_bypass');
+const fs = require('fs');
+const path = require('path');
+
+async function scraplingFetch(url, headers = {}, timeout = 15000) {
+    const sessionFile = path.join(process.cwd(), 'cf-session-vixsrc.json');
+    let sessionCookies = '';
+    if (fs.existsSync(sessionFile)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+            if (data && data.cookies) sessionCookies = data.cookies;
+        } catch (e) {}
+    }
+    const mergedHeaders = { ...headers };
+    if (sessionCookies) mergedHeaders.Cookie = sessionCookies;
+    const result = await execPythonBypass(url, 'vixsrc', {
+        headers: mergedHeaders,
+        timeout
+    });
+    return result.html;
+}
 
 function safeRequire(modulePath) {
   try {
@@ -230,11 +250,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let apiData;
     try {
       console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
-      const result = await getClearance(apiUrl, 'vixsrc', {
-        headers: getCommonHeaders(),
-        timeout: 15000
-      });
-      apiData = result.response;
+      apiData = await scraplingFetch(apiUrl, getCommonHeaders(), 15000);
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
       return [];
@@ -249,11 +265,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let embedHtml;
     try {
       console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
-      const result = await getClearance(embedUrl, 'vixsrc', {
-        headers: getEmbedHeaders(embedUrl),
-        timeout: 15000
-      });
-      embedHtml = result.response;
+      embedHtml = await scraplingFetch(embedUrl, getEmbedHeaders(embedUrl), 15000);
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
       return [];
@@ -276,11 +288,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let playlistFetched = false;
     try {
       console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
-      const result = await getClearance(streamUrl, 'vixsrc', {
-        headers: streamHeaders,
-        timeout: 5000
-      });
-      const playlistText = result.response;
+      const playlistText = await scraplingFetch(streamUrl, streamHeaders, 5000);
       if (playlistText) {
         playlistFetched = true;
         hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);

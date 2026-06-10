@@ -322,8 +322,8 @@ var require_quality_helper = __commonJS({
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
     var { spawn } = require("child_process");
-    var path = require("path");
-    var fs = require("fs");
+    var path2 = require("path");
+    var fs2 = require("fs");
     var activeBypasses = /* @__PURE__ */ new Map();
     var globalQueue = [];
     var activeGlobalRequests = 0;
@@ -378,9 +378,9 @@ var require_cf_bypass = __commonJS({
         console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
       });
     }
-    function execPythonBypass(url, provider, options = {}) {
+    function execPythonBypass2(url, provider, options = {}) {
       return new Promise((resolve, reject) => {
-        const scriptPath = path.join(__dirname, "src", "utils", "scrapling_bypass.py");
+        const scriptPath = path2.join(__dirname, "src", "utils", "scrapling_bypass.py");
         const args = [
           scriptPath,
           url,
@@ -399,9 +399,9 @@ var require_cf_bypass = __commonJS({
           args.push("--headers", JSON.stringify(options.headers));
         }
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
-        const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+        const venvPython = path2.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
         let pythonExe = "python3";
-        if (fs.existsSync(venvPython)) {
+        if (fs2.existsSync(venvPython)) {
           pythonExe = venvPython;
         } else if (process.platform === "win32") {
           pythonExe = "python";
@@ -464,7 +464,7 @@ var require_cf_bypass = __commonJS({
       return __async(this, null, function* () {
         const releaseSlot = yield acquireGlobalSlot(provider, url);
         try {
-          const result = yield execPythonBypass(url, provider, options);
+          const result = yield execPythonBypass2(url, provider, options);
           const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
           const cookiesStr = cookiesList.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
           const cookieDomains = [...new Set(cookiesList.map((c) => c.domain).filter(Boolean))];
@@ -478,7 +478,7 @@ var require_cf_bypass = __commonJS({
             timestamp: Date.now()
           };
           try {
-            fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
+            fs2.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
           } catch (e) {
             console.error(`[SC] Errore salvataggio sessione: ${e.message}`);
           }
@@ -489,16 +489,16 @@ var require_cf_bypass = __commonJS({
         }
       });
     }
-    function getClearance2(_0) {
+    function getClearance(_0) {
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
+        const sessionFile = path2.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
           return activeBypasses.get(provider);
         }
         let existingCookies = "";
-        if (fs.existsSync(sessionFile)) {
+        if (fs2.existsSync(sessionFile)) {
           try {
-            const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+            const data = JSON.parse(fs2.readFileSync(sessionFile, "utf8"));
             if (data && data.cookies) existingCookies = data.cookies;
           } catch (e) {
           }
@@ -518,7 +518,7 @@ var require_cf_bypass = __commonJS({
     function hasActiveBypass(provider) {
       return activeBypasses.has(provider);
     }
-    module2.exports = { getClearance: getClearance2, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+    module2.exports = { getClearance, hasActiveBypass, execPythonBypass: execPythonBypass2, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -529,7 +529,29 @@ function getStreamingCommunityBaseUrl() {
 var { formatStream } = require_formatter();
 require_fetch_helper();
 var { checkQualityFromText } = require_quality_helper();
-var { getClearance } = require_cf_bypass();
+var { execPythonBypass } = require_cf_bypass();
+var fs = require("fs");
+var path = require("path");
+function scraplingFetch(_0) {
+  return __async(this, arguments, function* (url, headers = {}, timeout = 15e3) {
+    const sessionFile = path.join(process.cwd(), "cf-session-vixsrc.json");
+    let sessionCookies = "";
+    if (fs.existsSync(sessionFile)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+        if (data && data.cookies) sessionCookies = data.cookies;
+      } catch (e) {
+      }
+    }
+    const mergedHeaders = __spreadValues({}, headers);
+    if (sessionCookies) mergedHeaders.Cookie = sessionCookies;
+    const result = yield execPythonBypass(url, "vixsrc", {
+      headers: mergedHeaders,
+      timeout
+    });
+    return result.html;
+  });
+}
 function safeRequire(modulePath) {
   try {
     return require(modulePath);
@@ -714,11 +736,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let apiData;
       try {
         console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
-        const result2 = yield getClearance(apiUrl, "vixsrc", {
-          headers: getCommonHeaders(),
-          timeout: 15e3
-        });
-        apiData = result2.response;
+        apiData = yield scraplingFetch(apiUrl, getCommonHeaders(), 15e3);
       } catch (e) {
         console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
         return [];
@@ -738,11 +756,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let embedHtml;
       try {
         console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
-        const result2 = yield getClearance(embedUrl, "vixsrc", {
-          headers: getEmbedHeaders(embedUrl),
-          timeout: 15e3
-        });
-        embedHtml = result2.response;
+        embedHtml = yield scraplingFetch(embedUrl, getEmbedHeaders(embedUrl), 15e3);
       } catch (e) {
         console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
         return [];
@@ -762,11 +776,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let playlistFetched = false;
       try {
         console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
-        const result2 = yield getClearance(streamUrl, "vixsrc", {
-          headers: streamHeaders,
-          timeout: 5e3
-        });
-        const playlistText = result2.response;
+        const playlistText = yield scraplingFetch(streamUrl, streamHeaders, 5e3);
         if (playlistText) {
           playlistFetched = true;
           hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);

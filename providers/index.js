@@ -997,7 +997,7 @@ var require_cf_bypass = __commonJS({
     function hasActiveBypass(provider) {
       return activeBypasses.has(provider);
     }
-    module2.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+    module2.exports = { getClearance, hasActiveBypass, execPythonBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -9057,7 +9057,29 @@ var require_streamingcommunity = __commonJS({
     var { formatStream } = require_formatter();
     require_fetch_helper();
     var { checkQualityFromText } = require_quality_helper();
-    var { getClearance } = require_cf_bypass();
+    var { execPythonBypass } = require_cf_bypass();
+    var fs = require("fs");
+    var path = require("path");
+    function scraplingFetch(_0) {
+      return __async(this, arguments, function* (url, headers = {}, timeout = 15e3) {
+        const sessionFile = path.join(process.cwd(), "cf-session-vixsrc.json");
+        let sessionCookies = "";
+        if (fs.existsSync(sessionFile)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+            if (data && data.cookies) sessionCookies = data.cookies;
+          } catch (e) {
+          }
+        }
+        const mergedHeaders = __spreadValues({}, headers);
+        if (sessionCookies) mergedHeaders.Cookie = sessionCookies;
+        const result = yield execPythonBypass(url, "vixsrc", {
+          headers: mergedHeaders,
+          timeout
+        });
+        return result.html;
+      });
+    }
     function safeRequire(modulePath) {
       try {
         return require(modulePath);
@@ -9242,11 +9264,7 @@ var require_streamingcommunity = __commonJS({
           let apiData;
           try {
             console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
-            const result2 = yield getClearance(apiUrl, "vixsrc", {
-              headers: getCommonHeaders(),
-              timeout: 15e3
-            });
-            apiData = result2.response;
+            apiData = yield scraplingFetch(apiUrl, getCommonHeaders(), 15e3);
           } catch (e) {
             console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
             return [];
@@ -9266,11 +9284,7 @@ var require_streamingcommunity = __commonJS({
           let embedHtml;
           try {
             console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
-            const result2 = yield getClearance(embedUrl, "vixsrc", {
-              headers: getEmbedHeaders(embedUrl),
-              timeout: 15e3
-            });
-            embedHtml = result2.response;
+            embedHtml = yield scraplingFetch(embedUrl, getEmbedHeaders(embedUrl), 15e3);
           } catch (e) {
             console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
             return [];
@@ -9290,11 +9304,7 @@ var require_streamingcommunity = __commonJS({
           let playlistFetched = false;
           try {
             console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
-            const result2 = yield getClearance(streamUrl, "vixsrc", {
-              headers: streamHeaders,
-              timeout: 5e3
-            });
-            const playlistText = result2.response;
+            const playlistText = yield scraplingFetch(streamUrl, streamHeaders, 5e3);
             if (playlistText) {
               playlistFetched = true;
               hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
