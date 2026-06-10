@@ -553,6 +553,14 @@ function getCommonHeaders() {
     "Upgrade-Insecure-Requests": "1"
   };
 }
+function getEmbedHeaders(embedUrl) {
+  return {
+    "User-Agent": USER_AGENT,
+    "Referer": `${getStreamingCommunityBaseUrl()}/`,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+  };
+}
 function getPlaylistHeaders(embedUrl) {
   return {
     "User-Agent": USER_AGENT,
@@ -707,6 +715,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       try {
         console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
         const result2 = yield getClearance(apiUrl, "vixsrc", {
+          headers: getCommonHeaders(),
           timeout: 15e3
         });
         apiData = result2.response;
@@ -730,6 +739,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       try {
         console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
         const result2 = yield getClearance(embedUrl, "vixsrc", {
+          headers: getEmbedHeaders(embedUrl),
           timeout: 15e3
         });
         embedHtml = result2.response;
@@ -753,6 +763,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       try {
         console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
         const result2 = yield getClearance(streamUrl, "vixsrc", {
+          headers: streamHeaders,
           timeout: 5e3
         });
         const playlistText = result2.response;

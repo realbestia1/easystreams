@@ -231,6 +231,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     try {
       console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
       const result = await getClearance(apiUrl, 'vixsrc', {
+        headers: getCommonHeaders(),
         timeout: 15000
       });
       apiData = result.response;
@@ -249,6 +250,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     try {
       console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
       const result = await getClearance(embedUrl, 'vixsrc', {
+        headers: getEmbedHeaders(embedUrl),
         timeout: 15000
       });
       embedHtml = result.response;
@@ -275,6 +277,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     try {
       console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
       const result = await getClearance(streamUrl, 'vixsrc', {
+        headers: streamHeaders,
         timeout: 5000
       });
       const playlistText = result.response;
