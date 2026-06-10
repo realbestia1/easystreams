@@ -9051,6 +9051,7 @@ var require_streamingcommunity = __commonJS({
     } catch (_) {
       ProxyAgent = null;
     }
+    var { smartFetch } = require_cf_handler();
     function safeRequire(modulePath) {
       try {
         return require(modulePath);
@@ -9244,31 +9245,43 @@ var require_streamingcommunity = __commonJS({
               console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
             }
           }
-          console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-          const response = yield fetch(apiUrl, {
-            headers: commonHeaders,
-            dispatcher: proxyAgent || void 0
-          });
-          if (!response.ok) {
-            console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
+          let apiData;
+          try {
+            console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
+            apiData = yield smartFetch(apiUrl, baseUrl, {
+              headers: commonHeaders,
+              timeout: 15e3,
+              quietHttpErrors: true,
+              meta: {}
+            });
+          } catch (e) {
+            console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
             return [];
           }
-          const apiPayload = yield response.json().catch(() => null);
+          const apiPayload = (() => {
+            try {
+              return JSON.parse(apiData);
+            } catch (e) {
+              return null;
+            }
+          })();
           const embedUrl = extractEmbedSrcFromApiPayload(apiPayload);
           if (!embedUrl) {
             console.log("[StreamingCommunity] Could not find embed src in API payload");
             return [];
           }
-          console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-          const embedResponse = yield fetch(embedUrl, {
-            headers: getEmbedHeaders(embedUrl),
-            dispatcher: proxyAgent || void 0
-          });
-          if (!embedResponse.ok) {
-            console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+          let embedHtml;
+          try {
+            console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+            embedHtml = yield smartFetch(embedUrl, baseUrl, {
+              headers: getEmbedHeaders(embedUrl),
+              timeout: 15e3,
+              quietHttpErrors: true
+            });
+          } catch (e) {
+            console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
             return [];
           }
-          const embedHtml = yield embedResponse.text();
           if (!embedHtml) return [];
           const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
           if (!masterPlaylist) {
@@ -9283,13 +9296,13 @@ var require_streamingcommunity = __commonJS({
           let hasItalianAudio = false;
           let playlistFetched = false;
           try {
-            const playlistResponse = yield fetch(streamUrl, {
+            const playlistText = yield smartFetch(streamUrl, baseUrl, {
               headers: streamHeaders,
-              dispatcher: proxyAgent || void 0
+              timeout: 5e3,
+              quietHttpErrors: true
             });
-            if (playlistResponse.ok) {
+            if (playlistText) {
               playlistFetched = true;
-              const playlistText = yield playlistResponse.text();
               hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
               const detected = checkQualityFromText(playlistText);
               if (detected) quality = detected;

@@ -13,6 +13,7 @@ try {
 } catch (_) {
     ProxyAgent = null;
 }
+const { smartFetch } = require('../utils/cf_handler');
 
 function safeRequire(modulePath) {
   try {
@@ -245,33 +246,36 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       }
     }
 
-    console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-    const response = await fetch(apiUrl, {
-      headers: commonHeaders,
-      dispatcher: proxyAgent || undefined
-    });
-    if (!response.ok) {
-      console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
+    let apiData;
+    try {
+      console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
+      apiData = await smartFetch(apiUrl, baseUrl, {
+        headers: commonHeaders, timeout: 15000,
+        quietHttpErrors: true,
+        meta: {}
+      });
+    } catch (e) {
+      console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
       return [];
     }
-    const apiPayload = await response.json().catch(() => null);
+    const apiPayload = (() => { try { return JSON.parse(apiData); } catch { return null; } })();
     const embedUrl = extractEmbedSrcFromApiPayload(apiPayload);
     if (!embedUrl) {
       console.log("[StreamingCommunity] Could not find embed src in API payload");
       return [];
     }
 
-    console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-    const embedResponse = await fetch(embedUrl, {
-      headers: getEmbedHeaders(embedUrl),
-      dispatcher: proxyAgent || undefined
-    });
-    if (!embedResponse.ok) {
-      console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+    let embedHtml;
+    try {
+      console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+      embedHtml = await smartFetch(embedUrl, baseUrl, {
+        headers: getEmbedHeaders(embedUrl), timeout: 15000,
+        quietHttpErrors: true
+      });
+    } catch (e) {
+      console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
       return [];
     }
-
-    const embedHtml = await embedResponse.text();
     if (!embedHtml) return [];
 
     const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
@@ -289,13 +293,12 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let hasItalianAudio = false;
     let playlistFetched = false;
     try {
-      const playlistResponse = await fetch(streamUrl, {
-        headers: streamHeaders,
-        dispatcher: proxyAgent || undefined
+      const playlistText = await smartFetch(streamUrl, baseUrl, {
+        headers: streamHeaders, timeout: 5000,
+        quietHttpErrors: true
       });
-      if (playlistResponse.ok) {
+      if (playlistText) {
         playlistFetched = true;
-        const playlistText = await playlistResponse.text();
         hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
         const detected = checkQualityFromText(playlistText);
         if (detected) quality = detected;
