@@ -25,6 +25,8 @@ async function scraplingFetch(url, headers = {}, timeout = 15000) {
         headers: mergedHeaders,
         timeout
     });
+    const body = result.raw || result.html;
+    console.log(`[StreamingCommunity] Scrapling response type: ${result.raw ? 'raw' : 'html'}, length: ${(body || '').length}`);
     // Save fresh cookies from response back to session file
     if (result.cookies && Array.isArray(result.cookies) && result.cookies.length > 0) {
         const freshCookies = result.cookies
@@ -40,7 +42,7 @@ async function scraplingFetch(url, headers = {}, timeout = 15000) {
             try { fs.writeFileSync(sessionFile, JSON.stringify(existing, null, 2)); } catch (e) {}
         }
     }
-    return result.html;
+    return body;
 }
 
 function safeRequire(modulePath) {
@@ -266,6 +268,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     try {
       console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
       apiData = await scraplingFetch(apiUrl, getCommonHeaders(), 15000);
+      console.log(`[StreamingCommunity] API response (first 300): ${(apiData || '').substring(0, 300)}`);
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
       return [];

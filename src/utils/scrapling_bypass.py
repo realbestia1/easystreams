@@ -72,6 +72,7 @@ def main():
             'code': response.status,
             'url': str(response.url),
             'html': response.html_content,
+            'raw': response.text,
             'headers': dict(response.headers),
             'cookies': response.cookies,
             'userAgent': ua,

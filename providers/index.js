@@ -9077,6 +9077,8 @@ var require_streamingcommunity = __commonJS({
           headers: mergedHeaders,
           timeout
         });
+        const body = result.raw || result.html;
+        console.log(`[StreamingCommunity] Scrapling response type: ${result.raw ? "raw" : "html"}, length: ${(body || "").length}`);
         if (result.cookies && Array.isArray(result.cookies) && result.cookies.length > 0) {
           const freshCookies = result.cookies.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
           if (freshCookies) {
@@ -9091,7 +9093,7 @@ var require_streamingcommunity = __commonJS({
             }
           }
         }
-        return result.html;
+        return body;
       });
     }
     function safeRequire(modulePath) {
@@ -9279,6 +9281,7 @@ var require_streamingcommunity = __commonJS({
           try {
             console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
             apiData = yield scraplingFetch(apiUrl, getCommonHeaders(), 15e3);
+            console.log(`[StreamingCommunity] API response (first 300): ${(apiData || "").substring(0, 300)}`);
           } catch (e) {
             console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
             return [];
