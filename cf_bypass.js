@@ -213,6 +213,20 @@ async function getClearance(url, provider = 'default', options = {}) {
         return activeBypasses.get(provider);
     }
 
+    // Load existing session cookies to pass to scrapling (so it avoids re-solving CF)
+    let existingCookies = '';
+    if (fs.existsSync(sessionFile)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+            if (data && data.cookies) existingCookies = data.cookies;
+        } catch (e) {}
+    }
+    if (existingCookies) {
+        const existingHeaders = options.headers || {};
+        existingHeaders.Cookie = existingCookies;
+        options.headers = existingHeaders;
+    }
+
     const bypassPromise = runBypass(url, provider, options, sessionFile)
         .finally(() => {
             activeBypasses.delete(provider);

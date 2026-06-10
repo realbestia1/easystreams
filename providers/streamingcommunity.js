@@ -489,11 +489,24 @@ var require_cf_bypass = __commonJS({
         }
       });
     }
-    function getClearance(_0) {
+    function getClearance2(_0) {
       return __async(this, arguments, function* (url, provider = "default", options = {}) {
         const sessionFile = path.join(process.cwd(), `cf-session-${provider}.json`);
         if (activeBypasses.has(provider)) {
           return activeBypasses.get(provider);
+        }
+        let existingCookies = "";
+        if (fs.existsSync(sessionFile)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+            if (data && data.cookies) existingCookies = data.cookies;
+          } catch (e) {
+          }
+        }
+        if (existingCookies) {
+          const existingHeaders = options.headers || {};
+          existingHeaders.Cookie = existingCookies;
+          options.headers = existingHeaders;
         }
         const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
           activeBypasses.delete(provider);
@@ -505,330 +518,7 @@ var require_cf_bypass = __commonJS({
     function hasActiveBypass(provider) {
       return activeBypasses.has(provider);
     }
-    module2.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
-  }
-});
-
-// src/utils/cf_handler.js
-var require_cf_handler = __commonJS({
-  "src/utils/cf_handler.js"(exports2, module2) {
-    var axios = require("axios");
-    var fs = require("fs");
-    var path = require("path");
-    var { getClearance } = require_cf_bypass();
-    var https = require("https");
-    var http = require("http");
-    var agentOptions = {
-      keepAlive: true,
-      maxSockets: 250,
-      maxFreeSockets: 100,
-      timeout: 3e4,
-      keepAliveMsecs: 3e4
-    };
-    var httpsAgent = new https.Agent(agentOptions);
-    var httpAgent = new http.Agent(agentOptions);
-    var sessionCache = /* @__PURE__ */ new Map();
-    function smartFetch2(_0, _1) {
-      return __async(this, arguments, function* (url, domain, options = {}) {
-        var _a, _b;
-        const getHost = (u) => {
-          try {
-            return new URL(u).hostname.replace("www.", "");
-          } catch (e) {
-            return u;
-          }
-        };
-        const normalizeHost = (value) => String(value || "").trim().toLowerCase().replace(/^www\./, "").replace(/^\./, "");
-        const rootDomain = (host) => {
-          const parts = normalizeHost(host).split(".").filter(Boolean);
-          return parts.length >= 2 ? parts.slice(-2).join(".") : parts.join(".");
-        };
-        const domainMatchesHost = (domainValue, hostValue) => {
-          const cookieDomain = normalizeHost(domainValue);
-          const host = normalizeHost(hostValue);
-          if (!cookieDomain || !host) return false;
-          return host === cookieDomain || host.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${host}`);
-        };
-        const urlHost = getHost(url);
-        const domainHost = getHost(domain);
-        const providerFromHost = (host) => normalizeHost(host).split(".")[0] || "default";
-        const provider = urlHost !== domainHost ? providerFromHost(urlHost) : options.provider || providerFromHost(domainHost);
-        const sessionFileForProvider = (providerName) => path.join(process.cwd(), `cf-session-${providerName}.json`);
-        const sessionFile = sessionFileForProvider(provider);
-        const cacheKey = `${options.method || "GET"}:${url}:${options.body || ""}`;
-        const loadSession = (providerName = provider, targetHost = urlHost) => {
-          const targetSessionFile = sessionFileForProvider(providerName);
-          if (providerName !== "guardoserie") {
-            const cached = sessionCache.get(providerName);
-            if (cached && cached.cookies && Date.now() - cached.timestamp < 115 * 60 * 1e3) {
-              console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
-              return cached;
-            }
-          }
-          if (fs.existsSync(targetSessionFile)) {
-            try {
-              const data = JSON.parse(fs.readFileSync(targetSessionFile, "utf8"));
-              if (data && data.userAgent) {
-                const ageMs = Date.now() - (data.timestamp || 0);
-                const twoHours = 2 * 60 * 60 * 1e3;
-                if (ageMs > twoHours) {
-                  console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
-                  try {
-                    fs.unlinkSync(targetSessionFile);
-                  } catch (e) {
-                  }
-                  return {};
-                }
-                if (data.url) {
-                  try {
-                    const sessionHost = getHost(data.url);
-                    const sessionRoot = rootDomain(sessionHost);
-                    const currentRoot = rootDomain(targetHost);
-                    const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
-                    const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, targetHost));
-                    if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
-                      console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
-                      try {
-                        fs.unlinkSync(targetSessionFile);
-                      } catch (e) {
-                      }
-                      return {};
-                    }
-                  } catch (e) {
-                  }
-                }
-                if (providerName !== "guardoserie") {
-                  sessionCache.set(providerName, data);
-                }
-                return data;
-              }
-            } catch (e) {
-              return {};
-            }
-          }
-          return {};
-        };
-        let session = loadSession();
-        let currentUrl = url;
-        if (session.url) {
-        }
-        if (!session.cookies && provider === "guardoserie") {
-          console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
-        }
-        const doRequest = (_02, _12, ..._2) => __async(null, [_02, _12, ..._2], function* (targetUrl, sess, reqOptions = {}) {
-          var _a2, _b2, _c, _d, _e;
-          const mergedHeaders = __spreadValues({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-          }, reqOptions.headers);
-          if (sess.userAgent) {
-            mergedHeaders["user-agent"] = sess.userAgent;
-            delete mergedHeaders["User-Agent"];
-          } else if (!mergedHeaders["user-agent"] && !mergedHeaders["User-Agent"]) {
-            mergedHeaders["user-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-          }
-          if (sess.cookies) {
-            const existingCookies = mergedHeaders.Cookie || mergedHeaders.cookie || "";
-            mergedHeaders.cookie = existingCookies ? existingCookies.endsWith(";") ? `${existingCookies} ${sess.cookies}` : `${existingCookies}; ${sess.cookies}` : sess.cookies;
-            delete mergedHeaders["Cookie"];
-          }
-          if (sess.requestHeaders) {
-            const browserHeaders = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site"];
-            for (const h of browserHeaders) {
-              if (sess.requestHeaders[h]) mergedHeaders[h] = sess.requestHeaders[h];
-            }
-          }
-          const startTime = Date.now();
-          const requestTimeout = reqOptions.timeout ? reqOptions.timeout : sess.userAgent ? 6e4 : 3e4;
-          console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
-          const source = axios.CancelToken.source();
-          let timeoutId;
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-              source.cancel("timeout");
-              const err = new Error(`timeout of ${requestTimeout}ms exceeded`);
-              err.code = "ECONNABORTED";
-              reject(err);
-            }, requestTimeout);
-          });
-          try {
-            const axiosPromise = axios(__spreadValues({
-              url: targetUrl,
-              method: reqOptions.method || "GET",
-              data: reqOptions.body,
-              headers: mergedHeaders,
-              httpsAgent,
-              httpAgent,
-              cancelToken: source.token,
-              validateStatus: false,
-              responseType: reqOptions.responseType || "text"
-            }, reqOptions.axiosConfig));
-            const response = yield Promise.race([axiosPromise, timeoutPromise]);
-            clearTimeout(timeoutId);
-            const duration = Date.now() - startTime;
-            if (sess.cookies) {
-              console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
-            }
-            const data = response.data;
-            const responseUrl = ((_b2 = (_a2 = response.request) == null ? void 0 : _a2.res) == null ? void 0 : _b2.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl;
-            if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
-              const quietHttpErrors = reqOptions.quietHttpErrors === true || Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status);
-              if (!quietHttpErrors) {
-                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
-              }
-              const err = new Error(`HTTP ${response.status}`);
-              err.response = { status: response.status, data, url: responseUrl };
-              throw err;
-            }
-            return { data, status: response.status, headers: response.headers, url: responseUrl };
-          } catch (e) {
-            clearTimeout(timeoutId);
-            if (axios.isCancel(e) || e.code === "ECONNABORTED") {
-              const timeoutErr = new Error(`timeout of ${requestTimeout}ms exceeded`);
-              timeoutErr.code = "ECONNABORTED";
-              throw timeoutErr;
-            }
-            throw e;
-          }
-        });
-        const updateMetaFinalUrl = (res) => {
-          if (!options.meta || !res || !res.url) return;
-          try {
-            const finalUrl = new URL(res.url).toString();
-            if (finalUrl) options.meta.finalUrl = finalUrl;
-          } catch (e) {
-          }
-        };
-        const isUsefulHtml = (value) => {
-          const text = typeof value === "string" ? value.trim() : "";
-          if (text.length < 200) return false;
-          if (/Just a moment|cf-browser-verification|turnstile|cf-challenge/i.test(text)) return false;
-          return true;
-        };
-        const isCfStatus = (errorOrResponse) => {
-          var _a2;
-          if (errorOrResponse && (errorOrResponse.code === "ECONNABORTED" || ((_a2 = errorOrResponse.message) == null ? void 0 : _a2.includes("timeout")))) {
-            return true;
-          }
-          const status = errorOrResponse && errorOrResponse.response ? errorOrResponse.response.status : errorOrResponse && errorOrResponse.status;
-          return status === 403 || status === 503;
-        };
-        const isCfChallenge = (html) => {
-          if (typeof html !== "string") return false;
-          return /Just a moment|cf-browser-verification|turnstile|cf-challenge|Checking your browser/i.test(html);
-        };
-        const retryWithRedirectedSession = (challengeUrl) => __async(null, null, function* () {
-          let challengeHost = "";
-          try {
-            challengeHost = getHost(challengeUrl);
-          } catch (e) {
-          }
-          if (!challengeHost || challengeHost === urlHost) return null;
-          const challengeProvider = providerFromHost(challengeHost);
-          if (!challengeProvider || challengeProvider === provider) return null;
-          const redirectedSession = loadSession(challengeProvider, challengeHost);
-          if (!redirectedSession || !redirectedSession.cookies) return null;
-          console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
-          try {
-            const redirectedRes = yield doRequest(challengeUrl, redirectedSession, options);
-            updateMetaFinalUrl(redirectedRes);
-            if (redirectedRes.status === 403 || redirectedRes.status === 503) {
-              try {
-                fs.unlinkSync(sessionFileForProvider(challengeProvider));
-              } catch (e) {
-              }
-              return null;
-            }
-            console.log(`[CF-HANDLER][${challengeProvider}] Redirect completato usando sessione esistente.`);
-            return redirectedRes.data;
-          } catch (retryErr) {
-            if (isCfStatus(retryErr)) {
-              try {
-                fs.unlinkSync(sessionFileForProvider(challengeProvider));
-              } catch (e) {
-              }
-              return null;
-            }
-            throw retryErr;
-          }
-        });
-        try {
-          const res = yield doRequest(currentUrl, session, options);
-          updateMetaFinalUrl(res);
-          if (res.status === 403 || res.status === 503 || res.status === 200 && isCfChallenge(res.data)) {
-            throw { response: res };
-          }
-          if (session.cookies) {
-            if (res.headers["set-cookie"]) {
-            }
-          }
-          return res.data;
-        } catch (err) {
-          if (isCfStatus(err)) {
-            if (options.skipBypassOnFailure) {
-              throw err;
-            }
-            const errorMsg = err.code === "ECONNABORTED" || ((_a = err.message) == null ? void 0 : _a.includes("timeout")) ? "Timeout richiesta" : ((_b = err.response) == null ? void 0 : _b.status) || err.message;
-            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
-            const challengeUrl = err.response && err.response.url ? err.response.url : url;
-            const redirectedData = yield retryWithRedirectedSession(challengeUrl);
-            if (redirectedData !== null) {
-              return redirectedData;
-            }
-            let bypassUrl = url;
-            let bypassProvider = provider;
-            try {
-              const challengeHost = getHost(challengeUrl);
-              if (challengeHost && challengeHost !== urlHost) {
-                bypassUrl = challengeUrl;
-                bypassProvider = providerFromHost(challengeHost);
-              }
-            } catch (e) {
-            }
-            const bypassSessionFile = sessionFileForProvider(bypassProvider);
-            if (fs.existsSync(bypassSessionFile)) {
-              try {
-                fs.unlinkSync(bypassSessionFile);
-              } catch (e) {
-              }
-            }
-            const newSession = yield getClearance(bypassUrl, bypassProvider, options);
-            if (!newSession) {
-              throw new Error(`Bypass fallito per ${bypassProvider}`);
-            }
-            if (options.meta && newSession.url) {
-              options.meta.finalUrl = newSession.url;
-            }
-            if (isUsefulHtml(newSession.response)) {
-              return newSession.response;
-            }
-            let finalUrl = bypassUrl === url ? currentUrl : bypassUrl;
-            if (newSession.url) {
-              try {
-                const oldUrlObj = new URL(bypassUrl);
-                const newUrlObj = new URL(newSession.url);
-                const newSessionHasSpecificTarget = newUrlObj.pathname !== "/" || Boolean(newUrlObj.search) || Boolean(newUrlObj.hash) || oldUrlObj.hostname === newUrlObj.hostname;
-                if (newSessionHasSpecificTarget) {
-                  finalUrl = newUrlObj.toString();
-                  if (options.meta) options.meta.finalUrl = finalUrl;
-                } else if (oldUrlObj.hostname !== newUrlObj.hostname) {
-                  oldUrlObj.hostname = newUrlObj.hostname;
-                  oldUrlObj.protocol = newUrlObj.protocol;
-                  finalUrl = oldUrlObj.toString();
-                  if (options.meta) options.meta.finalUrl = finalUrl;
-                }
-              } catch (e) {
-              }
-            }
-            const res = yield doRequest(finalUrl, newSession);
-            updateMetaFinalUrl(res);
-            return res.data;
-          }
-          throw err;
-        }
-      });
-    }
-    module2.exports = { smartFetch: smartFetch2 };
+    module2.exports = { getClearance: getClearance2, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -839,14 +529,7 @@ function getStreamingCommunityBaseUrl() {
 var { formatStream } = require_formatter();
 require_fetch_helper();
 var { checkQualityFromText } = require_quality_helper();
-var STREAMINGCOMMUNITY_PROXY = typeof process !== "undefined" && process.env.STREAMINGCOMMUNITY_PROXY || "";
-var ProxyAgent = null;
-try {
-  ProxyAgent = require("undici").ProxyAgent;
-} catch (_) {
-  ProxyAgent = null;
-}
-var { smartFetch } = require_cf_handler();
+var { getClearance } = require_cf_bypass();
 function safeRequire(modulePath) {
   try {
     return require(modulePath);
@@ -868,14 +551,6 @@ function getCommonHeaders() {
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
     "Upgrade-Insecure-Requests": "1"
-  };
-}
-function getEmbedHeaders(embedUrl) {
-  return {
-    "User-Agent": USER_AGENT,
-    "Referer": `${getStreamingCommunityBaseUrl()}/`,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
   };
 }
 function getPlaylistHeaders(embedUrl) {
@@ -1028,27 +703,13 @@ function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
     try {
-      const isProxyMode = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
-      const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
-      const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === "function";
-      let proxyAgent = null;
-      if (useProxyFetch) {
-        try {
-          proxyAgent = new ProxyAgent(proxySocks);
-          console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
-        } catch (e) {
-          console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
-        }
-      }
       let apiData;
       try {
-        console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-        apiData = yield smartFetch(apiUrl, baseUrl, {
-          headers: commonHeaders,
-          timeout: 15e3,
-          quietHttpErrors: true,
-          meta: {}
+        console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
+        const result2 = yield getClearance(apiUrl, "vixsrc", {
+          timeout: 15e3
         });
+        apiData = result2.response;
       } catch (e) {
         console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
         return [];
@@ -1067,12 +728,11 @@ function getStreams(id, type, season, episode, providerContext = null) {
       }
       let embedHtml;
       try {
-        console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-        embedHtml = yield smartFetch(embedUrl, baseUrl, {
-          headers: getEmbedHeaders(embedUrl),
-          timeout: 15e3,
-          quietHttpErrors: true
+        console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
+        const result2 = yield getClearance(embedUrl, "vixsrc", {
+          timeout: 15e3
         });
+        embedHtml = result2.response;
       } catch (e) {
         console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
         return [];
@@ -1091,11 +751,11 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let hasItalianAudio = false;
       let playlistFetched = false;
       try {
-        const playlistText = yield smartFetch(streamUrl, baseUrl, {
-          headers: streamHeaders,
-          timeout: 5e3,
-          quietHttpErrors: true
+        console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
+        const result2 = yield getClearance(streamUrl, "vixsrc", {
+          timeout: 5e3
         });
+        const playlistText = result2.response;
         if (playlistText) {
           playlistFetched = true;
           hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);

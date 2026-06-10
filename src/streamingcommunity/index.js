@@ -6,14 +6,7 @@ const { formatStream } = require('../formatter.js');
 require('../fetch_helper.js');
 const { checkQualityFromText } = require('../quality_helper.js');
 
-const STREAMINGCOMMUNITY_PROXY = (typeof process !== 'undefined' && process.env.STREAMINGCOMMUNITY_PROXY) || '';
-let ProxyAgent = null;
-try {
-    ProxyAgent = require('undici').ProxyAgent;
-} catch (_) {
-    ProxyAgent = null;
-}
-const { smartFetch } = require('../utils/cf_handler');
+const { getClearance } = require('../../cf_bypass');
 
 function safeRequire(modulePath) {
   try {
@@ -233,27 +226,14 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
 
   try {
-    const isProxyMode = Boolean(providerContext?.proxyUrl);
-    const proxySocks = STREAMINGCOMMUNITY_PROXY || (typeof process !== 'undefined' && process.env.SOCKS5_PROXY) || '';
-    const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === 'function';
-    let proxyAgent = null;
-    if (useProxyFetch) {
-      try {
-        proxyAgent = new ProxyAgent(proxySocks);
-        console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
-      } catch (e) {
-        console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
-      }
-    }
 
     let apiData;
     try {
-      console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-      apiData = await smartFetch(apiUrl, baseUrl, {
-        headers: commonHeaders, timeout: 15000,
-        quietHttpErrors: true,
-        meta: {}
+      console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
+      const result = await getClearance(apiUrl, 'vixsrc', {
+        timeout: 15000
       });
+      apiData = result.response;
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
       return [];
@@ -267,11 +247,11 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
     let embedHtml;
     try {
-      console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-      embedHtml = await smartFetch(embedUrl, baseUrl, {
-        headers: getEmbedHeaders(embedUrl), timeout: 15000,
-        quietHttpErrors: true
+      console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
+      const result = await getClearance(embedUrl, 'vixsrc', {
+        timeout: 15000
       });
+      embedHtml = result.response;
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
       return [];
@@ -293,10 +273,11 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let hasItalianAudio = false;
     let playlistFetched = false;
     try {
-      const playlistText = await smartFetch(streamUrl, baseUrl, {
-        headers: streamHeaders, timeout: 5000,
-        quietHttpErrors: true
+      console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
+      const result = await getClearance(streamUrl, 'vixsrc', {
+        timeout: 5000
       });
+      const playlistText = result.response;
       if (playlistText) {
         playlistFetched = true;
         hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);

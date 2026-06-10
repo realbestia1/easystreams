@@ -974,6 +974,19 @@ var require_cf_bypass = __commonJS({
         if (activeBypasses.has(provider)) {
           return activeBypasses.get(provider);
         }
+        let existingCookies = "";
+        if (fs.existsSync(sessionFile)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+            if (data && data.cookies) existingCookies = data.cookies;
+          } catch (e) {
+          }
+        }
+        if (existingCookies) {
+          const existingHeaders = options.headers || {};
+          existingHeaders.Cookie = existingCookies;
+          options.headers = existingHeaders;
+        }
         const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
           activeBypasses.delete(provider);
         });
@@ -9044,14 +9057,7 @@ var require_streamingcommunity = __commonJS({
     var { formatStream } = require_formatter();
     require_fetch_helper();
     var { checkQualityFromText } = require_quality_helper();
-    var STREAMINGCOMMUNITY_PROXY = typeof process !== "undefined" && process.env.STREAMINGCOMMUNITY_PROXY || "";
-    var ProxyAgent = null;
-    try {
-      ProxyAgent = require("undici").ProxyAgent;
-    } catch (_) {
-      ProxyAgent = null;
-    }
-    var { smartFetch } = require_cf_handler();
+    var { getClearance } = require_cf_bypass();
     function safeRequire(modulePath) {
       try {
         return require(modulePath);
@@ -9073,14 +9079,6 @@ var require_streamingcommunity = __commonJS({
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1"
-      };
-    }
-    function getEmbedHeaders(embedUrl) {
-      return {
-        "User-Agent": USER_AGENT,
-        "Referer": `${getStreamingCommunityBaseUrl()}/`,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
       };
     }
     function getPlaylistHeaders(embedUrl) {
@@ -9233,27 +9231,13 @@ var require_streamingcommunity = __commonJS({
           return [];
         }
         try {
-          const isProxyMode = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
-          const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
-          const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === "function";
-          let proxyAgent = null;
-          if (useProxyFetch) {
-            try {
-              proxyAgent = new ProxyAgent(proxySocks);
-              console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
-            } catch (e) {
-              console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
-            }
-          }
           let apiData;
           try {
-            console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-            apiData = yield smartFetch(apiUrl, baseUrl, {
-              headers: commonHeaders,
-              timeout: 15e3,
-              quietHttpErrors: true,
-              meta: {}
+            console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
+            const result2 = yield getClearance(apiUrl, "vixsrc", {
+              timeout: 15e3
             });
+            apiData = result2.response;
           } catch (e) {
             console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
             return [];
@@ -9272,12 +9256,11 @@ var require_streamingcommunity = __commonJS({
           }
           let embedHtml;
           try {
-            console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-            embedHtml = yield smartFetch(embedUrl, baseUrl, {
-              headers: getEmbedHeaders(embedUrl),
-              timeout: 15e3,
-              quietHttpErrors: true
+            console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
+            const result2 = yield getClearance(embedUrl, "vixsrc", {
+              timeout: 15e3
             });
+            embedHtml = result2.response;
           } catch (e) {
             console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
             return [];
@@ -9296,11 +9279,11 @@ var require_streamingcommunity = __commonJS({
           let hasItalianAudio = false;
           let playlistFetched = false;
           try {
-            const playlistText = yield smartFetch(streamUrl, baseUrl, {
-              headers: streamHeaders,
-              timeout: 5e3,
-              quietHttpErrors: true
+            console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
+            const result2 = yield getClearance(streamUrl, "vixsrc", {
+              timeout: 5e3
             });
+            const playlistText = result2.response;
             if (playlistText) {
               playlistFetched = true;
               hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
