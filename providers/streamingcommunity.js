@@ -318,210 +318,6 @@ var require_quality_helper = __commonJS({
   }
 });
 
-// cf_bypass.js
-var require_cf_bypass = __commonJS({
-  "cf_bypass.js"(exports2, module2) {
-    var { spawn } = require("child_process");
-    var path2 = require("path");
-    var fs2 = require("fs");
-    var activeBypasses = /* @__PURE__ */ new Map();
-    var globalQueue = [];
-    var activeGlobalRequests = 0;
-    var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "2", 10);
-    var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "20", 10);
-    var GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || "60000", 10);
-    function createRelease() {
-      let released = false;
-      return () => {
-        if (released) return;
-        released = true;
-        activeGlobalRequests = Math.max(0, activeGlobalRequests - 1);
-        drainGlobalQueue();
-      };
-    }
-    function drainGlobalQueue() {
-      while (activeGlobalRequests < MAX_GLOBAL_CONCURRENT && globalQueue.length > 0) {
-        const entry = globalQueue.shift();
-        if (!entry || entry.done) continue;
-        entry.done = true;
-        clearTimeout(entry.timeoutId);
-        activeGlobalRequests++;
-        console.log(`[SC] Slot Scrapling assegnato a [${entry.provider}]. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
-        entry.resolve(createRelease());
-      }
-    }
-    function acquireGlobalSlot(provider, url) {
-      if (activeGlobalRequests < MAX_GLOBAL_CONCURRENT) {
-        activeGlobalRequests++;
-        return Promise.resolve(createRelease());
-      }
-      if (globalQueue.length >= MAX_GLOBAL_QUEUE) {
-        return Promise.reject(new Error(`Coda Scrapling piena (${globalQueue.length}/${MAX_GLOBAL_QUEUE}) per ${provider}`));
-      }
-      return new Promise((resolve, reject) => {
-        const entry = {
-          provider,
-          url,
-          done: false,
-          resolve,
-          reject,
-          timeoutId: null
-        };
-        entry.timeoutId = setTimeout(() => {
-          if (entry.done) return;
-          entry.done = true;
-          const index = globalQueue.indexOf(entry);
-          if (index >= 0) globalQueue.splice(index, 1);
-          reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
-        }, GLOBAL_QUEUE_TIMEOUT);
-        globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
-      });
-    }
-    function execPythonBypass2(url, provider, options = {}) {
-      return new Promise((resolve, reject) => {
-        const scriptPath = path2.join(__dirname, "src", "utils", "scrapling_bypass.py");
-        const args = [
-          scriptPath,
-          url,
-          "--timeout",
-          String(options.timeout || 6e4),
-          "--wait-until",
-          options.waitUntil || "domcontentloaded"
-        ];
-        if (options.method) {
-          args.push("--method", options.method);
-        }
-        if (options.body) {
-          args.push("--data", options.body);
-        }
-        if (options.headers) {
-          args.push("--headers", JSON.stringify(options.headers));
-        }
-        console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
-        const venvPython = path2.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-        let pythonExe = "python3";
-        if (fs2.existsSync(venvPython)) {
-          pythonExe = venvPython;
-        } else if (process.platform === "win32") {
-          pythonExe = "python";
-        }
-        const child = spawn(pythonExe, args);
-        let stdout = "";
-        let stderr = "";
-        const executionTimeout = (parseInt(options.timeout, 10) || 6e4) + 1e4;
-        let watchdog = setTimeout(() => {
-          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
-          watchdog = null;
-          try {
-            child.kill("SIGKILL");
-          } catch (e) {
-          }
-        }, executionTimeout);
-        child.on("error", (err) => {
-          if (watchdog) {
-            clearTimeout(watchdog);
-            watchdog = null;
-          }
-          reject(new Error(`Impossibile avviare Python (${pythonExe}): ${err.message}`));
-        });
-        child.stdout.on("data", (data) => {
-          stdout += data.toString();
-        });
-        child.stderr.on("data", (data) => {
-          stderr += data.toString();
-        });
-        child.on("close", (code) => {
-          if (watchdog) {
-            clearTimeout(watchdog);
-            watchdog = null;
-          }
-          let result;
-          try {
-            if (stdout.trim()) {
-              result = JSON.parse(stdout);
-            }
-          } catch (e) {
-          }
-          if (result && result.status === "ok") {
-            return resolve(result);
-          }
-          if (result && result.status === "error") {
-            return reject(new Error(result.message || "Unknown Scrapling error"));
-          }
-          if (code !== 0) {
-            console.error(`[SC][${provider}] Python script fallito con codice ${code}: ${stderr}`);
-            return reject(new Error(stderr.trim() || `Python script exited with code ${code}`));
-          }
-          if (!result) {
-            console.error(`[SC][${provider}] Errore parsing output Python (Vuoto o non valido): ${stdout}`);
-            reject(new Error(`Failed to parse Scrapling output: Empty or invalid JSON`));
-          }
-        });
-      });
-    }
-    function runBypass(url, provider, options, sessionFile) {
-      return __async(this, null, function* () {
-        const releaseSlot = yield acquireGlobalSlot(provider, url);
-        try {
-          const result = yield execPythonBypass2(url, provider, options);
-          const cookiesList = Array.isArray(result.cookies) ? result.cookies : [];
-          const cookiesStr = cookiesList.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
-          const cookieDomains = [...new Set(cookiesList.map((c) => c.domain).filter(Boolean))];
-          const data = {
-            userAgent: result.userAgent,
-            cookies: cookiesStr,
-            url: result.url,
-            response: result.html,
-            cookieDomains,
-            requestHeaders: result.requestHeaders,
-            timestamp: Date.now()
-          };
-          try {
-            fs2.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
-          } catch (e) {
-            console.error(`[SC] Errore salvataggio sessione: ${e.message}`);
-          }
-          console.log(`[SC][${provider}] Bypass completato con successo.`);
-          return data;
-        } finally {
-          releaseSlot();
-        }
-      });
-    }
-    function getClearance(_0) {
-      return __async(this, arguments, function* (url, provider = "default", options = {}) {
-        const sessionFile = path2.join(process.cwd(), `cf-session-${provider}.json`);
-        if (activeBypasses.has(provider)) {
-          return activeBypasses.get(provider);
-        }
-        let existingCookies = "";
-        if (fs2.existsSync(sessionFile)) {
-          try {
-            const data = JSON.parse(fs2.readFileSync(sessionFile, "utf8"));
-            if (data && data.cookies) existingCookies = data.cookies;
-          } catch (e) {
-          }
-        }
-        if (existingCookies) {
-          const existingHeaders = options.headers || {};
-          existingHeaders.Cookie = existingCookies;
-          options.headers = existingHeaders;
-        }
-        const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
-          activeBypasses.delete(provider);
-        });
-        activeBypasses.set(provider, bypassPromise);
-        return bypassPromise;
-      });
-    }
-    function hasActiveBypass(provider) {
-      return activeBypasses.has(provider);
-    }
-    module2.exports = { getClearance, hasActiveBypass, execPythonBypass: execPythonBypass2, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
-  }
-});
-
 // src/streamingcommunity/index.js
 function getStreamingCommunityBaseUrl() {
   return "https://vixsrc.to";
@@ -529,44 +325,12 @@ function getStreamingCommunityBaseUrl() {
 var { formatStream } = require_formatter();
 require_fetch_helper();
 var { checkQualityFromText } = require_quality_helper();
-var { execPythonBypass } = require_cf_bypass();
-var fs = require("fs");
-var path = require("path");
-function scraplingFetch(_0) {
-  return __async(this, arguments, function* (url, headers = {}, timeout = 15e3) {
-    const sessionFile = path.join(process.cwd(), "cf-session-vixsrc.json");
-    let sessionCookies = "";
-    if (fs.existsSync(sessionFile)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-        if (data && data.cookies) sessionCookies = data.cookies;
-      } catch (e) {
-      }
-    }
-    const mergedHeaders = __spreadValues({}, headers);
-    if (sessionCookies) mergedHeaders.Cookie = sessionCookies;
-    const result = yield execPythonBypass(url, "vixsrc", {
-      headers: mergedHeaders,
-      timeout
-    });
-    const body = result.raw || result.html;
-    console.log(`[StreamingCommunity] Scrapling response type: ${result.raw ? "raw" : "html"}, length: ${(body || "").length}`);
-    if (result.cookies && Array.isArray(result.cookies) && result.cookies.length > 0) {
-      const freshCookies = result.cookies.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
-      if (freshCookies) {
-        const existing = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, "utf8") || "{}") : {};
-        existing.cookies = freshCookies;
-        existing.timestamp = Date.now();
-        existing.url = result.url || url;
-        existing.userAgent = result.userAgent || existing.userAgent;
-        try {
-          fs.writeFileSync(sessionFile, JSON.stringify(existing, null, 2));
-        } catch (e) {
-        }
-      }
-    }
-    return body;
-  });
+var STREAMINGCOMMUNITY_PROXY = typeof process !== "undefined" && process.env.STREAMINGCOMMUNITY_PROXY || "";
+var ProxyAgent = null;
+try {
+  ProxyAgent = require("undici").ProxyAgent;
+} catch (_) {
+  ProxyAgent = null;
 }
 function safeRequire(modulePath) {
   try {
@@ -749,22 +513,27 @@ function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
     try {
-      let apiData;
-      try {
-        console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
-        apiData = yield scraplingFetch(apiUrl, getCommonHeaders(), 15e3);
-        console.log(`[StreamingCommunity] API response (first 300): ${(apiData || "").substring(0, 300)}`);
-      } catch (e) {
-        console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
+      const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
+      const useProxyFetch = proxySocks && typeof ProxyAgent === "function";
+      let proxyAgent = null;
+      if (useProxyFetch) {
+        try {
+          proxyAgent = new ProxyAgent(proxySocks);
+          console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
+        } catch (e) {
+          console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
+        }
+      }
+      console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
+      const response = yield fetch(apiUrl, {
+        headers: commonHeaders,
+        dispatcher: proxyAgent || void 0
+      });
+      if (!response.ok) {
+        console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
         return [];
       }
-      const apiPayload = (() => {
-        try {
-          return JSON.parse(apiData);
-        } catch (e) {
-          return null;
-        }
-      })();
+      const apiPayload = yield response.json().catch(() => null);
       const embedUrl = extractEmbedSrcFromApiPayload(apiPayload);
       if (!embedUrl) {
         console.log("[StreamingCommunity] Could not find embed src in API payload");
@@ -772,8 +541,16 @@ function getStreams(id, type, season, episode, providerContext = null) {
       }
       let embedHtml;
       try {
-        console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
-        embedHtml = yield scraplingFetch(embedUrl, getEmbedHeaders(embedUrl), 15e3);
+        console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+        const embedResponse = yield fetch(embedUrl, {
+          headers: getEmbedHeaders(embedUrl),
+          dispatcher: proxyAgent || void 0
+        });
+        if (!embedResponse.ok) {
+          console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+          return [];
+        }
+        embedHtml = yield embedResponse.text();
       } catch (e) {
         console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
         return [];
@@ -792,16 +569,21 @@ function getStreams(id, type, season, episode, providerContext = null) {
       let hasItalianAudio = false;
       let playlistFetched = false;
       try {
-        console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
-        const playlistText = yield scraplingFetch(streamUrl, streamHeaders, 5e3);
-        if (playlistText) {
+        const playlistResponse = yield fetch(streamUrl, {
+          headers: streamHeaders,
+          dispatcher: proxyAgent || void 0
+        });
+        if (playlistResponse.ok) {
           playlistFetched = true;
-          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-          const detected = checkQualityFromText(playlistText);
-          if (detected) quality = detected;
-          const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-          if (!hasItalianAudio && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+          const playlistText = yield playlistResponse.text();
+          if (playlistText) {
+            hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+            const detected = checkQualityFromText(playlistText);
+            if (detected) quality = detected;
+            const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+            if (!hasItalianAudio && !originalLanguageItalian) {
+              console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+            }
           }
         }
       } catch (e) {

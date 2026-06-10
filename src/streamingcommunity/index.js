@@ -6,43 +6,12 @@ const { formatStream } = require('../formatter.js');
 require('../fetch_helper.js');
 const { checkQualityFromText } = require('../quality_helper.js');
 
-const { execPythonBypass } = require('../../cf_bypass');
-const fs = require('fs');
-const path = require('path');
-
-async function scraplingFetch(url, headers = {}, timeout = 15000) {
-    const sessionFile = path.join(process.cwd(), 'cf-session-vixsrc.json');
-    let sessionCookies = '';
-    if (fs.existsSync(sessionFile)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
-            if (data && data.cookies) sessionCookies = data.cookies;
-        } catch (e) {}
-    }
-    const mergedHeaders = { ...headers };
-    if (sessionCookies) mergedHeaders.Cookie = sessionCookies;
-    const result = await execPythonBypass(url, 'vixsrc', {
-        headers: mergedHeaders,
-        timeout
-    });
-    const body = result.raw || result.html;
-    console.log(`[StreamingCommunity] Scrapling response type: ${result.raw ? 'raw' : 'html'}, length: ${(body || '').length}`);
-    // Save fresh cookies from response back to session file
-    if (result.cookies && Array.isArray(result.cookies) && result.cookies.length > 0) {
-        const freshCookies = result.cookies
-            .filter(c => c && c.name && c.value)
-            .map(c => `${c.name}=${c.value}`)
-            .join('; ');
-        if (freshCookies) {
-            const existing = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf8') || '{}') : {};
-            existing.cookies = freshCookies;
-            existing.timestamp = Date.now();
-            existing.url = result.url || url;
-            existing.userAgent = result.userAgent || existing.userAgent;
-            try { fs.writeFileSync(sessionFile, JSON.stringify(existing, null, 2)); } catch (e) {}
-        }
-    }
-    return body;
+const STREAMINGCOMMUNITY_PROXY = (typeof process !== 'undefined' && process.env.STREAMINGCOMMUNITY_PROXY) || '';
+let ProxyAgent = null;
+try {
+    ProxyAgent = require('undici').ProxyAgent;
+} catch (_) {
+    ProxyAgent = null;
 }
 
 function safeRequire(modulePath) {
@@ -263,17 +232,28 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
 
   try {
+    const proxySocks = STREAMINGCOMMUNITY_PROXY || (typeof process !== 'undefined' && process.env.SOCKS5_PROXY) || '';
+    const useProxyFetch = proxySocks && typeof ProxyAgent === 'function';
+    let proxyAgent = null;
+    if (useProxyFetch) {
+      try {
+        proxyAgent = new ProxyAgent(proxySocks);
+        console.log(`[StreamingCommunity] Using SOCKS5 proxy for fetches`);
+      } catch (e) {
+        console.warn(`[StreamingCommunity] Failed to create proxy agent: ${e.message}`);
+      }
+    }
 
-    let apiData;
-    try {
-      console.log(`[StreamingCommunity] Fetching API via Scrapling: ${apiUrl}`);
-      apiData = await scraplingFetch(apiUrl, getCommonHeaders(), 15000);
-      console.log(`[StreamingCommunity] API response (first 300): ${(apiData || '').substring(0, 300)}`);
-    } catch (e) {
-      console.error(`[StreamingCommunity] Failed to fetch page: ${e.message}`);
+    console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
+    const response = await fetch(apiUrl, {
+      headers: commonHeaders,
+      dispatcher: proxyAgent || undefined
+    });
+    if (!response.ok) {
+      console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
       return [];
     }
-    const apiPayload = (() => { try { return JSON.parse(apiData); } catch { return null; } })();
+    const apiPayload = await response.json().catch(() => null);
     const embedUrl = extractEmbedSrcFromApiPayload(apiPayload);
     if (!embedUrl) {
       console.log("[StreamingCommunity] Could not find embed src in API payload");
@@ -282,8 +262,16 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
     let embedHtml;
     try {
-      console.log(`[StreamingCommunity] Fetching embed via Scrapling: ${embedUrl}`);
-      embedHtml = await scraplingFetch(embedUrl, getEmbedHeaders(embedUrl), 15000);
+      console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+      const embedResponse = await fetch(embedUrl, {
+        headers: getEmbedHeaders(embedUrl),
+        dispatcher: proxyAgent || undefined
+      });
+      if (!embedResponse.ok) {
+        console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+        return [];
+      }
+      embedHtml = await embedResponse.text();
     } catch (e) {
       console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
       return [];
@@ -305,18 +293,21 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     let hasItalianAudio = false;
     let playlistFetched = false;
     try {
-      console.log(`[StreamingCommunity] Fetching playlist via Scrapling: ${streamUrl}`);
-      const playlistText = await scraplingFetch(streamUrl, streamHeaders, 5000);
-      if (playlistText) {
+      const playlistResponse = await fetch(streamUrl, {
+        headers: streamHeaders,
+        dispatcher: proxyAgent || undefined
+      });
+      if (playlistResponse.ok) {
         playlistFetched = true;
-        hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-        const detected = checkQualityFromText(playlistText);
-        if (detected) quality = detected;
-
-        const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
-
-        if (!hasItalianAudio && !originalLanguageItalian) {
-          console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+        const playlistText = await playlistResponse.text();
+        if (playlistText) {
+          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+          const detected = checkQualityFromText(playlistText);
+          if (detected) quality = detected;
+          const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+          if (!hasItalianAudio && !originalLanguageItalian) {
+            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+          }
         }
       }
     } catch (e) {

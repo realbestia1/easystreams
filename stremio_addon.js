@@ -2352,36 +2352,12 @@ async function warmupGuardoserie() {
     }
 }
 
-async function warmupStreamingcommunity() {
-    const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
-    const validSession = describeValidCfSession(['vixsrc']);
-    if (!forceWarmup && validSession) {
-        console.log(`[Warmup] StreamingCommunity saltato: sessione CF valida gia presente (${validSession}).`);
-        return;
-    }
-
-    try {
-        console.log('[Warmup] Riscaldamento StreamingCommunity...');
-        await getClearance('https://vixsrc.to/', 'vixsrc', {
-            maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
-            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
-            waitUntil: 'network_idle'
-        });
-        console.log('[Warmup] StreamingCommunity pronto!');
-    } catch (e) {
-        console.error(`[Warmup] Errore riscaldamento StreamingCommunity: ${e.message}`);
-    }
-}
-
 let server;
 (async () => {
     // FlareSolverr startup removed (Scrapling is used on-demand)
     try {
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
-        });
-        warmupStreamingcommunity().catch(e => {
-            console.error('[Warmup] Errore critico StreamingCommunity:', e);
         });
     } catch (e) {
         console.error('[Addon] Errore durante warmup:', e.message);
