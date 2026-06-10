@@ -549,6 +549,20 @@ function scraplingFetch(_0) {
       headers: mergedHeaders,
       timeout
     });
+    if (result.cookies && Array.isArray(result.cookies) && result.cookies.length > 0) {
+      const freshCookies = result.cookies.filter((c) => c && c.name && c.value).map((c) => `${c.name}=${c.value}`).join("; ");
+      if (freshCookies) {
+        const existing = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, "utf8") || "{}") : {};
+        existing.cookies = freshCookies;
+        existing.timestamp = Date.now();
+        existing.url = result.url || url;
+        existing.userAgent = result.userAgent || existing.userAgent;
+        try {
+          fs.writeFileSync(sessionFile, JSON.stringify(existing, null, 2));
+        } catch (e) {
+        }
+      }
+    }
     return result.html;
   });
 }
