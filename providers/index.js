@@ -9052,7 +9052,7 @@ var require_guardoserie = __commonJS({
 var require_streamingcommunity = __commonJS({
   "src/streamingcommunity/index.js"(exports2, module2) {
     function getStreamingCommunityBaseUrl() {
-      return "https://vixsrc.to";
+      return "https://calpezz8.space";
     }
     var { formatStream } = require_formatter();
     require_fetch_helper();
@@ -9294,8 +9294,10 @@ var require_streamingcommunity = __commonJS({
             return [];
           }
           const separator = masterPlaylist.url.includes("?") ? "&" : "?";
-          const streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          let streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          streamUrl = streamUrl.replace('vixsrc.to', 'calpezz8.space');
           const streamHeaders = getPlaylistHeaders(embedUrl);
+          streamHeaders["Referer"] = streamUrl;
           console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
           let quality = "1080p";
           let hasItalianAudio = false;
@@ -9325,28 +9327,10 @@ var require_streamingcommunity = __commonJS({
           const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
           const isItalianAudio = playlistFetched ? hasItalianAudio : true;
           const resultLanguage = isItalianAudio || hasOriginalItalian ? "Italian" : "";
-          if (providerContext == null ? void 0 : providerContext.proxyUrl) {
-            const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
-            console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
-            const result2 = {
-              name: `StreamingCommunity`,
-              title: finalDisplayName,
-              url: rawPageUrl,
-              easyProxySourceUrl: rawPageUrl,
-              quality: normalizedQuality,
-              type: "direct",
-              language: resultLanguage,
-              behaviorHints: {
-                notWebReady: false
-              }
-            };
-            return [formatStream(result2, "StreamingCommunity")].filter((s) => s !== null);
-          }
           const result = {
             name: `StreamingCommunity`,
             title: finalDisplayName,
             url: streamUrl,
-            easyProxySourceUrl: embedUrl,
             quality: normalizedQuality,
             type: "direct",
             headers: streamHeaders,
