@@ -1792,7 +1792,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const hasEasyProxy = Boolean(easyProxyUrl);
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgStream(s) && !hasEasyProxy) return false;
-                        const canProxyMixdrop = Boolean(easyProxyUrl) && (isMixdropStreamUrl(s.url) || isMixdropStream(s));
+                        const isMixdrop = isMixdropStreamUrl(s.url) || isMixdropStream(s);
+                        const canProxyMixdrop = (hasEasyProxy || isMixdrop) && isMixdrop;
                         // Global filter for specific unwanted servers
                         return (
                             (canProxyMixdrop || (
@@ -1869,18 +1870,22 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
                             const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'mixdrop',
-                                    s.easyProxySourceUrl || s.url,
-                                    mixdropExtension
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'mixdrop',
+                                        s.easyProxySourceUrl || s.url,
+                                        mixdropExtension
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = `https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.${mixdropExtension}?host=Mixdrop&d=${encodeURIComponent(s.easyProxySourceUrl || s.url)}&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2`;
+                            }
+                            proxiedByEasyProxy = true;
                         } else if (name === 'altadefinizionestreaming' && !isMixdropStream(s)) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
