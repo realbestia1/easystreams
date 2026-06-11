@@ -1758,6 +1758,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     try {
                         const providerContext = buildProviderRequestContext(requestContext);
                         providerContext.proxyUrl = easyProxyUrl;
+                        if (!easyProxyUrl && (name === 'streamingcommunity' || name === 'animeunity')) {
+                            providerContext.proxyUrl = 'fake';
+                        }
                         providerContext.proxyUrls = easyProxyEntries.map((entry) => entry.url);
                         providerContext.proxyEntries = easyProxyEntries;
                         providerContext.proxyMode = easyProxyMode;
@@ -1806,7 +1809,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
                         if (name === 'streamingcommunity') {
-                            const sourceUrl = s.easyProxySourceUrl || s.url;
                             if (hasEasyProxy) {
                                 finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                     easyProxyEntries,
@@ -1815,12 +1817,12 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                         proxyUrl,
                                         proxyPassword,
                                         'vixsrc',
-                                        sourceUrl,
+                                        s.easyProxySourceUrl || s.url,
                                         'm3u8'
                                     )
                                 );
                             } else {
-                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(sourceUrl) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
+                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(s.easyProxySourceUrl || s.url) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
                             }
                             proxiedByEasyProxy = true;
                         } else if (name === 'animeunity') {
