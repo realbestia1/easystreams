@@ -1821,6 +1821,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (name === 'animeunity') {
+                            const animeunitySourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'calpezz8.space');
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,
@@ -1828,7 +1829,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                     proxyUrl,
                                     proxyPassword,
                                     'vixcloud',
-                                    s.easyProxySourceUrl || s.url
+                                    animeunitySourceUrl
                                 )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
