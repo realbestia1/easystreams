@@ -9335,7 +9335,7 @@ var require_streamingcommunity = __commonJS({
             type: "direct",
             headers: streamHeaders,
             behaviorHints: {
-              notWebReady: false
+              notWebReady: true
             },
             language: resultLanguage
           };

@@ -329,7 +329,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       type: "direct",
       headers: streamHeaders,
       behaviorHints: {
-        notWebReady: false
+        notWebReady: true
       },
       language: resultLanguage
     };
