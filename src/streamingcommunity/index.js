@@ -285,10 +285,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     }
 
     const separator = masterPlaylist.url.includes('?') ? '&' : '?';
-    let streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
-    streamUrl = streamUrl.replace('vixsrc.to', 'calpezz8.space');
+    const streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
     const streamHeaders = getPlaylistHeaders(embedUrl);
-    streamHeaders["Referer"] = streamUrl;
     console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
 
     let quality = "1080p";
@@ -321,15 +319,36 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     const isItalianAudio = playlistFetched ? hasItalianAudio : true;
     const resultLanguage = (isItalianAudio || hasOriginalItalian) ? 'Italian' : '';
 
+    if (providerContext?.proxyUrl) {
+      const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
+      console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
+      const result = {
+        name: `StreamingCommunity`,
+        title: finalDisplayName,
+        url: rawPageUrl,
+        easyProxySourceUrl: rawPageUrl,
+        quality: normalizedQuality,
+        type: "direct",
+        language: resultLanguage,
+        behaviorHints: {
+          notWebReady: false
+        }
+      };
+      return [formatStream(result, "StreamingCommunity")].filter(s => s !== null);
+    }
+
+
+
     const result = {
       name: `StreamingCommunity`,
       title: finalDisplayName,
       url: streamUrl,
+      easyProxySourceUrl: embedUrl,
       quality: normalizedQuality,
       type: "direct",
       headers: streamHeaders,
       behaviorHints: {
-        notWebReady: true
+        notWebReady: false
       },
       language: resultLanguage
     };

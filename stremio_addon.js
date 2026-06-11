@@ -1423,7 +1423,7 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['animeunity', 'vidxgo', 'altadefinizionestreaming']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo', 'altadefinizionestreaming']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1783,9 +1783,11 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const server = (s.server || "").toLowerCase();
                         const sName = (s.name || "").toLowerCase();
                         const sTitle = (s.title || "").toLowerCase();
+                        const isStreamingCommunityProvider = name === 'streamingcommunity';
                         const isAnimeUnityProvider = name === 'animeunity';
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
+                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
                         if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgStream(s) && !hasEasyProxy) return false;
@@ -1805,7 +1807,20 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     .map(async (s) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
-                        if (name === 'animeunity') {
+                        if (name === 'streamingcommunity') {
+                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                easyProxyEntries,
+                                easyProxyMode,
+                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                    proxyUrl,
+                                    proxyPassword,
+                                    'vixsrc',
+                                    s.easyProxySourceUrl || s.url,
+                                    'm3u8'
+                                )
+                            );
+                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'animeunity') {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
                                 easyProxyMode,
