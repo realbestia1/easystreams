@@ -1423,7 +1423,9 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo', 'altadefinizionestreaming']);
+const FALLBACK_PROXY_URL = 'https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.m3u8?host=VixCloud&d=';
+
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo', 'altadefinizionestreaming']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1783,12 +1785,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const server = (s.server || "").toLowerCase();
                         const sName = (s.name || "").toLowerCase();
                         const sTitle = (s.title || "").toLowerCase();
-                        const isStreamingCommunityProvider = name === 'streamingcommunity';
-                        const isAnimeUnityProvider = name === 'animeunity';
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
-                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
-                        if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgStream(s) && !hasEasyProxy) return false;
                         const canProxyMixdrop = Boolean(easyProxyUrl) && (isMixdropStreamUrl(s.url) || isMixdropStream(s));
@@ -1808,31 +1806,40 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
                         if (name === 'streamingcommunity') {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixsrc',
-                                    s.easyProxySourceUrl || s.url,
-                                    'm3u8'
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            const sourceUrl = s.easyProxySourceUrl || s.url;
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'vixsrc',
+                                        sourceUrl,
+                                        'm3u8'
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(sourceUrl) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
+                            }
+                            proxiedByEasyProxy = true;
                         } else if (name === 'animeunity') {
-                            const animeunitySourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'calpezz8.space');
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixcloud',
-                                    animeunitySourceUrl
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            const sourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'calpezz8.space');
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'vixcloud',
+                                        sourceUrl
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(sourceUrl) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
+                            }
+                            proxiedByEasyProxy = true;
                         } else if (isStreamHgStream(s)) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
