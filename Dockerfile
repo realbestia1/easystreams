@@ -48,7 +48,11 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 WORKDIR /app
 
 # 2. Setup SeleniumBase UC mode bypass requirements
-RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages
+RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
+    PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p "$PY_SITE/seleniumbase/drivers/" && \
+    cp /usr/bin/chromedriver "$PY_SITE/seleniumbase/drivers/uc_driver" && \
+    chmod +x "$PY_SITE/seleniumbase/drivers/uc_driver"
 
 # 3. Environment Settings
 ENV NODE_ENV=production
