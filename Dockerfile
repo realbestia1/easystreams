@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     chromium \
     chromium-driver \
+    xvfb \
+    python3-tk \
+    python3-dev \
     xauth \
     libnss3 \
     libatk1.0-0 \
@@ -44,8 +47,8 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 
 WORKDIR /app
 
-# 2. Setup Scrapling and Playwright
-RUN pip3 install --no-cache-dir "scrapling[fetchers]" "curl_cffi" --break-system-packages && \
+# 2. Setup Scrapling and Playwright along with SeleniumBase UC mode bypass requirements
+RUN pip3 install --no-cache-dir "scrapling[fetchers]" "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
     playwright install chromium && \
     playwright install-deps chromium
 

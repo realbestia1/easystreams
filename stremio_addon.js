@@ -2346,8 +2346,8 @@ function describeValidCfSession(providersToCheck) {
     return null;
 }
 
-async function warmupGuardoserie() {
-    const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
+async function warmupGuardoserie(force = false) {
+    const forceWarmup = force || String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
     const validSession = describeValidCfSession(['guardoserie']);
     if (!forceWarmup && validSession) {
         console.log(`[Warmup] Guardoserie saltato: sessione CF valida gia presente (${validSession}).`);
@@ -2369,11 +2369,19 @@ async function warmupGuardoserie() {
 
 let server;
 (async () => {
-    // FlareSolverr startup removed (Scrapling is used on-demand)
     try {
+        // Esegui il warmup iniziale (salta se c'è già una sessione valida su disco)
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
         });
+
+        // Configura il refresh in background ogni 50 minuti per mantenere i cookie sempre attivi
+        setInterval(() => {
+            console.log('[Warmup] Esecuzione refresh periodico in background...');
+            warmupGuardoserie(true).catch(e => {
+                console.error('[Warmup] Errore durante il refresh periodico:', e.message);
+            });
+        }, 50 * 60 * 1000);
     } catch (e) {
         console.error('[Addon] Errore durante warmup:', e.message);
     }
