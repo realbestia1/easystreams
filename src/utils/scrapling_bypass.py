@@ -5,6 +5,7 @@ import time
 import os
 from urllib.parse import urlparse
 from seleniumbase import Driver
+from selenium.common.exceptions import TimeoutException
 
 # 1. Start Xvfb virtual display on Linux/Docker
 display = None
@@ -40,14 +41,21 @@ def main():
         # Launch SeleniumBase Driver (UC mode)
         driver = Driver(uc=True)
         driver.set_window_size(1280, 800)
+        driver.set_page_load_timeout(args.timeout / 1000)
         
         # If it's a POST request, open base domain first
         if args.method.upper() == 'POST':
             parsed_url = urlparse(args.url)
             base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-            driver.uc_open_with_reconnect(base_url, reconnect_time=4)
+            try:
+                driver.uc_open_with_reconnect(base_url, reconnect_time=4)
+            except TimeoutException:
+                sys.stderr.write(f"Timeout opening base URL: {base_url}\n")
         else:
-            driver.uc_open_with_reconnect(args.url, reconnect_time=4)
+            try:
+                driver.uc_open_with_reconnect(args.url, reconnect_time=4)
+            except TimeoutException:
+                sys.stderr.write(f"Timeout opening URL: {args.url}\n")
             
         # Challenge titles check
         challenge_titles = ["just a moment", "cloudflare", "cf-challenge", "ci siamo quasi", "attention required", "un instant", "un moment", "einen moment", "un momento", "só um momento", "even geduld", "bir an", "chwileczk"]
@@ -84,7 +92,11 @@ def main():
         if not bypassed:
             for attempt in range(1, 3):
                 try:
-                    driver.uc_open_with_reconnect(args.url, reconnect_time=4)
+                    try:
+                        driver.uc_open_with_reconnect(args.url, reconnect_time=4)
+                    except TimeoutException as tex:
+                        sys.stderr.write(f"Fallback attempt {attempt} timeout: {tex}\n")
+                        continue
                     driver.sleep(3)
                     on_challenge, title_low = _is_on_challenge()
                     if not on_challenge:

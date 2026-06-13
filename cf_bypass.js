@@ -14,6 +14,8 @@ let activeGlobalRequests = 0;
 const MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || '2', 10);
 const MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || '20', 10);
 const GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || '60000', 10);
+const SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || '90000', 10);
+const SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || '15000', 10);
 
 function createRelease() {
     let released = false;
@@ -77,7 +79,7 @@ function execPythonBypass(url, provider, options = {}) {
         const args = [
             scriptPath, 
             url,
-            '--timeout', String(options.timeout || 60000),
+            '--timeout', String(options.timeout || SCRAPLING_DEFAULT_TIMEOUT),
             '--wait-until', options.waitUntil || 'domcontentloaded'
         ];
 
@@ -106,7 +108,7 @@ function execPythonBypass(url, provider, options = {}) {
         let stdout = '';
         let stderr = '';
 
-        const executionTimeout = (parseInt(options.timeout, 10) || 60000) + 10000; // 10 seconds grace period over python timeout
+        const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
             console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
             watchdog = null;
