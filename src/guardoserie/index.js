@@ -29,7 +29,7 @@ if (!IS_SERVER) {
     const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require('../extractors');
     const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
     function getGuardoserieBaseUrl() {
-        return 'https://guardoserie.world';
+        return 'https://guardoserie.living';
     }
     const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
     function getMappingApiUrl() {
@@ -661,7 +661,7 @@ if (!IS_SERVER) {
         const streamPromises = playerLinks.map(async (playerLink) => {
             try {
                 if (playerLink.includes('loadm')) {
-                    const domain = 'guardoserie.world';
+                    const domain = 'guardoserie.living';
                     const extracted = await extractLoadm(playerLink, domain);
                     return await Promise.all((extracted || []).map(async s => {
                         let quality = "HD";

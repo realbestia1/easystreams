@@ -809,6 +809,8 @@ var require_cf_bypass = __commonJS({
     var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "2", 10);
     var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "20", 10);
     var GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || "60000", 10);
+    var SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || "90000", 10);
+    var SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || "15000", 10);
     function createRelease() {
       let released = false;
       return () => {
@@ -864,7 +866,7 @@ var require_cf_bypass = __commonJS({
           scriptPath,
           url,
           "--timeout",
-          String(options.timeout || 6e4),
+          String(options.timeout || SCRAPLING_DEFAULT_TIMEOUT),
           "--wait-until",
           options.waitUntil || "domcontentloaded"
         ];
@@ -888,7 +890,7 @@ var require_cf_bypass = __commonJS({
         const child = spawn(pythonExe, args);
         let stdout = "";
         let stderr = "";
-        const executionTimeout = (parseInt(options.timeout, 10) || 6e4) + 1e4;
+        const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
           console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
           watchdog = null;
@@ -8440,7 +8442,7 @@ var require_guardoserie = __commonJS({
       };
     } else {
       let getGuardoserieBaseUrl2 = function() {
-        return "https://guardoserie.world";
+        return "https://guardoserie.living";
       }, getMappingApiUrl2 = function() {
         return "https://animemapping.realbestia.com";
       }, normalizeConfigBoolean2 = function(value) {
@@ -8968,7 +8970,7 @@ var require_guardoserie = __commonJS({
           const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
             try {
               if (playerLink.includes("loadm")) {
-                const domain = "guardoserie.world";
+                const domain = "guardoserie.living";
                 const extracted = yield extractLoadm(playerLink, domain);
                 return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
                   let quality = "HD";
