@@ -47,10 +47,8 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 
 WORKDIR /app
 
-# 2. Setup Scrapling and Playwright along with SeleniumBase UC mode bypass requirements
-RUN pip3 install --no-cache-dir "scrapling[fetchers]" "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
-    playwright install chromium && \
-    playwright install-deps chromium
+# 2. Setup SeleniumBase UC mode bypass requirements
+RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages
 
 # 3. Environment Settings
 ENV NODE_ENV=production
