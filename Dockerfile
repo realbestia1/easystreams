@@ -49,10 +49,10 @@ WORKDIR /app
 
 # 2. Setup SeleniumBase UC mode bypass requirements
 RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
-    PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    mkdir -p "$PY_SITE/seleniumbase/drivers/" && \
-    cp /usr/bin/chromedriver "$PY_SITE/seleniumbase/drivers/uc_driver" && \
-    chmod +x "$PY_SITE/seleniumbase/drivers/uc_driver"
+    SB_DIR=$(python3 -c "import os, seleniumbase; print(os.path.dirname(seleniumbase.__file__))") && \
+    mkdir -p "$SB_DIR/drivers/" && \
+    cp /usr/bin/chromedriver "$SB_DIR/drivers/uc_driver" && \
+    chmod +x "$SB_DIR/drivers/uc_driver"
 
 # 3. Environment Settings
 ENV NODE_ENV=production
