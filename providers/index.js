@@ -800,7 +800,7 @@ var require_guardahd = __commonJS({
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
-    var { spawn } = require("child_process");
+    var { spawn, exec } = require("child_process");
     var path = require("path");
     var fs = require("fs");
     var activeBypasses = /* @__PURE__ */ new Map();
@@ -887,16 +887,36 @@ var require_cf_bypass = __commonJS({
         } else if (process.platform === "win32") {
           pythonExe = "python";
         }
-        const child = spawn(pythonExe, args);
+        const spawnOptions = {};
+        if (process.platform !== "win32") {
+          spawnOptions.detached = true;
+        }
+        const child = spawn(pythonExe, args, spawnOptions);
         let stdout = "";
         let stderr = "";
         const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
-          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido l'albero dei processi.`);
           watchdog = null;
-          try {
-            child.kill("SIGKILL");
-          } catch (e) {
+          if (process.platform === "win32") {
+            exec(`taskkill /pid ${child.pid} /T /F`, (err) => {
+              if (err) {
+                console.error(`[SC][${provider}] taskkill fallito: ${err.message}`);
+                try {
+                  child.kill("SIGKILL");
+                } catch (e) {
+                }
+              }
+            });
+          } else {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (e) {
+              try {
+                child.kill("SIGKILL");
+              } catch (err) {
+              }
+            }
           }
         }, executionTimeout);
         child.on("error", (err) => {
@@ -9400,6 +9420,8 @@ var require_animeunity = __commonJS({
     var animeUnityCsrfToken = "";
     var animeUnitySessionWarmupPromise = null;
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -9409,6 +9431,20 @@ var require_animeunity = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
@@ -10548,6 +10584,8 @@ var require_animeworld = __commonJS({
       "narutolegend.it"
     ];
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -10557,6 +10595,20 @@ var require_animeworld = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
@@ -11424,6 +11476,8 @@ var require_animesaturn = __commonJS({
       inflight: /* @__PURE__ */ new Map()
     };
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -11433,6 +11487,20 @@ var require_animesaturn = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }

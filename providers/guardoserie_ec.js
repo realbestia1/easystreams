@@ -322,7 +322,7 @@ var require_quality_helper = __commonJS({
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
-    var { spawn } = require("child_process");
+    var { spawn, exec } = require("child_process");
     var path = require("path");
     var fs = require("fs");
     var activeBypasses = /* @__PURE__ */ new Map();
@@ -409,16 +409,36 @@ var require_cf_bypass = __commonJS({
         } else if (process.platform === "win32") {
           pythonExe = "python";
         }
-        const child = spawn(pythonExe, args);
+        const spawnOptions = {};
+        if (process.platform !== "win32") {
+          spawnOptions.detached = true;
+        }
+        const child = spawn(pythonExe, args, spawnOptions);
         let stdout = "";
         let stderr = "";
         const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
-          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido l'albero dei processi.`);
           watchdog = null;
-          try {
-            child.kill("SIGKILL");
-          } catch (e) {
+          if (process.platform === "win32") {
+            exec(`taskkill /pid ${child.pid} /T /F`, (err) => {
+              if (err) {
+                console.error(`[SC][${provider}] taskkill fallito: ${err.message}`);
+                try {
+                  child.kill("SIGKILL");
+                } catch (e) {
+                }
+              }
+            });
+          } else {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (e) {
+              try {
+                child.kill("SIGKILL");
+              } catch (err) {
+              }
+            }
           }
         }, executionTimeout);
         child.on("error", (err) => {

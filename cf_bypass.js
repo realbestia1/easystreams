@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -104,18 +104,34 @@ function execPythonBypass(url, provider, options = {}) {
             pythonExe = 'python';
         }
 
-        const child = spawn(pythonExe, args);
+        const spawnOptions = {};
+        if (process.platform !== 'win32') {
+            spawnOptions.detached = true;
+        }
+        const child = spawn(pythonExe, args, spawnOptions);
         let stdout = '';
         let stderr = '';
 
         const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
-            console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+            console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido l'albero dei processi.`);
             watchdog = null;
-            try {
-                child.kill('SIGKILL');
-            } catch (e) {}
+            if (process.platform === 'win32') {
+                exec(`taskkill /pid ${child.pid} /T /F`, (err) => {
+                    if (err) {
+                        console.error(`[SC][${provider}] taskkill fallito: ${err.message}`);
+                        try { child.kill('SIGKILL'); } catch (e) {}
+                    }
+                });
+            } else {
+                try {
+                    process.kill(-child.pid, 'SIGKILL');
+                } catch (e) {
+                    try { child.kill('SIGKILL'); } catch (err) {}
+                }
+            }
         }, executionTimeout);
+
 
         child.on('error', (err) => {
             if (watchdog) {

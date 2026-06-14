@@ -36,6 +36,9 @@ const BLOCKED_DOMAINS = [
 ];
 
 function getCached(map, key) {
+  const isReactNative = (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') || (typeof global !== 'undefined' && global.HermesInternal);
+  if (isReactNative) return undefined;
+
   const entry = map.get(key);
   if (!entry) return undefined;
   if (entry.expiresAt <= Date.now()) {
@@ -46,6 +49,23 @@ function getCached(map, key) {
 }
 
 function setCached(map, key, value, ttlMs) {
+  const isReactNative = (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') || (typeof global !== 'undefined' && global.HermesInternal);
+  if (isReactNative) return value;
+
+  // Evict expired entries first to free up space
+  for (const [k, entry] of map.entries()) {
+    if (entry.expiresAt <= Date.now()) {
+      map.delete(k);
+    }
+  }
+  // Enforce maximum size limit to prevent leaks from unqueried keys
+  const MAX_CACHE_ENTRIES = 500;
+  if (map.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) {
+      map.delete(oldestKey);
+    }
+  }
   map.set(key, { value, expiresAt: Date.now() + ttlMs });
   return value;
 }

@@ -1596,6 +1596,12 @@ async function fetchMediaYearCached(type, tmdbId, imdbId) {
         console.warn(`[Addon] Error fetching year from TMDB: ${e.message}`);
     }
 
+    if (mediaYearCache.size >= 1000) {
+        const oldestKey = mediaYearCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            mediaYearCache.delete(oldestKey);
+        }
+    }
     mediaYearCache.set(cacheKey, year);
     return year;
 }

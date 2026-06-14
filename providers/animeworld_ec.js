@@ -352,6 +352,8 @@ var require_animeworld = __commonJS({
       "narutolegend.it"
     ];
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -361,6 +363,20 @@ var require_animeworld = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
