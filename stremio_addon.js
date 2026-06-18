@@ -2046,14 +2046,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             delete finalBehaviorHints.headers;
                         }
 
-                        if (aiostreamsMode && finalStreamUrl) {
-                            // If the stream ends in .m3u8, AIOStreams automatically classifies it as 'live' stream type,
-                            // which forces Stremio to open it in the Live TV player (missing player seekbar/timeline).
-                            // Appending a dummy hash fragment (#video.mp4) prevents this while keeping playback perfectly safe.
-                            if (finalStreamUrl.split('#')[0].split('?')[0].endsWith('.m3u8')) {
-                                finalStreamUrl += '#video.mp4';
-                            }
-                        }
 
                         return {
                             name: nameUI,
