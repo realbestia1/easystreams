@@ -8,7 +8,7 @@ const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require('../qu
 
 function getCookie() {
   try {
-    return (globalThis?.SCRAPER_SETTINGS?.altadefinizioneCookie || '').trim();
+    return (globalThis?.SCRAPER_SETTINGS?.altadefinizioneCookie || process?.env?.ALTADEFINIZIONE_COOKIE || '').trim();
   } catch {
     return '';
   }
