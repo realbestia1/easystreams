@@ -480,16 +480,24 @@ var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, lik
 var { extractMixDrop } = require_mixdrop();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
-function fetchJson(url) {
+function getCookie() {
+  var _a;
+  try {
+    return (((_a = globalThis == null ? void 0 : globalThis.SCRAPER_SETTINGS) == null ? void 0 : _a.altadefinizioneCookie) || "").trim();
+  } catch (e) {
+    return "";
+  }
+}
+function fetchJson(url, cookie) {
   return __async(this, null, function* () {
     try {
-      const response = yield fetch(url, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Referer": `${BASE_URL}/`,
-          "Accept": "application/json,text/plain,*/*"
-        }
-      });
+      const headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": `${BASE_URL}/`,
+        "Accept": "application/json,text/plain,*/*"
+      };
+      if (cookie && url.startsWith(BASE_URL)) headers.Cookie = cookie;
+      const response = yield fetch(url, { headers });
       if (!response.ok) return null;
       return yield response.json();
     } catch (e) {
@@ -536,18 +544,18 @@ function getShowTitle(tmdbId, type) {
     return payload.title || payload.name || payload.original_title || payload.original_name || null;
   });
 }
-function resolveDownloadToMixDrop(url) {
+function resolveDownloadToMixDrop(url, cookie) {
   return __async(this, null, function* () {
     const downloadUrl = absoluteUrl(url);
     if (!downloadUrl) return null;
     const withGo = `${downloadUrl}${downloadUrl.includes("?") ? "&" : "?"}go=1`;
     try {
-      const response = yield fetch(withGo, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Referer": `${BASE_URL}/`
-        }
-      });
+      const headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": `${BASE_URL}/`
+      };
+      if (cookie && withGo.startsWith(BASE_URL)) headers.Cookie = cookie;
+      const response = yield fetch(withGo, { headers });
       const finalUrl = String(response.url || "").replace(/\?download$/i, "");
       if (/mixdrop|m1xdrop|mxdrop/i.test(finalUrl)) return finalUrl;
     } catch (e) {
@@ -556,12 +564,12 @@ function resolveDownloadToMixDrop(url) {
     return null;
   });
 }
-function addCdnStream(streams, tmdbId, type, season, episode, displayName) {
+function addCdnStream(streams, tmdbId, type, season, episode, displayName, cookie) {
   return __async(this, null, function* () {
     var _a, _b;
     const normalizedType = String(type || "").toLowerCase();
     const endpoint = normalizedType === "movie" ? `${BASE_URL}/api/player-sources/movie/${tmdbId}` : `${BASE_URL}/api/player-sources/tv/${tmdbId}/${season}/${episode}`;
-    const payload = yield fetchJson(endpoint);
+    const payload = yield fetchJson(endpoint, cookie);
     const isAllowed = (s) => (s == null ? void 0 : s.url) && !/vixsrc\.to/i.test(String(s.url));
     const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && isAllowed(s))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => isAllowed(s)));
     if (!(source == null ? void 0 : source.url)) return;
@@ -582,20 +590,20 @@ function addCdnStream(streams, tmdbId, type, season, episode, displayName) {
     });
   });
 }
-function addMixDropStream(streams, tmdbId, type, season, episode, displayName) {
+function addMixDropStream(streams, tmdbId, type, season, episode, displayName, cookie) {
   return __async(this, null, function* () {
     const normalizedType = String(type || "").toLowerCase();
     let downloadEntry = null;
     if (normalizedType === "movie") {
-      const payload = yield fetchJson(`${BASE_URL}/api/download/${tmdbId}`);
+      const payload = yield fetchJson(`${BASE_URL}/api/download/${tmdbId}`, cookie);
       if ((payload == null ? void 0 : payload.available) && (payload == null ? void 0 : payload.url)) downloadEntry = payload.url;
     } else {
-      const payload = yield fetchJson(`${BASE_URL}/api/download-episodes/${tmdbId}`);
+      const payload = yield fetchJson(`${BASE_URL}/api/download-episodes/${tmdbId}`, cookie);
       const episodes = Array.isArray(payload == null ? void 0 : payload.episodes) ? payload.episodes : [];
       const match = episodes.find((item) => Number(item == null ? void 0 : item.season) === Number(season) && Number(item == null ? void 0 : item.episode) === Number(episode));
       if ((payload == null ? void 0 : payload.available) && (match == null ? void 0 : match.url)) downloadEntry = match.url;
     }
-    const mixdropUrl = yield resolveDownloadToMixDrop(downloadEntry);
+    const mixdropUrl = yield resolveDownloadToMixDrop(downloadEntry, cookie);
     if (!mixdropUrl) return;
     const extracted = yield extractMixDrop(mixdropUrl);
     if (!(extracted == null ? void 0 : extracted.url)) return;
@@ -615,6 +623,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     const normalizedType = String(type || "").toLowerCase();
     if (normalizedType !== "movie" && normalizedType !== "tv" && normalizedType !== "series") return [];
+    const cookie = getCookie();
     const tmdbId = yield resolveTmdbId(id, normalizedType === "movie" ? "movie" : "tv", providerContext);
     if (!tmdbId) return [];
     const effectiveSeason = parseInt(String(season || ""), 10) || 1;
@@ -624,8 +633,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
     const displayName = normalizedType === "movie" ? showTitle : `${showTitle} ${effectiveSeason}x${effectiveEpisode}`;
     const streams = [];
     yield Promise.all([
-      addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName),
-      addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName)
+      addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName, cookie),
+      addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName, cookie)
     ]);
     return streams.map((s) => formatStream(s, "AltadefinizioneStreaming")).filter(Boolean);
   });
