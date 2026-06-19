@@ -8,7 +8,6 @@ const PROVIDER_META = {
     guardahd: { display: 'GuardaHD', category: 'Film', accent: '#10B981', icon: 'film' },
     guardoserie: { display: 'Guardoserie', category: 'Serie TV', accent: '#F59E0B', icon: 'tv' },
     vidxgo: { display: 'VidxGo', category: 'Film & Serie', accent: '#06B6D4', icon: 'film' },
-    altadefinizionestreaming: { display: 'Altadefinizione', category: 'Film', accent: '#A855F7', icon: 'film' },
     animeunity: { display: 'AnimeUnity', category: 'Anime', accent: '#8B5CF6', icon: 'sparkle' },
     animeworld: { display: 'AnimeWorld', category: 'Anime', accent: '#3B82F6', icon: 'sparkle' },
     animesaturn: { display: 'AnimeSaturn', category: 'Anime', accent: '#EF4444', icon: 'sparkle' },

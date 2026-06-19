@@ -1415,7 +1415,6 @@ const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardoserie: require('./src/guardoserie/index.js'),
     vidxgo: require('./src/vidxgo/index.js'),
-    altadefinizionestreaming: require('./src/altadefinizionestreaming/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
@@ -1425,7 +1424,7 @@ const providers = {
 
 const FALLBACK_PROXY_URL = 'https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.m3u8?host=VixCloud&d=';
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo', 'altadefinizionestreaming']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1487,11 +1486,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1499,11 +1498,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie'];
         }
     }
 
@@ -1892,19 +1891,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 finalStreamUrl = `https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.${mixdropExtension}?host=Mixdrop&d=${encodeURIComponent(s.easyProxySourceUrl || s.url)}&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2`;
                             }
                             proxiedByEasyProxy = true;
-                        } else if (name === 'altadefinizionestreaming' && !isMixdropStream(s)) {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'adn',
-                                    s.easyProxySourceUrl || s.url,
-                                    'm3u8'
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
                         }
 
                         // For Stremio, we reconstruct the legacy multiline format using metadata
