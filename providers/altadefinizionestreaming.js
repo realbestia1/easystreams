@@ -477,15 +477,16 @@ var require_quality_helper = __commonJS({
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var BASE_URL = "https://altadefinizionestreaming.com";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+var SESSION_COOKIE = "sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21";
 var { extractMixDrop } = require_mixdrop();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
 function getCookie() {
   var _a, _b;
   try {
-    return (((_a = globalThis == null ? void 0 : globalThis.SCRAPER_SETTINGS) == null ? void 0 : _a.altadefinizioneCookie) || ((_b = process == null ? void 0 : process.env) == null ? void 0 : _b.ALTADEFINIZIONE_COOKIE) || "").trim();
+    return (((_a = globalThis == null ? void 0 : globalThis.SCRAPER_SETTINGS) == null ? void 0 : _a.altadefinizioneCookie) || ((_b = process == null ? void 0 : process.env) == null ? void 0 : _b.ALTADEFINIZIONE_COOKIE) || SESSION_COOKIE || "").trim();
   } catch (e) {
-    return "";
+    return SESSION_COOKIE || "";
   }
 }
 function fetchJson(url, cookie) {

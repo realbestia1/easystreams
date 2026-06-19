@@ -2,15 +2,17 @@ const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const BASE_URL = "https://altadefinizionestreaming.com";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
+const SESSION_COOKIE = 'sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21';
+
 const { extractMixDrop } = require('../extractors/mixdrop');
 const { formatStream } = require('../formatter.js');
 const { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require('../quality_helper.js');
 
 function getCookie() {
   try {
-    return (globalThis?.SCRAPER_SETTINGS?.altadefinizioneCookie || process?.env?.ALTADEFINIZIONE_COOKIE || '').trim();
+    return (globalThis?.SCRAPER_SETTINGS?.altadefinizioneCookie || process?.env?.ALTADEFINIZIONE_COOKIE || SESSION_COOKIE || '').trim();
   } catch {
-    return '';
+    return SESSION_COOKIE || '';
   }
 }
 
