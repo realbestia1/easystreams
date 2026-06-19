@@ -13686,9 +13686,9 @@ var require_altadefinizionestreaming = __commonJS({
     var { formatStream } = require_formatter();
     var { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
     function getCookie() {
-      var _a;
+      var _a, _b;
       try {
-        return (((_a = globalThis == null ? void 0 : globalThis.SCRAPER_SETTINGS) == null ? void 0 : _a.altadefinizioneCookie) || "").trim();
+        return (((_a = globalThis == null ? void 0 : globalThis.SCRAPER_SETTINGS) == null ? void 0 : _a.altadefinizioneCookie) || ((_b = process == null ? void 0 : process.env) == null ? void 0 : _b.ALTADEFINIZIONE_COOKIE) || "").trim();
       } catch (e) {
         return "";
       }
