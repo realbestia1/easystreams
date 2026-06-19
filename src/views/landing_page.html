@@ -1,637 +1,787 @@
 <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{{manifestName}} - Stremio Addon</title>
-        <style>
-            :root {
-                --purple: #8A5AAB;
-                --purple-hover: #7b4b9b;
-                --bg: #151515;
-                --text: #fff;
-                --text-secondary: #aaa;
-            }
-            body {
-                background-color: var(--bg);
-                color: var(--text);
-                font-family: 'Open Sans', Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                flex-direction: column;
-                min-height: 100vh;
-                background-image: radial-gradient(circle at center, #252525 0%, #151515 100%);
-            }
-            .header {
-                padding: 20px 40px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .logo-text {
-                font-weight: 700;
-                font-size: 20px;
-                color: #fff;
-                text-decoration: none;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            .logo-icon {
-                width: 32px;
-                height: 32px;
-                background: var(--purple);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 18px;
-            }
-            .main-content {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 40px 20px;
-                text-align: center;
-                position: relative;
-                z-index: 1;
-            }
-            .addon-card {
-                background: #1e1e1e;
-                border-radius: 12px;
-                padding: 50px 40px;
-                max-width: 500px;
-                width: 100%;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-            }
-            .addon-logo {
-                width: 120px;
-                height: 120px;
-                background: #252525;
-                border-radius: 16px;
-                margin-bottom: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 50px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            }
-            h1 {
-                margin: 0 0 10px 0;
-                font-size: 32px;
-                font-weight: 700;
-            }
-            .version {
-                color: var(--text-secondary);
-                font-size: 14px;
-                margin-bottom: 20px;
-                background: #2a2a2a;
-                padding: 4px 10px;
-                border-radius: 4px;
-            }
-            .description {
-                color: var(--text-secondary);
-                font-size: 16px;
-                line-height: 1.6;
-                margin-bottom: 20px;
-                max-width: 400px;
-            }
-            .providers-title {
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #666;
-                margin-bottom: 10px;
-                margin-top: 10px;
-            }
-            .providers-list {
-                margin-bottom: 30px;
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 8px;
-            }
-            .provider-tag {
-                background: #2a2a2a;
-                padding: 5px 10px;
-                border-radius: 6px;
-                font-size: 11px;
-                color: #ccc;
-                border: 1px solid #333;
-                text-transform: uppercase;
-                font-weight: 600;
-                letter-spacing: 0.5px;
-            }
-            .config-panel {
-                width: 100%;
-                margin-bottom: 24px;
-                padding: 16px 18px;
-                border-radius: 10px;
-                border: 1px solid #333;
-                background: #232323;
-                text-align: left;
-                box-sizing: border-box;
-            }
-            .config-panel-title {
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #8f8f8f;
-                margin-bottom: 12px;
-            }
-            .config-toggle {
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                cursor: pointer;
-                color: #f2f2f2;
-            }
-            .config-panel .config-toggle + .config-toggle {
-                margin-top: 14px;
-            }
-            .config-toggle input {
-                margin-top: 2px;
-            }
-            .config-toggle strong {
-                display: block;
-                font-size: 14px;
-                margin-bottom: 4px;
-            }
-            .config-toggle span {
-                display: block;
-                color: var(--text-secondary);
-                font-size: 13px;
-                line-height: 1.4;
-            }
-            .config-input {
-                width: 100%;
-                margin-top: 10px;
-                padding: 10px 12px;
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background: #171717;
-                color: #f2f2f2;
-                font-size: 14px;
-                box-sizing: border-box;
-            }
-            .config-input::placeholder {
-                color: #7a7a7a;
-            }
-            .easy-proxy-list {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-                margin-top: 10px;
-            }
-            .easy-proxy-row {
-                display: grid;
-                grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
-                gap: 8px;
-                align-items: end;
-            }
-            .easy-proxy-row .config-input {
-                margin-top: 0;
-            }
-            .easy-proxy-remove,
-            .easy-proxy-add {
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background: #171717;
-                color: #f2f2f2;
-                font-size: 13px;
-                font-weight: 700;
-                cursor: pointer;
-            }
-            .easy-proxy-remove {
-                width: 40px;
-                height: 40px;
-            }
-            .easy-proxy-add {
-                width: 100%;
-                margin-top: 12px;
-                padding: 10px 12px;
-            }
-            .easy-proxy-remove:hover,
-            .easy-proxy-add:hover {
-                border-color: #555;
-            }
-            @media (max-width: 560px) {
-                .easy-proxy-row {
-                    grid-template-columns: 1fr;
-                }
-                .easy-proxy-remove {
-                    width: 100%;
-                }
-            }
-            .settings-btn {
-                width: 100%;
-                margin-bottom: 14px;
-                padding: 12px 14px;
-                border-radius: 8px;
-                border: 1px solid #3a3a3a;
-                background: #171717;
-                color: #f2f2f2;
-                font-size: 14px;
-                font-weight: 700;
-                cursor: pointer;
-                text-align: left;
-            }
-            .settings-btn:hover {
-                border-color: #555;
-            }
-            .settings-panel {
-                display: none;
-            }
-            .settings-panel.open {
-                display: block;
-            }
-            .provider-options {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 10px;
-            }
-            .provider-option {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 9px 10px;
-                border: 1px solid #333;
-                border-radius: 8px;
-                background: #191919;
-                color: #ddd;
-                font-size: 12px;
-                font-weight: 700;
-                text-transform: uppercase;
-                cursor: pointer;
-            }
-            .provider-option input {
-                margin: 0;
-            }
-            .install-btn {
-                background-color: var(--purple);
-                color: white;
-                border: none;
-                padding: 16px 40px;
-                font-size: 18px;
-                font-weight: 700;
-                border-radius: 8px;
-                cursor: pointer;
-                text-decoration: none;
-                transition: transform 0.2s, background-color 0.2s;
-                display: inline-block;
-                box-shadow: 0 4px 15px rgba(138, 90, 171, 0.4);
-            }
-            .install-btn:hover {
-                background-color: var(--purple-hover);
-                transform: translateY(-2px);
-            }
-            .install-btn:active {
-                transform: translateY(0);
-            }
-            .copy-btn {
-                background-color: transparent;
-                color: var(--text-secondary);
-                border: 1px solid #333;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: 600;
-                border-radius: 6px;
-                cursor: pointer;
-                margin-top: 15px;
-                transition: all 0.2s;
-            }
-            .copy-btn:hover {
-                border-color: #555;
-                color: #fff;
-            }
-            .footer {
-                padding: 20px;
-                text-align: center;
-                color: #555;
-                font-size: 13px;
-            }
-            .footer a {
-                color: #777;
-                text-decoration: none;
-            }
-            .footer a:hover {
-                color: var(--purple);
-            }
-            
-            /* Background Pattern */
-            .bg-pattern {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-image: url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23222" fill-opacity="0.4"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');
-                opacity: 0.5;
-                z-index: 0;
-                pointer-events: none;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="main-content">
-            <div class="addon-card">
-                <div class="addon-logo">
-                    📺
-                </div>
-                <h1>{{manifestName}}</h1>
-                <div class="version">Version {{manifestVersion}}</div>
-                <p class="description">
-                    {{manifestDescription}}
-                </p>
-                
-                <div class="providers-title">Active Providers</div>
-                <div class="providers-list">
-                    {{providersHtml}}
-                </div>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{manifestName}} - Stremio Addon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --netflix-red: #E50914;
+            --netflix-red-dark: #B20710;
+            --netflix-red-glow: rgba(229, 9, 20, 0.55);
+            --bg: #0a0a0a;
+            --bg-elevated: #141414;
+            --bg-card: #181818;
+            --bg-card-hover: #1f1f1f;
+            --border: #2a2a2a;
+            --border-strong: #3a3a3a;
+            --text: #ffffff;
+            --text-secondary: #b3b3b3;
+            --text-muted: #6b6b6b;
+            --radius: 12px;
+            --radius-lg: 16px;
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-                <div class="config-panel">
-                    <div class="config-panel-title">EasyProxy</div>
-                    <div class="config-toggle">
-                        <div style="width: 100%;">
-                            <strong>EasyProxy endpoints</strong>
-                            <div id="easyProxyList" class="easy-proxy-list"></div>
-                            <button id="addEasyProxy" type="button" class="easy-proxy-add">Add EasyProxy</button>
-                        </div>
-                    </div>
-                    <label class="config-toggle" for="easyProxyMode">
-                        <div style="width: 100%;">
-                            <strong>EasyProxy Mode</strong>
-                            <span>Failover: usa sempre il primo proxy della lista, passa al successivo solo se il primo è offline. Load-balance: alterna i proxy a ogni richiesta per distribuire il carico.</span>
-                            <select class="config-input" id="easyProxyMode" name="easyProxyMode">
-                                <option value="failover">Failover</option>
-                                <option value="load-balance">Load balance</option>
-                            </select>
-                        </div>
-                    </label>
-                </div>
+        * { box-sizing: border-box; }
 
-                <div class="config-panel">
-                    <div class="config-panel-title">Catalogs</div>
-                    <label class="config-toggle" for="easyCatalogsLangIt">
-                        <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
-                        <div>
-                            <strong>EasyCatalogs mode</strong>
-                            <span>Adds Italian language mapping hints for EasyCatalogs installs.</span>
-                        </div>
-                    </label>
-                </div>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
 
-                <div class="config-panel">
-                    <div class="config-panel-title">Layout & Compatibility</div>
-                    <label class="config-toggle" for="aiostreamsMode">
-                        <input type="checkbox" id="aiostreamsMode" name="aiostreamsMode">
-                        <div>
-                            <strong>AIOStreams Mode</strong>
-                            <span>Formats stream titles and names to be compatible with AIOStreams custom formatting and regex parsing.</span>
-                        </div>
-                    </label>
-                </div>
+        body {
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(229, 9, 20, 0.18) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 70%),
+                var(--bg);
+            background-attachment: fixed;
+        }
 
-                <button id="settingsToggle" type="button" class="settings-btn">Settings: providers</button>
-                <div id="settingsPanel" class="config-panel settings-panel">
-                    <div class="config-panel-title">Providers</div>
-                    <div class="provider-options">
-                        {{providerSettingsHtml}}
-                    </div>
-                </div>
+        .bg-grain {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.04;
+            z-index: 0;
+            background-image: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Cfilter id="n"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23n)"/%3E%3C/svg%3E');
+        }
 
-                <a id="installLink" href="#" class="install-btn">INSTALL ADDON</a>
-                <button id="copyLink" type="button" class="copy-btn">📋 Copy Link</button>
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 40px;
+            background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.7) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 900;
+            font-size: 22px;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .logo-mark {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--netflix-red) 0%, var(--netflix-red-dark) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px var(--netflix-red-glow);
+        }
+
+        .logo-mark svg {
+            width: 20px;
+            height: 20px;
+            color: #fff;
+        }
+
+        .main {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 48px 40px 80px;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 56px;
+        }
+
+        .hero-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--netflix-red);
+            margin-bottom: 20px;
+        }
+
+        .hero-eyebrow::before,
+        .hero-eyebrow::after {
+            content: '';
+            width: 32px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--netflix-red), transparent);
+        }
+
+        .hero h1 {
+            margin: 0 0 16px;
+            font-size: clamp(40px, 7vw, 72px);
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1.02;
+            background: linear-gradient(180deg, #ffffff 0%, #b3b3b3 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            margin: 0 auto;
+            max-width: 560px;
+            font-size: 17px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 16px;
+        }
+
+        .section-title {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 22px;
+            background: var(--netflix-red);
+            border-radius: 2px;
+            box-shadow: 0 0 12px var(--netflix-red-glow);
+        }
+
+        .section-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .providers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .provider-card {
+            position: relative;
+            display: block;
+            cursor: pointer;
+            user-select: none;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+            overflow: hidden;
+            transition: transform 0.25s var(--ease), border-color 0.25s var(--ease), opacity 0.25s var(--ease);
+            isolation: isolate;
+        }
+
+        .provider-card-inner {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .provider-icon {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--accent) 18%, transparent);
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.25s var(--ease), color 0.25s var(--ease), box-shadow 0.3s var(--ease);
+        }
+
+        .provider-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .provider-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .provider-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .provider-category {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .provider-card input.provider-checkbox {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            width: 0;
+            height: 0;
+        }
+
+        .provider-card:has(input:checked) {
+            border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+
+        .provider-card:has(input:checked) .provider-icon {
+            background: color-mix(in srgb, var(--accent) 28%, transparent);
+            box-shadow: 0 0 18px -2px var(--accent), 0 0 6px var(--accent);
+        }
+
+        .provider-card:has(input:not(:checked)) {
+            opacity: 0.42;
+            filter: grayscale(0.85);
+        }
+
+        .provider-card:has(input:not(:checked)) .provider-icon {
+            box-shadow: none;
+        }
+
+        .provider-card:hover:has(input:checked) {
+            transform: translateY(-3px);
+        }
+
+        .provider-card:hover:has(input:not(:checked)) {
+            opacity: 0.7;
+            filter: grayscale(0.5);
+            transform: translateY(-2px);
+            border-color: var(--border-strong);
+        }
+
+        .provider-card:focus-within {
+            outline: 2px solid var(--netflix-red);
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .provider-card, .provider-icon {
+                transition: none;
+            }
+            .provider-card:hover { transform: none; }
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 22px 24px;
+        }
+
+        .panel + .panel { margin-top: 14px; }
+
+        .panel-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--text-secondary);
+            margin: 0 0 16px;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            cursor: pointer;
+        }
+
+        .toggle-row:first-of-type { border-top: 0; padding-top: 0; }
+        .toggle-row:last-of-type { padding-bottom: 0; }
+
+        .toggle-row input[type="checkbox"] {
+            flex-shrink: 0;
+            appearance: none;
+            -webkit-appearance: none;
+            width: 42px;
+            height: 24px;
+            border-radius: 999px;
+            background: #333;
+            border: 1px solid var(--border-strong);
+            position: relative;
+            cursor: pointer;
+            margin: 2px 0 0;
+            transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+        }
+
+        .toggle-row input[type="checkbox"]::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.2s var(--ease);
+        }
+
+        .toggle-row input[type="checkbox"]:checked {
+            background: var(--netflix-red);
+            border-color: var(--netflix-red);
+            box-shadow: 0 0 14px var(--netflix-red-glow);
+        }
+
+        .toggle-row input[type="checkbox"]:checked::after {
+            transform: translateX(18px);
+        }
+
+        .toggle-row .toggle-body strong {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .toggle-row .toggle-body span {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .input {
+            width: 100%;
+            padding: 11px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-strong);
+            background: #0f0f0f;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+        }
+
+        .input::placeholder { color: var(--text-muted); }
+        .input:focus {
+            outline: none;
+            border-color: var(--netflix-red);
+            box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
+        }
+
+        select.input { cursor: pointer; }
+
+        .proxy-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .proxy-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+            gap: 8px;
+        }
+
+        .proxy-row .input { width: 100%; }
+
+        .proxy-remove, .proxy-add {
+            border-radius: 10px;
+            border: 1px solid var(--border-strong);
+            background: #0f0f0f;
+            color: var(--text);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+        }
+
+        .proxy-remove { width: 42px; height: 42px; }
+
+        .proxy-add {
+            width: 100%;
+            padding: 11px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .proxy-remove:hover, .proxy-add:hover {
+            border-color: var(--netflix-red);
+            background: rgba(229, 9, 20, 0.08);
+        }
+
+        @media (max-width: 560px) {
+            .proxy-row { grid-template-columns: 1fr; }
+            .proxy-remove { width: 100%; }
+        }
+
+        .cta-wrap {
+            margin-top: 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .install-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, var(--netflix-red) 0%, var(--netflix-red-dark) 100%);
+            color: #fff;
+            border: none;
+            padding: 18px 56px;
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            border-radius: 999px;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 8px 30px var(--netflix-red-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+        }
+
+        .install-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px var(--netflix-red-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .install-btn:active { transform: translateY(0); }
+
+        .install-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .copy-btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-strong);
+            padding: 10px 22px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.2s var(--ease);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--text);
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .copy-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 32px 20px 40px;
+            color: var(--text-muted);
+            font-size: 13px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s var(--ease);
+        }
+
+        .footer a:hover { color: var(--netflix-red); }
+
+        @media (max-width: 768px) {
+            .navbar { padding: 14px 20px; }
+            .main { padding: 32px 20px 60px; }
+            .hero { margin-bottom: 40px; }
+            .providers-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+            .panel { padding: 18px; }
+        }
+
+        @media (max-width: 420px) {
+            .providers-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grain" aria-hidden="true"></div>
+
+    <nav class="navbar">
+        <a class="logo" href="/">
+            <span class="logo-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </span>
+            <span>{{manifestName}}</span>
+        </a>
+        <div class="navbar-meta"></div>
+    </nav>
+
+    <main class="main">
+        <section class="hero">
+            <span class="hero-eyebrow">Stremio Addon</span>
+            <h1>{{manifestName}}</h1>
+            <p>{{manifestDescription}}</p>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">Providers</h2>
+                <span class="section-subtitle">Clicca una card per attivare o disattivare</span>
             </div>
+            <div class="providers-grid">
+                {{providerCardsHtml}}
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">EasyProxy</h2>
+                <span class="section-subtitle">Proxy HLS per provider bloccati</span>
+            </div>
+            <div class="panel">
+                <div class="proxy-list" id="easyProxyList"></div>
+                <button id="addEasyProxy" type="button" class="proxy-add">+ Aggiungi EasyProxy</button>
+                <div style="margin-top:18px;">
+                    <label for="easyProxyMode" style="display:block;font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">Modalit&agrave;</label>
+                    <select class="input" id="easyProxyMode" name="easyProxyMode">
+                        <option value="failover">Failover (usa il primo sano)</option>
+                        <option value="load-balance">Load balance (alterna)</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">Opzioni</h2>
+                <span class="section-subtitle">Compatibilit&agrave; e cataloghi</span>
+            </div>
+            <div class="panel">
+                <label class="toggle-row" for="easyCatalogsLangIt">
+                    <input type="checkbox" id="easyCatalogsLangIt" name="easyCatalogsLangIt">
+                    <span class="toggle-body">
+                        <strong>EasyCatalogs mode</strong>
+                        <span>Aggiunge mapping italiano per installazioni EasyCatalogs.</span>
+                    </span>
+                </label>
+                <label class="toggle-row" for="aiostreamsMode">
+                    <input type="checkbox" id="aiostreamsMode" name="aiostreamsMode">
+                    <span class="toggle-body">
+                        <strong>AIOStreams Mode</strong>
+                        <span>Formatta titoli e nomi stream per il parsing regex di AIOStreams.</span>
+                    </span>
+                </label>
+            </div>
+        </section>
+
+        <div class="cta-wrap">
+            <a id="installLink" href="#" class="install-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3 19 12 5 21 5 3"/></svg>
+                INSTALLA SU STREMIO
+            </a>
+            <button id="copyLink" type="button" class="copy-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                Copia link manifest
+            </button>
         </div>
+    </main>
 
-        <div class="footer">
-            Powered by <a href="https://github.com/realbestia1/" target="_blank">realbestia</a>
-        </div>
+    <footer class="footer">
+        Powered by <a href="https://github.com/realbestia1/" target="_blank" rel="noopener">realbestia</a>
+    </footer>
 
-        <script id="initialConfig" type="application/json">{{initialConfigJson}}</script>
-        <script>
-            // Dynamic Install Link
-            const currentHost = window.location.host;
-            const protocol = window.location.protocol;
-            const installBtn = document.getElementById('installLink');
-            const copyBtn = document.getElementById('copyLink');
-            const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
-            const aiostreamsModeToggle = document.getElementById('aiostreamsMode');
-            const easyProxyList = document.getElementById('easyProxyList');
-            const addEasyProxyBtn = document.getElementById('addEasyProxy');
-            const easyProxyModeInput = document.getElementById('easyProxyMode');
-            const settingsToggle = document.getElementById('settingsToggle');
-            const settingsPanel = document.getElementById('settingsPanel');
-            const providerCheckboxes = Array.from(document.querySelectorAll('.provider-checkbox'));
-            let manifestUrl = '';
-            let stremioUrl = '';
+    <script id="initialConfig" type="application/json">{{initialConfigJson}}</script>
+    <script>
+        const currentHost = window.location.host;
+        const protocol = window.location.protocol;
+        const installBtn = document.getElementById('installLink');
+        const copyBtn = document.getElementById('copyLink');
+        const easyCatalogsToggle = document.getElementById('easyCatalogsLangIt');
+        const aiostreamsModeToggle = document.getElementById('aiostreamsMode');
+        const easyProxyList = document.getElementById('easyProxyList');
+        const addEasyProxyBtn = document.getElementById('addEasyProxy');
+        const easyProxyModeInput = document.getElementById('easyProxyMode');
+        const providerCheckboxes = Array.from(document.querySelectorAll('.provider-checkbox'));
+        let manifestUrl = '';
+        let stremioUrl = '';
 
-            function readInitialConfig() {
-                const node = document.getElementById('initialConfig');
-                if (!node) return {};
-                try {
-                    return JSON.parse(node.textContent || '{}');
-                } catch {
-                    return {};
-                }
-            }
+        function readInitialConfig() {
+            const node = document.getElementById('initialConfig');
+            if (!node) return {};
+            try { return JSON.parse(node.textContent || '{}'); } catch { return {}; }
+        }
 
-            const initialConfig = readInitialConfig();
+        const initialConfig = readInitialConfig();
 
-            function createEasyProxyRow(values = {}) {
-                const row = document.createElement('div');
-                row.className = 'easy-proxy-row';
-                row.innerHTML = `
-                    <input class="config-input easy-proxy-url" type="url" placeholder="https://proxy.example.com" value="${String(values.url || '').replace(/"/g, '&quot;')}">
-                    <input class="config-input easy-proxy-password" type="text" placeholder="api password (optional)" value="${String(values.password || '').replace(/"/g, '&quot;')}">
-                    <button class="easy-proxy-remove" type="button" title="Remove EasyProxy">-</button>
-                `;
-                row.querySelectorAll('input').forEach((input) => {
-                    input.addEventListener('input', updateInstallLinks);
-                });
-                row.querySelector('.easy-proxy-remove').addEventListener('click', () => {
-                    row.remove();
-                    if (easyProxyList && easyProxyList.children.length === 0) {
-                        createEasyProxyRow();
-                    }
-                    updateInstallLinks();
-                });
-                easyProxyList.appendChild(row);
-            }
+        function createEasyProxyRow(values = {}) {
+            const row = document.createElement('div');
+            row.className = 'proxy-row';
+            row.innerHTML = `
+                <input class="input proxy-url" type="url" placeholder="https://proxy.example.com" value="${String(values.url || '').replace(/"/g, '&quot;')}">
+                <input class="input proxy-password" type="text" placeholder="api password (opzionale)" value="${String(values.password || '').replace(/"/g, '&quot;')}">
+                <button class="proxy-remove" type="button" title="Rimuovi" aria-label="Rimuovi EasyProxy">&minus;</button>
+            `;
+            row.querySelectorAll('input').forEach((input) => input.addEventListener('input', updateInstallLinks));
+            row.querySelector('.proxy-remove').addEventListener('click', () => {
+                row.remove();
+                if (easyProxyList && easyProxyList.children.length === 0) createEasyProxyRow();
+                updateInstallLinks();
+            });
+            easyProxyList.appendChild(row);
+        }
 
-            function getEasyProxyEntries() {
-                if (!easyProxyList) return [];
-                return Array.from(easyProxyList.querySelectorAll('.easy-proxy-row'))
-                    .map((row) => {
-                        let url = row.querySelector('.easy-proxy-url')?.value.trim() || '';
-                        while (url.endsWith('/')) {
-                            url = url.slice(0, -1);
-                        }
-                        const password = row.querySelector('.easy-proxy-password')?.value.trim() || '';
-                        return { url, password };
-                    })
+        function getEasyProxyEntries() {
+            if (!easyProxyList) return [];
+            return Array.from(easyProxyList.querySelectorAll('.proxy-row'))
+                .map((row) => {
+                    let url = row.querySelector('.proxy-url')?.value.trim() || '';
+                    while (url.endsWith('/')) url = url.slice(0, -1);
+                    const password = row.querySelector('.proxy-password')?.value.trim() || '';
+                    return { url, password };
+                })
+                .filter((entry) => entry.url);
+        }
+
+        function normalizeInitialEasyProxyEntries(config) {
+            if (Array.isArray(config.easyProxies)) {
+                return config.easyProxies
+                    .map((entry) => ({ url: String(entry?.url || '').trim(), password: String(entry?.password || '').trim() }))
                     .filter((entry) => entry.url);
             }
+            const fallbackPassword = String(config.easyProxyPassword || '').trim();
+            return String(config.easyProxyUrls || config.easyProxyUrl || '')
+                .split(/[\s,]+/)
+                .map((url) => ({ url: url.trim(), password: fallbackPassword }))
+                .filter((entry) => entry.url);
+        }
 
-            function normalizeInitialEasyProxyEntries(config) {
-                if (Array.isArray(config.easyProxies)) {
-                    return config.easyProxies
-                        .map((entry) => ({
-                            url: String(entry?.url || '').trim(),
-                            password: String(entry?.password || '').trim()
-                        }))
-                        .filter((entry) => entry.url);
-                }
-
-                const fallbackPassword = String(config.easyProxyPassword || '').trim();
-                return String(config.easyProxyUrls || config.easyProxyUrl || '')
-                    .split(/[\\s,]+/)
-                    .map((url) => ({ url: url.trim(), password: fallbackPassword }))
-                    .filter((entry) => entry.url);
-            }
-
-            function applyInitialConfig(config) {
-                if (easyCatalogsToggle) {
-                    easyCatalogsToggle.checked = ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(String(config.easyCatalogsLangIt || '').toLowerCase())
-                        || config.easyCatalogsLangIt === true;
-                }
-
-                if (aiostreamsModeToggle) {
-                    aiostreamsModeToggle.checked = ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(String(config.aiostreamsMode || '').toLowerCase())
-                        || config.aiostreamsMode === true;
-                }
-
-                if (easyProxyModeInput && config.easyProxyMode) {
-                    easyProxyModeInput.value = String(config.easyProxyMode);
-                }
-
-                const proxyEntries = normalizeInitialEasyProxyEntries(config);
-                if (easyProxyList) {
-                    easyProxyList.innerHTML = '';
-                    if (proxyEntries.length > 0) {
-                        proxyEntries.forEach((entry) => createEasyProxyRow(entry));
-                    } else {
-                        createEasyProxyRow();
-                    }
-                }
-
-                const disabledProviderConfig = Object.prototype.hasOwnProperty.call(config || {}, 'disabledProviders')
-                    ? config.disabledProviders
-                    : '';
-                const disabledProviders = new Set(String(disabledProviderConfig || '')
-                    .split(',')
-                    .map((name) => name.trim().toLowerCase())
-                    .filter(Boolean));
-                providerCheckboxes.forEach((input) => {
-                    input.checked = !disabledProviders.has(String(input.value || '').toLowerCase());
-                });
-            }
-
-            function getConfigPath() {
-                const config = {};
-                if (easyCatalogsToggle && easyCatalogsToggle.checked) {
-                    config.easyCatalogsLangIt = 'on';
-                }
-                if (aiostreamsModeToggle && aiostreamsModeToggle.checked) {
-                    config.aiostreamsMode = 'on';
-                }
-                const easyProxyEntries = getEasyProxyEntries();
-                if (easyProxyEntries.length > 0) {
-                    config.easyProxies = easyProxyEntries;
-                }
-                if (easyProxyModeInput && easyProxyModeInput.value && easyProxyModeInput.value !== 'failover') {
-                    config.easyProxyMode = easyProxyModeInput.value;
-                }
-                const disabledProviders = providerCheckboxes
-                    .filter((input) => !input.checked)
-                    .map((input) => input.value);
-                const disabledProvidersToken = disabledProviders.join(',');
-                if (disabledProvidersToken !== '') {
-                    config.disabledProviders = disabledProvidersToken;
-                }
-                if (Object.keys(config).length === 0) return '';
-                const encodedConfig = encodeURIComponent(JSON.stringify(config));
-                return `/${encodedConfig}`;
-            }
-
-            function updateInstallLinks() {
-                const configPath = getConfigPath();
-                manifestUrl = `${protocol}//${currentHost}${configPath}/manifest.json`;
-                stremioUrl = `stremio://${currentHost}${configPath}/manifest.json`;
-                installBtn.href = stremioUrl;
-            }
+        function applyInitialConfig(config) {
             if (easyCatalogsToggle) {
-                easyCatalogsToggle.addEventListener('change', updateInstallLinks);
+                easyCatalogsToggle.checked = ['1','true','yes','on','enabled','checked'].includes(String(config.easyCatalogsLangIt || '').toLowerCase()) || config.easyCatalogsLangIt === true;
             }
             if (aiostreamsModeToggle) {
-                aiostreamsModeToggle.addEventListener('change', updateInstallLinks);
+                aiostreamsModeToggle.checked = ['1','true','yes','on','enabled','checked'].includes(String(config.aiostreamsMode || '').toLowerCase()) || config.aiostreamsMode === true;
             }
-            if (addEasyProxyBtn) {
-                addEasyProxyBtn.addEventListener('click', () => {
-                    createEasyProxyRow();
-                    updateInstallLinks();
-                });
+            if (easyProxyModeInput && config.easyProxyMode) easyProxyModeInput.value = String(config.easyProxyMode);
+
+            const proxyEntries = normalizeInitialEasyProxyEntries(config);
+            if (easyProxyList) {
+                easyProxyList.innerHTML = '';
+                if (proxyEntries.length > 0) proxyEntries.forEach((entry) => createEasyProxyRow(entry));
+                else createEasyProxyRow();
             }
-            if (easyProxyModeInput) {
-                easyProxyModeInput.addEventListener('change', updateInstallLinks);
-            }
-            if (settingsToggle && settingsPanel) {
-                settingsToggle.addEventListener('click', () => {
-                    settingsPanel.classList.toggle('open');
-                });
-            }
+
+            const disabledProviderConfig = Object.prototype.hasOwnProperty.call(config || {}, 'disabledProviders') ? config.disabledProviders : '';
+            const disabledProviders = new Set(String(disabledProviderConfig || '').split(',').map((n) => n.trim().toLowerCase()).filter(Boolean));
             providerCheckboxes.forEach((input) => {
-                input.addEventListener('change', updateInstallLinks);
+                input.checked = !disabledProviders.has(String(input.value || '').toLowerCase());
             });
-            applyInitialConfig(initialConfig);
-            updateInstallLinks();
-            // Copy Link Logic
-            copyBtn.addEventListener('click', async () => {
-                try {
-                    const showCopySuccess = () => {
-                        const originalText = copyBtn.innerText;
-                        copyBtn.innerText = '? Copied!';
-                        copyBtn.style.borderColor = '#4CAF50';
-                        copyBtn.style.color = '#4CAF50';
-                        
-                        setTimeout(() => {
-                            copyBtn.innerText = originalText;
-                            copyBtn.style.borderColor = '';
-                            copyBtn.style.color = '';
-                        }, 2000);
-                    };
+        }
 
-                    if (navigator.clipboard && window.isSecureContext) {
-                        await navigator.clipboard.writeText(manifestUrl);
-                    } else {
-                        const textArea = document.createElement('textarea');
-                        textArea.value = manifestUrl;
-                        textArea.setAttribute('readonly', '');
-                        textArea.style.position = 'fixed';
-                        textArea.style.top = '-9999px';
-                        textArea.style.left = '-9999px';
-                        document.body.appendChild(textArea);
-                        textArea.focus();
-                        textArea.select();
-                        const copied = document.execCommand('copy');
-                        document.body.removeChild(textArea);
-                        if (!copied) throw new Error('Fallback copy failed');
-                    }
+        function getConfigPath() {
+            const config = {};
+            if (easyCatalogsToggle && easyCatalogsToggle.checked) config.easyCatalogsLangIt = 'on';
+            if (aiostreamsModeToggle && aiostreamsModeToggle.checked) config.aiostreamsMode = 'on';
+            const easyProxyEntries = getEasyProxyEntries();
+            if (easyProxyEntries.length > 0) config.easyProxies = easyProxyEntries;
+            if (easyProxyModeInput && easyProxyModeInput.value && easyProxyModeInput.value !== 'failover') config.easyProxyMode = easyProxyModeInput.value;
+            const disabledProviders = providerCheckboxes.filter((i) => !i.checked).map((i) => i.value);
+            const token = disabledProviders.join(',');
+            if (token !== '') config.disabledProviders = token;
+            if (Object.keys(config).length === 0) return '';
+            return '/' + encodeURIComponent(JSON.stringify(config));
+        }
 
-                    showCopySuccess();
-                } catch (err) {
-                    console.error('Failed to copy: ', err);
+        function updateInstallLinks() {
+            const configPath = getConfigPath();
+            manifestUrl = `${protocol}//${currentHost}${configPath}/manifest.json`;
+            stremioUrl = `stremio://${currentHost}${configPath}/manifest.json`;
+            installBtn.href = stremioUrl;
+        }
+
+        if (easyCatalogsToggle) easyCatalogsToggle.addEventListener('change', updateInstallLinks);
+        if (aiostreamsModeToggle) aiostreamsModeToggle.addEventListener('change', updateInstallLinks);
+        if (addEasyProxyBtn) addEasyProxyBtn.addEventListener('click', () => { createEasyProxyRow(); updateInstallLinks(); });
+        if (easyProxyModeInput) easyProxyModeInput.addEventListener('change', updateInstallLinks);
+        providerCheckboxes.forEach((input) => input.addEventListener('change', updateInstallLinks));
+
+        applyInitialConfig(initialConfig);
+        updateInstallLinks();
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                const showSuccess = () => {
+                    const original = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copiato!';
+                    copyBtn.style.borderColor = '#22C55E';
+                    copyBtn.style.color = '#22C55E';
+                    setTimeout(() => { copyBtn.innerHTML = original; copyBtn.style.borderColor = ''; copyBtn.style.color = ''; }, 2000);
+                };
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(manifestUrl);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = manifestUrl;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.focus(); ta.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    if (!ok) throw new Error('Fallback copy failed');
                 }
-            });
-            
-            console.log("Manifest URL:", manifestUrl);
-        </script>
-    </body>
-    </html>
+                showSuccess();
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        });
+
+        console.log('Manifest URL:', manifestUrl);
+    </script>
+</body>
+</html>
