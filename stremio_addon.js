@@ -1415,7 +1415,6 @@ const providers = {
     guardahd: require('./src/guardahd/index.js'),
     guardoserie: require('./src/guardoserie/index.js'),
     vidxgo: require('./src/vidxgo/index.js'),
-    altadefinizionestreaming: require('./src/altadefinizionestreaming/index.js'),
     animeunity: require('./src/animeunity/index.js'),
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
@@ -1423,7 +1422,9 @@ const providers = {
     cinemacity: require('./src/cinemacity/index.js'),
 };
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['streamingcommunity', 'animeunity', 'vidxgo', 'altadefinizionestreaming']);
+const FALLBACK_PROXY_URL = 'https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.m3u8?host=VixCloud&d=';
+
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1485,11 +1486,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1497,11 +1498,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie'];
         }
     }
 
@@ -1594,6 +1595,12 @@ async function fetchMediaYearCached(type, tmdbId, imdbId) {
         console.warn(`[Addon] Error fetching year from TMDB: ${e.message}`);
     }
 
+    if (mediaYearCache.size >= 1000) {
+        const oldestKey = mediaYearCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            mediaYearCache.delete(oldestKey);
+        }
+    }
     mediaYearCache.set(cacheKey, year);
     return year;
 }
@@ -1756,6 +1763,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                     try {
                         const providerContext = buildProviderRequestContext(requestContext);
                         providerContext.proxyUrl = easyProxyUrl;
+                        if (!easyProxyUrl && (name === 'streamingcommunity' || name === 'animeunity')) {
+                            providerContext.proxyUrl = 'fake';
+                        }
                         providerContext.proxyUrls = easyProxyEntries.map((entry) => entry.url);
                         providerContext.proxyEntries = easyProxyEntries;
                         providerContext.proxyMode = easyProxyMode;
@@ -1783,15 +1793,12 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         const server = (s.server || "").toLowerCase();
                         const sName = (s.name || "").toLowerCase();
                         const sTitle = (s.title || "").toLowerCase();
-                        const isStreamingCommunityProvider = name === 'streamingcommunity';
-                        const isAnimeUnityProvider = name === 'animeunity';
                         const isVidxGoProvider = name === 'vidxgo';
                         const hasEasyProxy = Boolean(easyProxyUrl);
-                        if (isStreamingCommunityProvider && !hasEasyProxy) return false;
-                        if (isAnimeUnityProvider && !hasEasyProxy) return false;
                         if (isVidxGoProvider && !hasEasyProxy) return false;
                         if (isStreamHgStream(s) && !hasEasyProxy) return false;
-                        const canProxyMixdrop = Boolean(easyProxyUrl) && (isMixdropStreamUrl(s.url) || isMixdropStream(s));
+                        const isMixdrop = isMixdropStreamUrl(s.url) || isMixdropStream(s);
+                        const canProxyMixdrop = (hasEasyProxy || isMixdrop) && isMixdrop;
                         // Global filter for specific unwanted servers
                         return (
                             (canProxyMixdrop || (
@@ -1808,30 +1815,39 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         let finalStreamUrl = s.url;
                         let proxiedByEasyProxy = false;
                         if (name === 'streamingcommunity') {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixsrc',
-                                    s.easyProxySourceUrl || s.url,
-                                    'm3u8'
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'vixsrc',
+                                        s.easyProxySourceUrl || s.url,
+                                        'm3u8'
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(s.easyProxySourceUrl || s.url) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
+                            }
+                            proxiedByEasyProxy = true;
                         } else if (name === 'animeunity') {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'vixcloud',
-                                    s.easyProxySourceUrl || s.url
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            const sourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'calpezz8.space');
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'vixcloud',
+                                        sourceUrl
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = FALLBACK_PROXY_URL + encodeURIComponent(sourceUrl) + '&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2';
+                            }
+                            proxiedByEasyProxy = true;
                         } else if (isStreamHgStream(s)) {
                             finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                 easyProxyEntries,
@@ -1859,31 +1875,22 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
                         } else if (isMixdropStream(s)) {
                             const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'mixdrop',
-                                    s.easyProxySourceUrl || s.url,
-                                    mixdropExtension
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
-                        } else if (name === 'altadefinizionestreaming' && !isMixdropStream(s)) {
-                            finalStreamUrl = await buildEasyProxyUrlWithFailover(
-                                easyProxyEntries,
-                                easyProxyMode,
-                                (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
-                                    proxyUrl,
-                                    proxyPassword,
-                                    'adn',
-                                    s.easyProxySourceUrl || s.url,
-                                    'm3u8'
-                                )
-                            );
-                            proxiedByEasyProxy = finalStreamUrl !== s.url;
+                            if (hasEasyProxy) {
+                                finalStreamUrl = await buildEasyProxyUrlWithFailover(
+                                    easyProxyEntries,
+                                    easyProxyMode,
+                                    (proxyUrl, proxyPassword) => buildEasyProxyExtractorUrl(
+                                        proxyUrl,
+                                        proxyPassword,
+                                        'mixdrop',
+                                        s.easyProxySourceUrl || s.url,
+                                        mixdropExtension
+                                    )
+                                );
+                            } else {
+                                finalStreamUrl = `https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.${mixdropExtension}?host=Mixdrop&d=${encodeURIComponent(s.easyProxySourceUrl || s.url)}&redirect_stream=true&max_res=true&api_password=mGH5%21%21K8bPdtFDf2`;
+                            }
+                            proxiedByEasyProxy = true;
                         }
 
                         // For Stremio, we reconstruct the legacy multiline format using metadata
@@ -2025,14 +2032,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             delete finalBehaviorHints.headers;
                         }
 
-                        if (aiostreamsMode && finalStreamUrl) {
-                            // If the stream ends in .m3u8, AIOStreams automatically classifies it as 'live' stream type,
-                            // which forces Stremio to open it in the Live TV player (missing player seekbar/timeline).
-                            // Appending a dummy hash fragment (#video.mp4) prevents this while keeping playback perfectly safe.
-                            if (finalStreamUrl.split('#')[0].split('?')[0].endsWith('.m3u8')) {
-                                finalStreamUrl += '#video.mp4';
-                            }
-                        }
 
                         return {
                             name: nameUI,
@@ -2331,8 +2330,8 @@ function describeValidCfSession(providersToCheck) {
     return null;
 }
 
-async function warmupGuardoserie() {
-    const forceWarmup = String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
+async function warmupGuardoserie(force = false) {
+    const forceWarmup = force || String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
     const validSession = describeValidCfSession(['guardoserie']);
     if (!forceWarmup && validSession) {
         console.log(`[Warmup] Guardoserie saltato: sessione CF valida gia presente (${validSession}).`);
@@ -2341,7 +2340,7 @@ async function warmupGuardoserie() {
 
     try {
         console.log('[Warmup] Riscaldamento Guardoserie...');
-        await getClearance('https://guardoserie.world/', 'guardoserie', {
+        await getClearance('https://guardoserie.living/', 'guardoserie', {
             maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
             requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
             waitUntil: 'network_idle'
@@ -2354,11 +2353,19 @@ async function warmupGuardoserie() {
 
 let server;
 (async () => {
-    // FlareSolverr startup removed (Scrapling is used on-demand)
     try {
+        // Esegui il warmup iniziale (salta se c'è già una sessione valida su disco)
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
         });
+
+        // Configura il refresh in background ogni 50 minuti per mantenere i cookie sempre attivi
+        setInterval(() => {
+            console.log('[Warmup] Esecuzione refresh periodico in background...');
+            warmupGuardoserie(true).catch(e => {
+                console.error('[Warmup] Errore durante il refresh periodico:', e.message);
+            });
+        }, 50 * 60 * 1000);
     } catch (e) {
         console.error('[Addon] Errore durante warmup:', e.message);
     }

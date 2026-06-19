@@ -7,7 +7,6 @@ const animesaturn = require('./animesaturn/index');
 const cinemacity = require('./cinemacity/index');
 const vidxgo = require('./vidxgo/index');
 const netmirror = require('./netmirror/index');
-const altadefinizionestreaming = require('./altadefinizionestreaming/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
 
 const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
@@ -178,16 +177,12 @@ async function getStreams(id, type, season, episode) {
     const isKitsuRequest =
         String(providerContext?.idType || '').toLowerCase() === 'kitsu' ||
         /^kitsu:\d+$/i.test(String(id || '').trim());
-    const isImdbRequest =
-        String(providerContext?.idType || '').toLowerCase() === 'imdb' ||
-        /^tt\d+$/i.test(String(id || '').trim()) ||
-        !!(providerContext && providerContext.imdbId && /^tt\d+$/i.test(providerContext.imdbId));
     const selectedProviders = [];
     if (normalizedType === 'movie') {
         if (likelyAnime || isKitsuRequest) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
         } else {
-            selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardahd', 'guardoserie', 'altadefinizionestreaming');
+            selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardahd', 'guardoserie');
         }
     } else if (normalizedType === 'anime') {
         selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo');
@@ -195,11 +190,7 @@ async function getStreams(id, type, season, episode) {
         if (likelyAnime) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
-            if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardoserie', 'altadefinizionestreaming');
-            } else {
-                selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardoserie', 'altadefinizionestreaming');
-            }
+            selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardoserie');
         }
     } else {
         selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'netmirror', 'guardahd', 'guardoserie');
@@ -267,14 +258,6 @@ async function getStreams(id, type, season, episode) {
                 netmirror.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
                     .then(s => ({ provider: 'NetMirror', streams: s, status: 'fulfilled' }))
                     .catch(e => ({ provider: 'NetMirror', error: e, status: 'rejected' }))
-            );
-            continue;
-        }
-        if (providerName === 'altadefinizionestreaming') {
-            promises.push(
-                altadefinizionestreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'AltadefinizioneStreaming', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'AltadefinizioneStreaming', error: e, status: 'rejected' }))
             );
             continue;
         }

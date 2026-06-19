@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -14,6 +14,8 @@ let activeGlobalRequests = 0;
 const MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || '2', 10);
 const MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || '20', 10);
 const GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || '60000', 10);
+const SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || '90000', 10);
+const SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || '15000', 10);
 
 function createRelease() {
     let released = false;
@@ -77,7 +79,7 @@ function execPythonBypass(url, provider, options = {}) {
         const args = [
             scriptPath, 
             url,
-            '--timeout', String(options.timeout || 60000),
+            '--timeout', String(options.timeout || SCRAPLING_DEFAULT_TIMEOUT),
             '--wait-until', options.waitUntil || 'domcontentloaded'
         ];
 
@@ -102,18 +104,34 @@ function execPythonBypass(url, provider, options = {}) {
             pythonExe = 'python';
         }
 
-        const child = spawn(pythonExe, args);
+        const spawnOptions = {};
+        if (process.platform !== 'win32') {
+            spawnOptions.detached = true;
+        }
+        const child = spawn(pythonExe, args, spawnOptions);
         let stdout = '';
         let stderr = '';
 
-        const executionTimeout = (parseInt(options.timeout, 10) || 60000) + 10000; // 10 seconds grace period over python timeout
+        const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
-            console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+            console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido l'albero dei processi.`);
             watchdog = null;
-            try {
-                child.kill('SIGKILL');
-            } catch (e) {}
+            if (process.platform === 'win32') {
+                exec(`taskkill /pid ${child.pid} /T /F`, (err) => {
+                    if (err) {
+                        console.error(`[SC][${provider}] taskkill fallito: ${err.message}`);
+                        try { child.kill('SIGKILL'); } catch (e) {}
+                    }
+                });
+            } else {
+                try {
+                    process.kill(-child.pid, 'SIGKILL');
+                } catch (e) {
+                    try { child.kill('SIGKILL'); } catch (err) {}
+                }
+            }
         }, executionTimeout);
+
 
         child.on('error', (err) => {
             if (watchdog) {
@@ -213,6 +231,20 @@ async function getClearance(url, provider = 'default', options = {}) {
         return activeBypasses.get(provider);
     }
 
+    // Load existing session cookies to pass to scrapling (so it avoids re-solving CF)
+    let existingCookies = '';
+    if (fs.existsSync(sessionFile)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+            if (data && data.cookies) existingCookies = data.cookies;
+        } catch (e) {}
+    }
+    if (existingCookies) {
+        const existingHeaders = options.headers || {};
+        existingHeaders.Cookie = existingCookies;
+        options.headers = existingHeaders;
+    }
+
     const bypassPromise = runBypass(url, provider, options, sessionFile)
         .finally(() => {
             activeBypasses.delete(provider);
@@ -226,4 +258,4 @@ function hasActiveBypass(provider) {
     return activeBypasses.has(provider);
 }
 
-module.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+module.exports = { getClearance, hasActiveBypass, execPythonBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };

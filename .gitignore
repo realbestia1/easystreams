@@ -14,3 +14,4 @@ cf-session-safego.json
 cf-session-uprot.json
 cf-session-maxstream.json
 *.log
+/downloaded_files

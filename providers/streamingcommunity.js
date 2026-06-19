@@ -320,7 +320,7 @@ var require_quality_helper = __commonJS({
 
 // src/streamingcommunity/index.js
 function getStreamingCommunityBaseUrl() {
-  return "https://vixsrc.to";
+  return "https://calpezz8.space";
 }
 var { formatStream } = require_formatter();
 require_fetch_helper();
@@ -513,9 +513,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
     try {
-      const isProxyMode = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
       const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
-      const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === "function";
+      const useProxyFetch = proxySocks && typeof ProxyAgent === "function";
       let proxyAgent = null;
       if (useProxyFetch) {
         try {
@@ -540,16 +539,22 @@ function getStreams(id, type, season, episode, providerContext = null) {
         console.log("[StreamingCommunity] Could not find embed src in API payload");
         return [];
       }
-      console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-      const embedResponse = yield fetch(embedUrl, {
-        headers: getEmbedHeaders(embedUrl),
-        dispatcher: proxyAgent || void 0
-      });
-      if (!embedResponse.ok) {
-        console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+      let embedHtml;
+      try {
+        console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+        const embedResponse = yield fetch(embedUrl, {
+          headers: getEmbedHeaders(embedUrl),
+          dispatcher: proxyAgent || void 0
+        });
+        if (!embedResponse.ok) {
+          console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+          return [];
+        }
+        embedHtml = yield embedResponse.text();
+      } catch (e) {
+        console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
         return [];
       }
-      const embedHtml = yield embedResponse.text();
       if (!embedHtml) return [];
       const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
       if (!masterPlaylist) {
@@ -571,12 +576,14 @@ function getStreams(id, type, season, episode, providerContext = null) {
         if (playlistResponse.ok) {
           playlistFetched = true;
           const playlistText = yield playlistResponse.text();
-          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-          const detected = checkQualityFromText(playlistText);
-          if (detected) quality = detected;
-          const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-          if (!hasItalianAudio && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+          if (playlistText) {
+            hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+            const detected = checkQualityFromText(playlistText);
+            if (detected) quality = detected;
+            const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+            if (!hasItalianAudio && !originalLanguageItalian) {
+              console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+            }
           }
         }
       } catch (e) {

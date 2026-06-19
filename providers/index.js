@@ -800,7 +800,7 @@ var require_guardahd = __commonJS({
 // cf_bypass.js
 var require_cf_bypass = __commonJS({
   "cf_bypass.js"(exports2, module2) {
-    var { spawn } = require("child_process");
+    var { spawn, exec } = require("child_process");
     var path = require("path");
     var fs = require("fs");
     var activeBypasses = /* @__PURE__ */ new Map();
@@ -809,6 +809,8 @@ var require_cf_bypass = __commonJS({
     var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "2", 10);
     var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "20", 10);
     var GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || "60000", 10);
+    var SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || "90000", 10);
+    var SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || "15000", 10);
     function createRelease() {
       let released = false;
       return () => {
@@ -864,7 +866,7 @@ var require_cf_bypass = __commonJS({
           scriptPath,
           url,
           "--timeout",
-          String(options.timeout || 6e4),
+          String(options.timeout || SCRAPLING_DEFAULT_TIMEOUT),
           "--wait-until",
           options.waitUntil || "domcontentloaded"
         ];
@@ -885,16 +887,36 @@ var require_cf_bypass = __commonJS({
         } else if (process.platform === "win32") {
           pythonExe = "python";
         }
-        const child = spawn(pythonExe, args);
+        const spawnOptions = {};
+        if (process.platform !== "win32") {
+          spawnOptions.detached = true;
+        }
+        const child = spawn(pythonExe, args, spawnOptions);
         let stdout = "";
         let stderr = "";
-        const executionTimeout = (parseInt(options.timeout, 10) || 6e4) + 1e4;
+        const executionTimeout = (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + SCRAPLING_WATCHDOG_GRACE_MS;
         let watchdog = setTimeout(() => {
-          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido il processo Python.`);
+          console.error(`[SC][${provider}] Watchdog timeout raggiunto (${executionTimeout}ms). Uccido l'albero dei processi.`);
           watchdog = null;
-          try {
-            child.kill("SIGKILL");
-          } catch (e) {
+          if (process.platform === "win32") {
+            exec(`taskkill /pid ${child.pid} /T /F`, (err) => {
+              if (err) {
+                console.error(`[SC][${provider}] taskkill fallito: ${err.message}`);
+                try {
+                  child.kill("SIGKILL");
+                } catch (e) {
+                }
+              }
+            });
+          } else {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (e) {
+              try {
+                child.kill("SIGKILL");
+              } catch (err) {
+              }
+            }
           }
         }, executionTimeout);
         child.on("error", (err) => {
@@ -974,6 +996,19 @@ var require_cf_bypass = __commonJS({
         if (activeBypasses.has(provider)) {
           return activeBypasses.get(provider);
         }
+        let existingCookies = "";
+        if (fs.existsSync(sessionFile)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+            if (data && data.cookies) existingCookies = data.cookies;
+          } catch (e) {
+          }
+        }
+        if (existingCookies) {
+          const existingHeaders = options.headers || {};
+          existingHeaders.Cookie = existingCookies;
+          options.headers = existingHeaders;
+        }
         const bypassPromise = runBypass(url, provider, options, sessionFile).finally(() => {
           activeBypasses.delete(provider);
         });
@@ -984,7 +1019,7 @@ var require_cf_bypass = __commonJS({
     function hasActiveBypass(provider) {
       return activeBypasses.has(provider);
     }
-    module2.exports = { getClearance, hasActiveBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
+    module2.exports = { getClearance, hasActiveBypass, execPythonBypass, getStats: () => ({ active: activeGlobalRequests, queued: globalQueue.length }) };
   }
 });
 
@@ -8427,7 +8462,7 @@ var require_guardoserie = __commonJS({
       };
     } else {
       let getGuardoserieBaseUrl2 = function() {
-        return "https://guardoserie.world";
+        return "https://guardoserie.living";
       }, getMappingApiUrl2 = function() {
         return "https://animemapping.realbestia.com";
       }, normalizeConfigBoolean2 = function(value) {
@@ -8955,7 +8990,7 @@ var require_guardoserie = __commonJS({
           const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
             try {
               if (playerLink.includes("loadm")) {
-                const domain = "guardoserie.world";
+                const domain = "guardoserie.living";
                 const extracted = yield extractLoadm(playerLink, domain);
                 return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
                   let quality = "HD";
@@ -9039,7 +9074,7 @@ var require_guardoserie = __commonJS({
 var require_streamingcommunity = __commonJS({
   "src/streamingcommunity/index.js"(exports2, module2) {
     function getStreamingCommunityBaseUrl() {
-      return "https://vixsrc.to";
+      return "https://calpezz8.space";
     }
     var { formatStream } = require_formatter();
     require_fetch_helper();
@@ -9232,9 +9267,8 @@ var require_streamingcommunity = __commonJS({
           return [];
         }
         try {
-          const isProxyMode = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
           const proxySocks = STREAMINGCOMMUNITY_PROXY || typeof process !== "undefined" && process.env.SOCKS5_PROXY || "";
-          const useProxyFetch = isProxyMode && proxySocks && typeof ProxyAgent === "function";
+          const useProxyFetch = proxySocks && typeof ProxyAgent === "function";
           let proxyAgent = null;
           if (useProxyFetch) {
             try {
@@ -9259,16 +9293,22 @@ var require_streamingcommunity = __commonJS({
             console.log("[StreamingCommunity] Could not find embed src in API payload");
             return [];
           }
-          console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-          const embedResponse = yield fetch(embedUrl, {
-            headers: getEmbedHeaders(embedUrl),
-            dispatcher: proxyAgent || void 0
-          });
-          if (!embedResponse.ok) {
-            console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+          let embedHtml;
+          try {
+            console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
+            const embedResponse = yield fetch(embedUrl, {
+              headers: getEmbedHeaders(embedUrl),
+              dispatcher: proxyAgent || void 0
+            });
+            if (!embedResponse.ok) {
+              console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+              return [];
+            }
+            embedHtml = yield embedResponse.text();
+          } catch (e) {
+            console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
             return [];
           }
-          const embedHtml = yield embedResponse.text();
           if (!embedHtml) return [];
           const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
           if (!masterPlaylist) {
@@ -9290,12 +9330,14 @@ var require_streamingcommunity = __commonJS({
             if (playlistResponse.ok) {
               playlistFetched = true;
               const playlistText = yield playlistResponse.text();
-              hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-              const detected = checkQualityFromText(playlistText);
-              if (detected) quality = detected;
-              const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-              if (!hasItalianAudio && !originalLanguageItalian) {
-                console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+              if (playlistText) {
+                hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+                const detected = checkQualityFromText(playlistText);
+                if (detected) quality = detected;
+                const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+                if (!hasItalianAudio && !originalLanguageItalian) {
+                  console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+                }
               }
             }
           } catch (e) {
@@ -9378,6 +9420,8 @@ var require_animeunity = __commonJS({
     var animeUnityCsrfToken = "";
     var animeUnitySessionWarmupPromise = null;
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -9387,6 +9431,20 @@ var require_animeunity = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
@@ -10526,6 +10584,8 @@ var require_animeworld = __commonJS({
       "narutolegend.it"
     ];
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -10535,6 +10595,20 @@ var require_animeworld = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
@@ -11402,6 +11476,8 @@ var require_animesaturn = __commonJS({
       inflight: /* @__PURE__ */ new Map()
     };
     function getCached(map, key) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return void 0;
       const entry = map.get(key);
       if (!entry) return void 0;
       if (entry.expiresAt <= Date.now()) {
@@ -11411,6 +11487,20 @@ var require_animesaturn = __commonJS({
       return entry.value;
     }
     function setCached(map, key, value, ttlMs) {
+      const isReactNative = typeof navigator !== "undefined" && navigator.product === "ReactNative" || typeof global !== "undefined" && global.HermesInternal;
+      if (isReactNative) return value;
+      for (const [k, entry] of map.entries()) {
+        if (entry.expiresAt <= Date.now()) {
+          map.delete(k);
+        }
+      }
+      const MAX_CACHE_ENTRIES = 500;
+      if (map.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey !== void 0) {
+          map.delete(oldestKey);
+        }
+      }
       map.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     }
@@ -13586,169 +13676,6 @@ var require_netmirror = __commonJS({
   }
 });
 
-// src/altadefinizionestreaming/index.js
-var require_altadefinizionestreaming = __commonJS({
-  "src/altadefinizionestreaming/index.js"(exports2, module2) {
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var BASE_URL = "https://altadefinizionestreaming.com";
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-    var { extractMixDrop } = require_mixdrop();
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist, checkItalianAudioInPlaylist } = require_quality_helper();
-    function fetchJson(url) {
-      return __async(this, null, function* () {
-        try {
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": `${BASE_URL}/`,
-              "Accept": "application/json,text/plain,*/*"
-            }
-          });
-          if (!response.ok) return null;
-          return yield response.json();
-        } catch (e) {
-          return null;
-        }
-      });
-    }
-    function resolveTmdbId(id, type, providerContext = null) {
-      return __async(this, null, function* () {
-        var _a, _b, _c, _d;
-        const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
-        if (contextTmdbId) return contextTmdbId;
-        const idStr = String(id || "").trim();
-        if (/^tmdb:\d+$/i.test(idStr)) return idStr.split(":")[1];
-        if (/^\d+$/.test(idStr)) return idStr;
-        const contextImdbId = providerContext && /^tt\d+$/i.test(String(providerContext.imdbId || "")) ? String(providerContext.imdbId) : null;
-        const imdbId = /^tt\d+$/i.test(idStr) ? idStr : contextImdbId;
-        if (!imdbId) return null;
-        const normalizedType = String(type || "").toLowerCase();
-        const payload = yield fetchJson(`https://api.themoviedb.org/3/find/${encodeURIComponent(imdbId)}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`);
-        if (!payload) return null;
-        if (normalizedType === "movie") {
-          if (Array.isArray(payload.movie_results) && ((_a = payload.movie_results[0]) == null ? void 0 : _a.id)) return String(payload.movie_results[0].id);
-          if (Array.isArray(payload.tv_results) && ((_b = payload.tv_results[0]) == null ? void 0 : _b.id)) return String(payload.tv_results[0].id);
-        }
-        if (Array.isArray(payload.tv_results) && ((_c = payload.tv_results[0]) == null ? void 0 : _c.id)) return String(payload.tv_results[0].id);
-        if (Array.isArray(payload.movie_results) && ((_d = payload.movie_results[0]) == null ? void 0 : _d.id)) return String(payload.movie_results[0].id);
-        return null;
-      });
-    }
-    function absoluteUrl(url) {
-      if (!url) return null;
-      try {
-        return new URL(String(url), BASE_URL).toString();
-      } catch (e) {
-        return null;
-      }
-    }
-    function getShowTitle(tmdbId, type) {
-      return __async(this, null, function* () {
-        const endpoint = String(type || "").toLowerCase() === "movie" ? "movie" : "tv";
-        const payload = yield fetchJson(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}&language=it-IT`);
-        if (!payload) return null;
-        return payload.title || payload.name || payload.original_title || payload.original_name || null;
-      });
-    }
-    function resolveDownloadToMixDrop(url) {
-      return __async(this, null, function* () {
-        const downloadUrl = absoluteUrl(url);
-        if (!downloadUrl) return null;
-        const withGo = `${downloadUrl}${downloadUrl.includes("?") ? "&" : "?"}go=1`;
-        try {
-          const response = yield fetch(withGo, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": `${BASE_URL}/`
-            }
-          });
-          const finalUrl = String(response.url || "").replace(/\?download$/i, "");
-          if (/mixdrop|m1xdrop|mxdrop/i.test(finalUrl)) return finalUrl;
-        } catch (e) {
-          return null;
-        }
-        return null;
-      });
-    }
-    function addCdnStream(streams, tmdbId, type, season, episode, displayName) {
-      return __async(this, null, function* () {
-        var _a, _b;
-        const normalizedType = String(type || "").toLowerCase();
-        const endpoint = normalizedType === "movie" ? `${BASE_URL}/api/player-sources/movie/${tmdbId}` : `${BASE_URL}/api/player-sources/tv/${tmdbId}/${season}/${episode}`;
-        const payload = yield fetchJson(endpoint);
-        const isAllowed = (s) => (s == null ? void 0 : s.url) && !/vixsrc\.to/i.test(String(s.url));
-        const source = ((_a = payload == null ? void 0 : payload.sources) == null ? void 0 : _a.find((s) => String((s == null ? void 0 : s.provider) || "").toLowerCase() === "cdn" && isAllowed(s))) || ((_b = payload == null ? void 0 : payload.sources) == null ? void 0 : _b.find((s) => isAllowed(s)));
-        if (!(source == null ? void 0 : source.url)) return;
-        const headers = { "User-Agent": USER_AGENT, "Referer": `${BASE_URL}/` };
-        let quality = "720p";
-        const detectedQuality = yield checkQualityFromPlaylist(source.url, headers);
-        if (detectedQuality) quality = detectedQuality;
-        const hasItalian = yield checkItalianAudioInPlaylist(source.url, headers);
-        streams.push({
-          name: "AltadefinizioneStreaming - CDN",
-          title: displayName,
-          url: source.url,
-          easyProxySourceUrl: endpoint,
-          headers,
-          quality,
-          type: "direct",
-          language: hasItalian ? "Italian" : ""
-        });
-      });
-    }
-    function addMixDropStream(streams, tmdbId, type, season, episode, displayName) {
-      return __async(this, null, function* () {
-        const normalizedType = String(type || "").toLowerCase();
-        let downloadEntry = null;
-        if (normalizedType === "movie") {
-          const payload = yield fetchJson(`${BASE_URL}/api/download/${tmdbId}`);
-          if ((payload == null ? void 0 : payload.available) && (payload == null ? void 0 : payload.url)) downloadEntry = payload.url;
-        } else {
-          const payload = yield fetchJson(`${BASE_URL}/api/download-episodes/${tmdbId}`);
-          const episodes = Array.isArray(payload == null ? void 0 : payload.episodes) ? payload.episodes : [];
-          const match = episodes.find((item) => Number(item == null ? void 0 : item.season) === Number(season) && Number(item == null ? void 0 : item.episode) === Number(episode));
-          if ((payload == null ? void 0 : payload.available) && (match == null ? void 0 : match.url)) downloadEntry = match.url;
-        }
-        const mixdropUrl = yield resolveDownloadToMixDrop(downloadEntry);
-        if (!mixdropUrl) return;
-        const extracted = yield extractMixDrop(mixdropUrl);
-        if (!(extracted == null ? void 0 : extracted.url)) return;
-        streams.push({
-          name: "AltadefinizioneStreaming - MixDrop",
-          title: displayName,
-          url: extracted.url,
-          easyProxySourceUrl: mixdropUrl,
-          headers: extracted.headers,
-          quality: "720p",
-          type: "direct",
-          language: "Italian"
-        });
-      });
-    }
-    function getStreams2(id, type, season, episode, providerContext = null) {
-      return __async(this, null, function* () {
-        const normalizedType = String(type || "").toLowerCase();
-        if (normalizedType !== "movie" && normalizedType !== "tv" && normalizedType !== "series") return [];
-        const tmdbId = yield resolveTmdbId(id, normalizedType === "movie" ? "movie" : "tv", providerContext);
-        if (!tmdbId) return [];
-        const effectiveSeason = parseInt(String(season || ""), 10) || 1;
-        const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
-        const providerType = normalizedType === "movie" ? "movie" : "tv";
-        const showTitle = (yield getShowTitle(tmdbId, providerType)) || (normalizedType === "movie" ? "Film" : "Serie");
-        const displayName = normalizedType === "movie" ? showTitle : `${showTitle} ${effectiveSeason}x${effectiveEpisode}`;
-        const streams = [];
-        yield Promise.all([
-          addCdnStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName),
-          addMixDropStream(streams, tmdbId, providerType, effectiveSeason, effectiveEpisode, displayName)
-        ]);
-        return streams.map((s) => formatStream(s, "AltadefinizioneStreaming")).filter(Boolean);
-      });
-    }
-    module2.exports = { getStreams: getStreams2 };
-  }
-});
-
 // src/index.js
 var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
@@ -13759,7 +13686,6 @@ var animesaturn = require_animesaturn();
 var cinemacity = require_cinemacity();
 var vidxgo = require_vidxgo2();
 var netmirror = require_netmirror();
-var altadefinizionestreaming = require_altadefinizionestreaming();
 var { createTimeoutSignal } = require_fetch_helper();
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var CONTEXT_TIMEOUT = 3e3;
@@ -13903,13 +13829,12 @@ function getStreams(id, type, season, episode) {
     const promises = [];
     const likelyAnime = isLikelyAnimeRequest(normalizedType);
     const isKitsuRequest = String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase() === "kitsu" || /^kitsu:\d+$/i.test(String(id || "").trim());
-    const isImdbRequest = String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase() === "imdb" || /^tt\d+$/i.test(String(id || "").trim()) || !!(providerContext && providerContext.imdbId && /^tt\d+$/i.test(providerContext.imdbId));
     const selectedProviders = [];
     if (normalizedType === "movie") {
       if (likelyAnime || isKitsuRequest) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity", "guardahd");
       } else {
-        selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardahd", "guardoserie", "altadefinizionestreaming");
+        selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardahd", "guardoserie");
       }
     } else if (normalizedType === "anime") {
       selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "vidxgo");
@@ -13917,11 +13842,7 @@ function getStreams(id, type, season, episode) {
       if (likelyAnime) {
         selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
-        if (isImdbRequest) {
-          selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardoserie", "altadefinizionestreaming");
-        } else {
-          selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardoserie", "altadefinizionestreaming");
-        }
+        selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardoserie");
       }
     } else {
       selectedProviders.push("streamingcommunity", "vidxgo", "cinemacity", "netmirror", "guardahd", "guardoserie");
@@ -13972,12 +13893,6 @@ function getStreams(id, type, season, episode) {
       if (providerName === "netmirror") {
         promises.push(
           netmirror.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "NetMirror", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "NetMirror", error: e, status: "rejected" }))
-        );
-        continue;
-      }
-      if (providerName === "altadefinizionestreaming") {
-        promises.push(
-          altadefinizionestreaming.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "AltadefinizioneStreaming", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AltadefinizioneStreaming", error: e, status: "rejected" }))
         );
         continue;
       }

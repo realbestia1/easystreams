@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     chromium \
     chromium-driver \
+    xvfb \
+    python3-tk \
+    python3-dev \
     xauth \
     libnss3 \
     libatk1.0-0 \
@@ -44,10 +47,12 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 
 WORKDIR /app
 
-# 2. Setup Scrapling and Playwright
-RUN pip3 install --no-cache-dir "scrapling[fetchers]" "curl_cffi" --break-system-packages && \
-    playwright install chromium && \
-    playwright install-deps chromium
+# 2. Setup SeleniumBase UC mode bypass requirements
+RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
+    SB_DIR=$(python3 -c "import os, seleniumbase; print(os.path.dirname(seleniumbase.__file__))") && \
+    mkdir -p "$SB_DIR/drivers/" && \
+    cp /usr/bin/chromedriver "$SB_DIR/drivers/uc_driver" && \
+    chmod +x "$SB_DIR/drivers/uc_driver"
 
 # 3. Environment Settings
 ENV NODE_ENV=production
