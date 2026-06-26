@@ -2341,7 +2341,7 @@ async function warmupGuardoserie(force = false) {
 
     try {
         console.log('[Warmup] Riscaldamento Guardoserie...');
-        await getClearance('https://guardoserie.living/', 'guardoserie', {
+        await getClearance('https://guardoserie.courses/', 'guardoserie', {
             maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
             requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
             waitUntil: 'network_idle'
