@@ -48,8 +48,9 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 WORKDIR /app
 
 # 2. Setup Camoufox bypass requirements
-# camoufox scarica il suo Firefox patchato alla prima esecuzione
-RUN pip3 install --no-cache-dir "curl_cffi" "camoufox[geoip]" pyautogui pygetwindow pyvirtualdisplay Pillow --break-system-packages
+# Pre-scarica il binario Firefox patchato (evita rate limit GitHub a runtime)
+RUN pip3 install --no-cache-dir "curl_cffi" "camoufox[geoip]" pyautogui pygetwindow pyvirtualdisplay Pillow --break-system-packages && \
+    python3 -m camoufox fetch
 
 # 3. Environment Settings
 ENV NODE_ENV=production
