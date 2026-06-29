@@ -49,7 +49,7 @@ WORKDIR /app
 
 # 2. Setup Camoufox bypass requirements
 # camoufox scarica il suo Firefox patchato alla prima esecuzione
-RUN pip3 install --no-cache-dir "curl_cffi" camoufox pyautogui pygetwindow pyvirtualdisplay Pillow --break-system-packages
+RUN pip3 install --no-cache-dir "curl_cffi" "camoufox[geoip]" pyautogui pygetwindow pyvirtualdisplay Pillow --break-system-packages
 
 # 3. Environment Settings
 ENV NODE_ENV=production
