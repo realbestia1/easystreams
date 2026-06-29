@@ -58,7 +58,9 @@ def main():
     try:
         kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
         with Camoufox(**kw) as browser:
-            page = browser.new_page()
+            ctx = browser.new_context(viewport=None)
+            page = ctx.new_page()
+            page.set_viewport_size({"width": 1280, "height": 720})
             page.set_default_timeout(args.timeout)
 
             if args.method.upper() == 'POST':
