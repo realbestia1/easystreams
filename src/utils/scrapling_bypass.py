@@ -5,7 +5,7 @@ Segue redirect e gestisce multiple challenge su domini diversi.
 """
 import sys, json, argparse, time, os
 from urllib.parse import urlparse
-from camoufox.sync_api import Camoufox
+from camoufox.utils import launch_options as _cf_lo
 
 display = None
 if os.name != "nt":
@@ -56,14 +56,16 @@ def main():
     args = parser.parse_args()
 
     try:
-        kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True,
-              "persistent_context": True, "viewport": None}
-        # persistent_context evita isMobile nel setDefaultViewport
+        # playwright diretto + no_viewport=True (evita isMobile)
+        from playwright.sync_api import sync_playwright as _sync_pw
         import tempfile
-        td = os.path.join(tempfile.gettempdir(), "camoufox_ctx")
-        os.makedirs(td, exist_ok=True)
-        kw["user_data_dir"] = td
-        with Camoufox(**kw) as ctx:
+        kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
+        _lo = _cf_lo(**kw)
+        _td = os.path.join(tempfile.gettempdir(), "camoufox_ctx")
+        os.makedirs(_td, exist_ok=True)
+        _pw = _sync_pw().__enter__()
+        try:
+            ctx = _pw.firefox.launch_persistent_context(_td, no_viewport=True, **_lo)
             page = ctx.new_page()
             page.set_viewport_size({"width": 1280, "height": 720})
             page.set_default_timeout(args.timeout)
@@ -148,6 +150,13 @@ def main():
                 cookies=cookies, userAgent=ua, requestHeaders={}
             )
             print(json.dumps(result))
+
+        finally:
+            # chiusura pulita ctx + playwright
+            try: ctx.close()
+            except: pass
+            try: _pw.__exit__(None, None, None)
+            except: pass
 
     except Exception as e:
         print(json.dumps({'status': 'error', 'message': str(e)}))
