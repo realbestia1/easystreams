@@ -54,6 +54,10 @@ def tab_space_os(page):
             sys.stderr.write(f"tab_space: finestra {wid}, focus + 3xTab+Space via pyautogui...\n")
             subprocess.run(["xdotool","windowfocus","--sync",wid], timeout=10)
             time.sleep(0.3)
+            # pyautogui su Linux richiede ~/.Xauthority
+            xa = os.path.expanduser("~/.Xauthority")
+            if not os.path.exists(xa):
+                open(xa, "a").close()
             import pyautogui
             for _ in range(3):
                 pyautogui.press("tab")
