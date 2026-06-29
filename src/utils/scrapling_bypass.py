@@ -47,15 +47,18 @@ def tab_space_os(page):
                                     capture_output=True,text=True,timeout=10)
                 if r2.stdout.strip():
                     wid = r2.stdout.strip().split("\n")[0]
-            if not wid: return False
-            subprocess.run(["xdotool","windowfocus","--sync",wid], timeout=10)
+            if not wid:
+                sys.stderr.write(f"tab_space: xdotool non trova finestra\n")
+                return False
+            sys.stderr.write(f"tab_space: trovata finestra {wid}\n")
+            # manda i tasti direttamente alla finestra (--window), senza windowfocus
+            subprocess.run(["xdotool","key","--window",wid,"Tab"], timeout=10)
             time.sleep(0.3)
-            subprocess.run(["xdotool","key","Tab"], timeout=10)
-            time.sleep(0.3)
-            subprocess.run(["xdotool","key","space"], timeout=10)
+            subprocess.run(["xdotool","key","--window",wid,"space"], timeout=10)
+            sys.stderr.write(f"tab_space: Tab+Space inviati a {wid}\n")
         return True
     except Exception as ex:
-        sys.stderr.write(f"Tab+Space errore: {ex}\n")
+        sys.stderr.write(f"tab_space errore: {ex}\n")
         return False
 
 
@@ -75,16 +78,20 @@ def main():
     args = parser.parse_args()
 
     try:
-        # playwright diretto + no_viewport=True (evita isMobile)
+        sys.stderr.write("start: import playwright...\n")
         from playwright.sync_api import sync_playwright as _sync_pw
         import tempfile
+        sys.stderr.write("start: camoufox launch_options...\n")
         kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
         _lo = _cf_lo(**kw)
         _td = os.path.join(tempfile.gettempdir(), "camoufox_ctx")
         os.makedirs(_td, exist_ok=True)
+        sys.stderr.write("start: sync_playwright...\n")
         _pw = _sync_pw().__enter__()
         try:
+            sys.stderr.write("start: lancio Firefox...\n")
             ctx = _pw.firefox.launch_persistent_context(_td, no_viewport=True, **_lo)
+            sys.stderr.write("start: Firefox avviato, creo pagina...\n")
             page = ctx.new_page()
             page.evaluate("window.moveTo(0,0); window.resizeTo(1280, 720)")
             page.set_default_timeout(args.timeout)
@@ -94,6 +101,7 @@ def main():
                 page.goto(base, wait_until="domcontentloaded")
             else:
                 page.goto(args.url, wait_until="domcontentloaded")
+            sys.stderr.write(f"start: pagina caricata, title={safe_title(page)!r}\n")
             time.sleep(2)
 
             # loop continuo con redirect monitoring
@@ -112,17 +120,21 @@ def main():
                     page.wait_for_load_state("domcontentloaded", timeout=8000)
                 except: pass
                 t = safe_title(page)
+                sys.stderr.write(f"loop: elap={(time.time()-bypass_start):.0f}s title={t!r} bypassed={bypassed}\n")
                 if not is_ch(t):
                     if bypassed:
                         time.sleep(2)
                         t2 = safe_title(page)
                         if not is_ch(t2):
+                            sys.stderr.write(f"loop: stabile, break\n")
                             break
-                        # redirect → nuova challenge
+                        sys.stderr.write(f"loop: redirect nuova challenge title={t2!r}\n")
                     else:
                         bypassed = True
+                        sys.stderr.write(f"loop: bypassato title={t!r}\n")
                         continue
                 if not tab_space_os(page):
+                    sys.stderr.write(f"loop: tab_space fallito, sleep 3\n")
                     time.sleep(3)
                     continue
                 time.sleep(3)
