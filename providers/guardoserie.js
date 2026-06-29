@@ -8496,16 +8496,25 @@ if (!IS_SERVER) {
         }
       }
       if (!isSessionValid) {
-        console.log(`[Guardoserie] Sessione CF mancante o scaduta, salto provider e avvio bypass in background`);
-        const { getClearance } = require_cf_bypass();
-        getClearance(getGuardoserieBaseUrl(), "guardoserie", {
-          waitUntil: "network_idle"
-        }).then(() => {
-          console.log(`[Guardoserie] Sessione CF creata/aggiornata con successo in background!`);
-        }).catch((e) => {
-          console.error(`[Guardoserie] Errore bypass in background:`, e.message);
-        });
-        return [];
+        console.log(`[Guardoserie] Sessione CF locale mancante o scaduta. Uso il fallback dell\'endpoint remoto...`);
+        try {
+          const url = `https://easystreams.realbestia.com/resolve/guardoserie?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
+          const response = yield fetch(url);
+          const data = yield response.json();
+          
+          // Avvia comunque il tentativo di bypass locale in background
+          const { getClearance } = require_cf_bypass();
+          getClearance(getGuardoserieBaseUrl(), "guardoserie", {
+            waitUntil: "network_idle"
+          }).then(() => {
+            console.log(`[Guardoserie] Sessione CF creata/aggiornata con successo in background!`);
+          }).catch(() => {});
+          
+          return data.streams || [];
+        } catch (e) {
+          console.error(`[Guardoserie] Errore nel fallback remoto di Guardoserie:`, e.message);
+          return [];
+        }
       }
       try {
         const baseUrl = normalizeBaseUrl(getGuardoserieBaseUrl());
