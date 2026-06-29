@@ -13,8 +13,12 @@ if os.name != "nt":
         from pyvirtualdisplay import Display
         display = Display(visible=0, size=(1920, 1080))
         display.start()
+        # WM leggero per gestire il focus (necessario in Docker senza WM)
+        import subprocess, time
+        subprocess.Popen(["fluxbox"], env={**os.environ}, stderr=subprocess.DEVNULL)
+        time.sleep(1)
     except Exception as e:
-        sys.stderr.write(f"Failed to start pyvirtualdisplay: {e}\n")
+        sys.stderr.write(f"Failed to start pyvirtualdisplay/fluxbox: {e}\n")
 
 
 def tab_space_os(page):
@@ -59,9 +63,7 @@ def tab_space_os(page):
             if not os.path.exists(xa):
                 open(xa, "a").close()
             import pyautogui
-            for _ in range(3):
-                pyautogui.press("tab")
-                time.sleep(0.2)
+            pyautogui.press("tab"); time.sleep(0.3)
             pyautogui.press("space")
             sys.stderr.write(f"tab_space: 3xTab+Space via pyautogui\n")
         return True

@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1 \
     libfreetype6 \
     xdotool \
+    fluxbox \
     && rm -rf /var/lib/apt/lists/*
 
 # Prefer IPv4 when both A and AAAA records are available.
