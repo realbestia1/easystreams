@@ -56,9 +56,14 @@ def main():
     args = parser.parse_args()
 
     try:
-        kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
-        with Camoufox(**kw) as browser:
-            ctx = browser.new_context(viewport=None)
+        kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True,
+              "persistent_context": True, "viewport": None}
+        # persistent_context evita isMobile nel setDefaultViewport
+        import tempfile
+        td = os.path.join(tempfile.gettempdir(), "camoufox_ctx")
+        os.makedirs(td, exist_ok=True)
+        kw["user_data_dir"] = td
+        with Camoufox(**kw) as ctx:
             page = ctx.new_page()
             page.set_viewport_size({"width": 1280, "height": 720})
             page.set_default_timeout(args.timeout)
