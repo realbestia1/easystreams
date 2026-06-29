@@ -67,7 +67,7 @@ def main():
         try:
             ctx = _pw.firefox.launch_persistent_context(_td, no_viewport=True, **_lo)
             page = ctx.new_page()
-            page.set_viewport_size({"width": 1280, "height": 720})
+            page.evaluate("window.moveTo(0,0); window.resizeTo(1280, 720)")
             page.set_default_timeout(args.timeout)
 
             if args.method.upper() == 'POST':
