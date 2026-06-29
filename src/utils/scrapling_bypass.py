@@ -58,10 +58,10 @@ def tab_space_os(page):
             sys.stderr.write(f"tab_space: finestra {wid}, focus + 3xTab+Space via pyautogui...\n")
             subprocess.run(["xdotool","windowfocus","--sync",wid], timeout=10)
             time.sleep(0.3)
-            # pyautogui su Linux richiede ~/.Xauthority
-            xa = os.path.expanduser("~/.Xauthority")
-            if not os.path.exists(xa):
-                open(xa, "a").close()
+            # pyautogui su Linux: Xlib warning soppresso con cookie xauth
+            subprocess.run(["xauth","add",os.environ.get("DISPLAY",":99"),
+                           ".","ffffffffffffffffffffffffffffffff"],
+                           capture_output=True, timeout=5)
             import pyautogui
             pyautogui.press("tab"); time.sleep(0.3)
             pyautogui.press("space")
