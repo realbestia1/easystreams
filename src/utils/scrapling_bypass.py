@@ -19,21 +19,40 @@ if os.name != "nt":
 
 def tab_space_os(page):
     try:
-        import pyautogui, pygetwindow as gw
-        w = None
-        for ww in gw.getAllWindows():
-            try:
-                if "camoufox" in (ww.title or "").lower() and ww.visible:
-                    w = ww; break
-            except: pass
-        if not w:
-            for ww in gw.getWindowsWithTitle("Camoufox"):
-                if ww.visible: w = ww; break
-        if not w: return False
-        w.activate()
-        time.sleep(0.3)
-        pyautogui.press("tab"); time.sleep(0.3)
-        pyautogui.press("space")
+        if os.name == "nt":
+            import pyautogui, pygetwindow as gw
+            w = None
+            for ww in gw.getAllWindows():
+                try:
+                    if "camoufox" in (ww.title or "").lower() and ww.visible:
+                        w = ww; break
+                except: pass
+            if not w:
+                for ww in gw.getWindowsWithTitle("Camoufox"):
+                    if ww.visible: w = ww; break
+            if not w: return False
+            w.activate()
+            time.sleep(0.3)
+            pyautogui.press("tab"); time.sleep(0.3)
+            pyautogui.press("space")
+        else:
+            import subprocess
+            wid = None
+            r = subprocess.run(["xdotool","search","--name","Camoufox"],
+                               capture_output=True,text=True,timeout=10)
+            if r.stdout.strip():
+                wid = r.stdout.strip().split("\n")[0]
+            else:
+                r2 = subprocess.run(["xdotool","search","--class","Firefox"],
+                                    capture_output=True,text=True,timeout=10)
+                if r2.stdout.strip():
+                    wid = r2.stdout.strip().split("\n")[0]
+            if not wid: return False
+            subprocess.run(["xdotool","windowfocus","--sync",wid], timeout=10)
+            time.sleep(0.3)
+            subprocess.run(["xdotool","key","Tab"], timeout=10)
+            time.sleep(0.3)
+            subprocess.run(["xdotool","key","space"], timeout=10)
         return True
     except Exception as ex:
         sys.stderr.write(f"Tab+Space errore: {ex}\n")

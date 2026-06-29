@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libfontconfig1 \
     libfreetype6 \
+    xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 # Prefer IPv4 when both A and AAAA records are available.
