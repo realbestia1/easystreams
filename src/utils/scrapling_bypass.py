@@ -36,6 +36,7 @@ def tab_space_os(page):
             pyautogui.press("tab"); time.sleep(0.3)
             pyautogui.press("space")
         else:
+            # Trova finestra con xdotool, poi key via pyautogui (XTest, senza pygetwindow)
             import subprocess
             wid = None
             r = subprocess.run(["xdotool","search","--name","Camoufox"],
@@ -48,14 +49,17 @@ def tab_space_os(page):
                 if r2.stdout.strip():
                     wid = r2.stdout.strip().split("\n")[0]
             if not wid:
-                sys.stderr.write(f"tab_space: xdotool non trova finestra\n")
+                sys.stderr.write(f"tab_space: finestra non trovata\n")
                 return False
-            sys.stderr.write(f"tab_space: trovata finestra {wid}\n")
-            # manda i tasti direttamente alla finestra (--window), senza windowfocus
-            subprocess.run(["xdotool","key","--window",wid,"Tab"], timeout=10)
+            sys.stderr.write(f"tab_space: finestra {wid}, focus + 3xTab+Space via pyautogui...\n")
+            subprocess.run(["xdotool","windowfocus","--sync",wid], timeout=10)
             time.sleep(0.3)
-            subprocess.run(["xdotool","key","--window",wid,"space"], timeout=10)
-            sys.stderr.write(f"tab_space: Tab+Space inviati a {wid}\n")
+            import pyautogui
+            for _ in range(3):
+                pyautogui.press("tab")
+                time.sleep(0.2)
+            pyautogui.press("space")
+            sys.stderr.write(f"tab_space: 3xTab+Space via pyautogui\n")
         return True
     except Exception as ex:
         sys.stderr.write(f"tab_space errore: {ex}\n")
@@ -102,7 +106,9 @@ def main():
             else:
                 page.goto(args.url, wait_until="domcontentloaded")
             sys.stderr.write(f"start: pagina caricata, title={safe_title(page)!r}\n")
-            time.sleep(2)
+            sys.stderr.write(f"start: attendo 12s prima di interagire (auto-solve)...\n")
+            time.sleep(12)
+            sys.stderr.write(f"start: dopo 12s title={safe_title(page)!r}\n")
 
             # loop continuo con redirect monitoring
             challenge_titles = ["just a moment", "ci siamo quasi", "attention required",
