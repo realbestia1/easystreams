@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.1.94",
+  "version": "1.1.95",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -57,7 +57,7 @@
     {
       "id": "easystreams-animesaturn",
       "name": "AnimeSaturn",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "description": "Anime from AnimeSaturn",
       "resources": ["stream"],
       "contentLanguage": ["it"],
