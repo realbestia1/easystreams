@@ -8221,7 +8221,7 @@ var require_guardoserie = __commonJS({
       };
     } else {
       let getGuardoserieBaseUrl2 = function() {
-        return "https://guardoserie.living";
+        return "https://guardoserie.courses";
       }, getMappingApiUrl2 = function() {
         return "https://animemapping.realbestia.com";
       }, normalizeConfigBoolean2 = function(value) {
@@ -8749,7 +8749,7 @@ var require_guardoserie = __commonJS({
           const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
             try {
               if (playerLink.includes("loadm")) {
-                const domain = "guardoserie.living";
+                const domain = "guardoserie.courses";
                 const extracted = yield extractLoadm(playerLink, domain);
                 return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
                   let quality = "HD";

@@ -8462,7 +8462,7 @@ var require_guardoserie = __commonJS({
       };
     } else {
       let getGuardoserieBaseUrl2 = function() {
-        return "https://guardoserie.living";
+        return "https://guardoserie.courses";
       }, getMappingApiUrl2 = function() {
         return "https://animemapping.realbestia.com";
       }, normalizeConfigBoolean2 = function(value) {
@@ -8990,7 +8990,7 @@ var require_guardoserie = __commonJS({
           const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
             try {
               if (playerLink.includes("loadm")) {
-                const domain = "guardoserie.living";
+                const domain = "guardoserie.courses";
                 const extracted = yield extractLoadm(playerLink, domain);
                 return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
                   let quality = "HD";
@@ -9316,7 +9316,7 @@ var require_streamingcommunity = __commonJS({
             return [];
           }
           const separator = masterPlaylist.url.includes("?") ? "&" : "?";
-            const streamUrl = `${masterPlaylist.url}.m3u8${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          const streamUrl = `${masterPlaylist.url}.m3u8${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
           const streamHeaders = getPlaylistHeaders(embedUrl);
           console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
           let quality = "1080p";
