@@ -562,7 +562,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         return [];
       }
       const separator = masterPlaylist.url.includes("?") ? "&" : "?";
-      const streamUrl = `${masterPlaylist.url}${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+      const streamUrl = `${masterPlaylist.url}.m3u8${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
       const streamHeaders = getPlaylistHeaders(embedUrl);
       console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
       let quality = "1080p";
