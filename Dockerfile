@@ -10,8 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
-    chromium \
-    chromium-driver \
     xvfb \
     python3-tk \
     python3-dev \
@@ -34,6 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     libgl1 \
     libglib2.0-0 \
+    libfontconfig1 \
+    libfreetype6 \
+    xdotool \
+    fluxbox \
     && rm -rf /var/lib/apt/lists/*
 
 # Prefer IPv4 when both A and AAAA records are available.
@@ -47,18 +49,14 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
 
 WORKDIR /app
 
-# 2. Setup SeleniumBase UC mode bypass requirements
-RUN pip3 install --no-cache-dir "curl_cffi" seleniumbase pyvirtualdisplay Pillow --break-system-packages && \
-    SB_DIR=$(python3 -c "import os, seleniumbase; print(os.path.dirname(seleniumbase.__file__))") && \
-    mkdir -p "$SB_DIR/drivers/" && \
-    cp /usr/bin/chromedriver "$SB_DIR/drivers/uc_driver" && \
-    chmod +x "$SB_DIR/drivers/uc_driver"
+# 2. Setup Camoufox bypass requirements
+# Pre-scarica il binario Firefox patchato (evita rate limit GitHub a runtime)
+RUN pip3 install --no-cache-dir "curl_cffi" "camoufox[geoip]" pyautogui pygetwindow pyvirtualdisplay Pillow --break-system-packages && \
+    python3 -m camoufox fetch
 
 # 3. Environment Settings
 ENV NODE_ENV=production
 ENV IN_DOCKER=true
-ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
 # 4. Copy Node.js files and install dependencies
