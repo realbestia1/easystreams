@@ -320,7 +320,7 @@ var require_quality_helper = __commonJS({
 
 // src/streamingcommunity/index.js
 function getStreamingCommunityBaseUrl() {
-  return "https://calpezz8.space";
+  return "https://unitv.mom";
 }
 var { formatStream } = require_formatter();
 require_fetch_helper();

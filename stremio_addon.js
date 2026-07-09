@@ -33,6 +33,8 @@ if (!global.fetch) {
 
 const https = require('https');
 const http = require('http');
+let HttpsProxyAgent = null;
+try { HttpsProxyAgent = require('https-proxy-agent').HttpsProxyAgent; } catch {}
 
 const LOG_LEVEL = String(process.env.LOG_LEVEL || 'info').trim().toLowerCase();
 const ENABLE_INFO_LOGS = ['debug', 'verbose', 'info'].includes(LOG_LEVEL);
@@ -333,7 +335,7 @@ function setCachedStreamResponse(cacheKey, response) {
     streamCacheBytes += payloadSize;
 }
 
-// Wrap global fetch to enforce timeout
+// Wrap global fetch to enforce timeout and optional per-domain proxy
 const originalFetch = global.fetch;
 global.fetch = async function (url, options = {}) {
     // If a signal is already provided, respect it
@@ -347,7 +349,12 @@ global.fetch = async function (url, options = {}) {
     }, options.timeout || FETCH_TIMEOUT);
 
     try {
-        const agent = url.startsWith('https') ? httpsAgent : httpAgent;
+        const proxyUrls = (process.env.ANIMEUNITY_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY || '')
+            .split(/[\s,;|]+/).map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
+        const useProxy = proxyUrls.length > 0 && typeof url === 'string' && url.includes('animeunity');
+        const agent = useProxy && HttpsProxyAgent
+            ? new HttpsProxyAgent(proxyUrls[Math.floor(Math.random() * proxyUrls.length)], { ...agentOptions })
+            : url.startsWith('https') ? httpsAgent : httpAgent;
         const response = await originalFetch(url, {
             ...options,
             agent,
@@ -1833,7 +1840,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             }
                             proxiedByEasyProxy = true;
                         } else if (name === 'animeunity') {
-                            const sourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'calpezz8.space');
+                            const sourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'unitv.mom');
                             if (hasEasyProxy) {
                                 finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                     easyProxyEntries,

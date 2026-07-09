@@ -1,5 +1,5 @@
 function getStreamingCommunityBaseUrl() {
-  return "https://calpezz8.space";
+  return "https://unitv.mom";
 }
 
 const { formatStream } = require('../formatter.js');

@@ -63,7 +63,6 @@ async function smartFetch(url, domain, options = {}) {
         if (providerName !== 'guardoserie') {
             const cached = sessionCache.get(providerName);
             if (cached && cached.cookies && (Date.now() - cached.timestamp < 115 * 60 * 1000)) {
-                console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
                 return cached;
             }
         }
@@ -75,7 +74,6 @@ async function smartFetch(url, domain, options = {}) {
                     const ageMs = Date.now() - (data.timestamp || 0);
                     const twoHours = 2 * 60 * 60 * 1000;
                     if (ageMs > twoHours) {
-                        console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs/60000)} min), forzo refresh.`);
                         try { fs.unlinkSync(targetSessionFile); } catch (e) {}
                         return {};
                     }
@@ -87,7 +85,6 @@ async function smartFetch(url, domain, options = {}) {
                             const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
                             const hasCookieForCurrentHost = cookieDomains.some(cookieDomain => domainMatchesHost(cookieDomain, targetHost));
                             if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
-                                console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
                                 try { fs.unlinkSync(targetSessionFile); } catch (e) {}
                                 return {};
                             }
@@ -111,7 +108,6 @@ async function smartFetch(url, domain, options = {}) {
         // Hostname replacement logic removed as it caused "Invalid URL" errors
     }
     if (!session.cookies && provider === 'guardoserie') {
-        console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
     }
 
     const doRequest = async (targetUrl, sess, reqOptions = {}) => {
@@ -149,7 +145,6 @@ async function smartFetch(url, domain, options = {}) {
 
         const startTime = Date.now();
         const requestTimeout = reqOptions.timeout ? reqOptions.timeout : (sess.userAgent ? 60000 : 30000);
-        console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
         
         const source = axios.CancelToken.source();
         
@@ -182,7 +177,6 @@ async function smartFetch(url, domain, options = {}) {
             
             const duration = Date.now() - startTime;
             if (sess.cookies) {
-                console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
             }
 
             const data = response.data;
@@ -196,7 +190,6 @@ async function smartFetch(url, domain, options = {}) {
                 const quietHttpErrors = reqOptions.quietHttpErrors === true ||
                     (Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status));
                 if (!quietHttpErrors) {
-                    console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
                 }
                 const err = new Error(`HTTP ${response.status}`);
                 err.response = { status: response.status, data, url: responseUrl };
@@ -258,7 +251,7 @@ async function smartFetch(url, domain, options = {}) {
         const redirectedSession = loadSession(challengeProvider, challengeHost);
         if (!redirectedSession || !redirectedSession.cookies) return null;
 
-        console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
+        
         try {
             const redirectedRes = await doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
@@ -266,7 +259,7 @@ async function smartFetch(url, domain, options = {}) {
                 try { fs.unlinkSync(sessionFileForProvider(challengeProvider)); } catch (e) {}
                 return null;
             }
-            console.log(`[CF-HANDLER][${challengeProvider}] Redirect completato usando sessione esistente.`);
+            
             return redirectedRes.data;
         } catch (retryErr) {
             if (isCfStatus(retryErr)) {
@@ -296,7 +289,7 @@ async function smartFetch(url, domain, options = {}) {
                 throw err;
             }
             const errorMsg = err.code === 'ECONNABORTED' || err.message?.includes('timeout') ? 'Timeout richiesta' : (err.response?.status || err.message);
-            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
+            
 
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = await retryWithRedirectedSession(challengeUrl);

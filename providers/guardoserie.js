@@ -596,7 +596,6 @@ var require_cf_handler = __commonJS({
           if (providerName !== "guardoserie") {
             const cached = sessionCache.get(providerName);
             if (cached && cached.cookies && Date.now() - cached.timestamp < 115 * 60 * 1e3) {
-              console.log(`[CF-HANDLER][${providerName}] Sessione caricata da memoria.`);
               return cached;
             }
           }
@@ -607,7 +606,6 @@ var require_cf_handler = __commonJS({
                 const ageMs = Date.now() - (data.timestamp || 0);
                 const twoHours = 2 * 60 * 60 * 1e3;
                 if (ageMs > twoHours) {
-                  console.log(`[CF-HANDLER][${providerName}] Sessione su file troppo vecchia (${Math.round(ageMs / 6e4)} min), forzo refresh.`);
                   try {
                     fs.unlinkSync(targetSessionFile);
                   } catch (e) {
@@ -622,7 +620,6 @@ var require_cf_handler = __commonJS({
                     const cookieDomains = Array.isArray(data.cookieDomains) ? data.cookieDomains : [];
                     const hasCookieForCurrentHost = cookieDomains.some((cookieDomain) => domainMatchesHost(cookieDomain, targetHost));
                     if (sessionRoot && currentRoot && sessionRoot !== currentRoot && !hasCookieForCurrentHost) {
-                      console.log(`[CF-HANDLER][${providerName}] Sessione su dominio diverso (${sessionHost}) non valida per ${targetHost}, forzo refresh.`);
                       try {
                         fs.unlinkSync(targetSessionFile);
                       } catch (e) {
@@ -648,7 +645,6 @@ var require_cf_handler = __commonJS({
         if (session.url) {
         }
         if (!session.cookies && provider === "guardoserie") {
-          console.warn(`[CF-HANDLER][${provider}] Attenzione: richiesta avviata senza cookie di sessione!`);
         }
         const doRequest = (_02, _12, ..._2) => __async(null, [_02, _12, ..._2], function* (targetUrl2, sess, reqOptions = {}) {
           var _a2, _b2, _c, _d, _e;
@@ -675,7 +671,6 @@ var require_cf_handler = __commonJS({
           }
           const startTime = Date.now();
           const requestTimeout = reqOptions.timeout ? reqOptions.timeout : sess.userAgent ? 6e4 : 3e4;
-          console.log(`[CF-HANDLER][${provider}] Timeout impostato a: ${requestTimeout}ms`);
           const source = axios.CancelToken.source();
           let timeoutId;
           const timeoutPromise = new Promise((_, reject) => {
@@ -702,14 +697,12 @@ var require_cf_handler = __commonJS({
             clearTimeout(timeoutId);
             const duration = Date.now() - startTime;
             if (sess.cookies) {
-              console.log(`[CF-HANDLER][${provider}] Richiesta OK in ${duration}ms.`);
             }
             const data = response.data;
             const responseUrl = ((_b2 = (_a2 = response.request) == null ? void 0 : _a2.res) == null ? void 0 : _b2.responseUrl) || ((_d = (_c = response.request) == null ? void 0 : _c._redirectable) == null ? void 0 : _d._currentUrl) || ((_e = response.config) == null ? void 0 : _e.url) || targetUrl2;
             if (response.status >= 400 && response.status !== 403 && response.status !== 503) {
               const quietHttpErrors = reqOptions.quietHttpErrors === true || Array.isArray(reqOptions.quietHttpErrors) && reqOptions.quietHttpErrors.includes(response.status);
               if (!quietHttpErrors) {
-                console.error(`[CF-HANDLER][${provider}] Errore HTTP ${response.status} per ${responseUrl}`);
               }
               const err = new Error(`HTTP ${response.status}`);
               err.response = { status: response.status, data, url: responseUrl };
@@ -763,7 +756,6 @@ var require_cf_handler = __commonJS({
           if (!challengeProvider || challengeProvider === provider) return null;
           const redirectedSession = loadSession(challengeProvider, challengeHost);
           if (!redirectedSession || !redirectedSession.cookies) return null;
-          console.log(`[CF-HANDLER][${provider}] Redirect su ${challengeHost}: provo sessione esistente [${challengeProvider}] prima di FlareSolverr.`);
           try {
             const redirectedRes = yield doRequest(challengeUrl, redirectedSession, options);
             updateMetaFinalUrl(redirectedRes);
@@ -774,7 +766,6 @@ var require_cf_handler = __commonJS({
               }
               return null;
             }
-            console.log(`[CF-HANDLER][${challengeProvider}] Redirect completato usando sessione esistente.`);
             return redirectedRes.data;
           } catch (retryErr) {
             if (isCfStatus(retryErr)) {
@@ -804,7 +795,6 @@ var require_cf_handler = __commonJS({
               throw err;
             }
             const errorMsg = err.code === "ECONNABORTED" || ((_a = err.message) == null ? void 0 : _a.includes("timeout")) ? "Timeout richiesta" : ((_b = err.response) == null ? void 0 : _b.status) || err.message;
-            console.log(`[CF-HANDLER][${provider}] Fallimento sessione (${errorMsg}), avvio bypass Scrapling...`);
             const challengeUrl = err.response && err.response.url ? err.response.url : url;
             const redirectedData = yield retryWithRedirectedSession(challengeUrl);
             if (redirectedData !== null) {
