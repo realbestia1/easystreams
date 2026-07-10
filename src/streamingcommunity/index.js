@@ -284,8 +284,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       return [];
     }
 
-    const separator = masterPlaylist.url.includes('?') ? '&' : '?';
-    const streamUrl = `${masterPlaylist.url}.m3u8${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+    const [baseUrl, existingQuery] = masterPlaylist.url.split('?');
+    const urlWithExt = baseUrl.endsWith('.m3u8') ? baseUrl : `${baseUrl}.m3u8`;
+    const streamUrl = `${urlWithExt}${existingQuery ? '?' + existingQuery + '&' : '?'}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
     const streamHeaders = getPlaylistHeaders(embedUrl);
     console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
 
@@ -297,21 +298,24 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         headers: streamHeaders,
         dispatcher: proxyAgent || undefined
       });
-      if (playlistResponse.ok) {
-        playlistFetched = true;
-        const playlistText = await playlistResponse.text();
-        if (playlistText) {
-          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-          const detected = checkQualityFromText(playlistText);
-          if (detected) quality = detected;
-          const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
-          if (!hasItalianAudio && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
-          }
+      if (!playlistResponse.ok) {
+        console.warn(`[StreamingCommunity] Playlist pre-check failed: ${playlistResponse.status}, stream not playable`);
+        return [];
+      }
+      playlistFetched = true;
+      const playlistText = await playlistResponse.text();
+      if (playlistText) {
+        hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+        const detected = checkQualityFromText(playlistText);
+        if (detected) quality = detected;
+        const originalLanguageItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
+        if (!hasItalianAudio && !originalLanguageItalian) {
+          console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
         }
       }
     } catch (e) {
       console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
+      return [];
     }
 
     const normalizedQuality = getQualityFromName(quality);

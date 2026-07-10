@@ -7977,7 +7977,7 @@ function extractQualityHint(value) {
 }
 function normalizeAnimeUnityQuality(value) {
   const quality = String(value || "").trim();
-  if (!quality || ["unknown", "unknow"].includes(quality.toLowerCase())) return "720p";
+  if (!quality || ["unknown", "unknow"].includes(quality.toLowerCase())) return "1080p";
   return quality;
 }
 function normalizeEpisodesList(sourceEpisodes = []) {

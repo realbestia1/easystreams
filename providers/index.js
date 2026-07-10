@@ -9305,8 +9305,9 @@ var require_streamingcommunity = __commonJS({
             console.log("[StreamingCommunity] Could not find playlist info in HTML");
             return [];
           }
-          const separator = masterPlaylist.url.includes("?") ? "&" : "?";
-          const streamUrl = `${masterPlaylist.url}.m3u8${separator}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
+          const [baseUrl2, existingQuery] = masterPlaylist.url.split("?");
+          const urlWithExt = baseUrl2.endsWith(".m3u8") ? baseUrl2 : `${baseUrl2}.m3u8`;
+          const streamUrl = `${urlWithExt}${existingQuery ? "?" + existingQuery + "&" : "?"}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
           const streamHeaders = getPlaylistHeaders(embedUrl);
           console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
           let quality = "1080p";
@@ -9317,21 +9318,24 @@ var require_streamingcommunity = __commonJS({
               headers: streamHeaders,
               dispatcher: proxyAgent || void 0
             });
-            if (playlistResponse.ok) {
-              playlistFetched = true;
-              const playlistText = yield playlistResponse.text();
-              if (playlistText) {
-                hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-                const detected = checkQualityFromText(playlistText);
-                if (detected) quality = detected;
-                const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-                if (!hasItalianAudio && !originalLanguageItalian) {
-                  console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
-                }
+            if (!playlistResponse.ok) {
+              console.warn(`[StreamingCommunity] Playlist pre-check failed: ${playlistResponse.status}, stream not playable`);
+              return [];
+            }
+            playlistFetched = true;
+            const playlistText = yield playlistResponse.text();
+            if (playlistText) {
+              hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+              const detected = checkQualityFromText(playlistText);
+              if (detected) quality = detected;
+              const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+              if (!hasItalianAudio && !originalLanguageItalian) {
+                console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
               }
             }
           } catch (e) {
             console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
+            return [];
           }
           const normalizedQuality = getQualityFromName(quality);
           const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
@@ -9708,7 +9712,7 @@ var require_animeunity = __commonJS({
     }
     function normalizeAnimeUnityQuality(value) {
       const quality = String(value || "").trim();
-      if (!quality || ["unknown", "unknow"].includes(quality.toLowerCase())) return "720p";
+      if (!quality || ["unknown", "unknow"].includes(quality.toLowerCase())) return "1080p";
       return quality;
     }
     function normalizeEpisodesList(sourceEpisodes = []) {
