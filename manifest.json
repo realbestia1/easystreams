@@ -109,7 +109,7 @@
     {
       "id": "easystreams-netmirror",
       "name": "NetMirror",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Movies and Series from NetMirror",
       "resources": ["stream"],
       "contentLanguage": ["it"],

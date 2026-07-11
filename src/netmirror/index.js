@@ -86,13 +86,16 @@ async function fetchJson(url, options = {}) {
 }
 
 async function fetchText(url, headers) {
-    try {
-        const response = await fetchWithTimeout(url, { headers, timeout: PROBE_TIMEOUT });
-        if (!response.ok) return '';
-        return await response.text();
-    } catch {
-        return '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const response = await fetchWithTimeout(url, { headers, timeout: PROBE_TIMEOUT });
+            if (!response.ok) { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue; }
+            return await response.text();
+        } catch {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
     }
+    return '';
 }
 
 async function getApiBase() {
@@ -219,10 +222,8 @@ async function extractServiceStreams(apiBase, service, titles, mediaType, season
         };
         const probeHeaders = {
             Referer: referer,
-            'User-Agent': 'Mozilla/5.0 (Android) ExoPlayer',
-            Accept: '*/*',
-            'Accept-Encoding': 'identity',
-            Connection: 'keep-alive'
+            'User-Agent': found.headers['user-agent'],
+            Accept: '*/*'
         };
         const masterText = await fetchText(playerData.video_link, probeHeaders);
         if (!masterText || !/#EXT-X-STREAM-INF/i.test(masterText)) {
@@ -273,9 +274,13 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         if (titles.length === 0) return [];
 
         const apiBase = await getApiBase();
-        const results = await Promise.all(
-            SERVICES.map(service => extractServiceStreams(apiBase, service, titles, mediaType, season, episode))
-        );
+        const results = [];
+        for (const service of SERVICES) {
+            const r = await extractServiceStreams(apiBase, service, titles, mediaType, season, episode);
+            results.push(r);
+            if (r.length > 0) break;
+            await new Promise(r => setTimeout(r, 500));
+        }
         const streams = dedupeStreams(results.flat());
         const italianStream = streams.find(s => s.language === 'Italian');
         if (italianStream) return [formatStream(italianStream, 'NetMirror')].filter(Boolean);

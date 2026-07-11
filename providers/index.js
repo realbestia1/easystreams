@@ -13565,13 +13565,19 @@ var require_netmirror = __commonJS({
     }
     function fetchText(url, headers) {
       return __async(this, null, function* () {
-        try {
-          const response = yield fetchWithTimeout(url, { headers, timeout: PROBE_TIMEOUT });
-          if (!response.ok) return "";
-          return yield response.text();
-        } catch (e) {
-          return "";
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = yield fetchWithTimeout(url, { headers, timeout: PROBE_TIMEOUT });
+            if (!response.ok) {
+              yield new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+              continue;
+            }
+            return yield response.text();
+          } catch (e) {
+            if (attempt < 2) yield new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+          }
         }
+        return "";
       });
     }
     function getApiBase() {
@@ -13690,10 +13696,8 @@ var require_netmirror = __commonJS({
           };
           const probeHeaders = {
             Referer: referer,
-            "User-Agent": "Mozilla/5.0 (Android) ExoPlayer",
-            Accept: "*/*",
-            "Accept-Encoding": "identity",
-            Connection: "keep-alive"
+            "User-Agent": found.headers["user-agent"],
+            Accept: "*/*"
           };
           const masterText = yield fetchText(playerData.video_link, probeHeaders);
           if (!masterText || !/#EXT-X-STREAM-INF/i.test(masterText)) {
@@ -13740,9 +13744,13 @@ var require_netmirror = __commonJS({
           const titles = getCandidateTitles(media, mediaType);
           if (titles.length === 0) return [];
           const apiBase = yield getApiBase();
-          const results = yield Promise.all(
-            SERVICES.map((service) => extractServiceStreams(apiBase, service, titles, mediaType, season, episode))
-          );
+          const results = [];
+          for (const service of SERVICES) {
+            const r = yield extractServiceStreams(apiBase, service, titles, mediaType, season, episode);
+            results.push(r);
+            if (r.length > 0) break;
+            yield new Promise((r2) => setTimeout(r2, 500));
+          }
           const streams = dedupeStreams(results.flat());
           const italianStream = streams.find((s) => s.language === "Italian");
           if (italianStream) return [formatStream(italianStream, "NetMirror")].filter(Boolean);
