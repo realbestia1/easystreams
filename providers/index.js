@@ -13677,6 +13677,18 @@ var require_netmirror = __commonJS({
         return null;
       });
     }
+    function buildPlayerHeaders(service, referer) {
+      return {
+        "ott": service.code,
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0 /OS.GatuNewTV v1.0",
+        "x-requested-with": "NetmirrorNewTV v1.0",
+        "Usertoken": "",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": referer,
+        "Cookie": `hd=on; ott=${service.code}`
+      };
+    }
     function extractServiceStreams(apiBase, service, titles, mediaType, season, episode) {
       return __async(this, null, function* () {
         try {
@@ -13687,17 +13699,22 @@ var require_netmirror = __commonJS({
             finalId = yield resolveEpisodeId(apiBase, found.id, found.headers, season, episode);
             if (!finalId) return [];
           }
-          const playerData = yield fetchJson(`${apiBase}/player.php?id=${encodeURIComponent(finalId)}`, { headers: found.headers });
+          const referer = `${apiBase}/`;
+          const playerHeaders = buildPlayerHeaders(service, referer);
+          const playerData = yield fetchJson(`${apiBase}/player.php?id=${encodeURIComponent(finalId)}`, { headers: playerHeaders });
           if (!playerData || !playerData.video_link) return [];
-          const referer = playerData.referer || `${apiBase}/`;
+          const origReferer = playerData.referer || referer;
+          const cookieHd = `hd=on; ott=${service.code}`;
           const playbackHeaders = {
-            Referer: referer,
-            "User-Agent": found.headers["user-agent"]
+            Referer: origReferer,
+            "User-Agent": found.headers["user-agent"],
+            Cookie: cookieHd
           };
           const probeHeaders = {
-            Referer: referer,
+            Referer: origReferer,
             "User-Agent": found.headers["user-agent"],
-            Accept: "*/*"
+            Accept: "*/*",
+            Cookie: cookieHd
           };
           const masterText = yield fetchText(playerData.video_link, probeHeaders);
           if (!masterText || !/#EXT-X-STREAM-INF/i.test(masterText)) {
