@@ -1,6 +1,6 @@
 {
   "name": "EasyStreams",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "scrapers": [
     {
       "id": "easystreams-guardoserie",
@@ -31,7 +31,7 @@
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.1.14",
+      "version": "1.1.15",
       "description": "Anime from AnimeUnity",
       "resources": ["stream"],
       "contentLanguage": ["it"],
