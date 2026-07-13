@@ -1333,7 +1333,7 @@ var require_vixcloud = __commonJS({
             if (parts.length > 1) {
               finalUrl += "?" + parts.slice(1).join("?");
             }
-            let quality = "Auto";
+            let quality = "1080p";
             const detectedQuality = yield checkQualityFromPlaylist(finalUrl, {
               "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"

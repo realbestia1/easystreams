@@ -51,7 +51,7 @@ async function extractVixCloud(url) {
                 finalUrl += '?' + parts.slice(1).join('?');
             }
 
-            let quality = "Auto";
+            let quality = "1080p";
             const detectedQuality = await checkQualityFromPlaylist(finalUrl, {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://vixcloud.co/"

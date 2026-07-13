@@ -670,7 +670,7 @@ var require_vixcloud = __commonJS({
             if (parts.length > 1) {
               finalUrl += "?" + parts.slice(1).join("?");
             }
-            let quality = "Auto";
+            let quality = "1080p";
             const detectedQuality = yield checkQualityFromPlaylist2(finalUrl, {
               "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
@@ -8635,41 +8635,6 @@ function extractStreamsFromAnimePath(animePath, requestedEpisode) {
     const displayTitle = `${baseTitle} - Ep ${resolvedEpisodeNumber}${labelSuffix}`;
     const streamLanguage = resolveLanguageEmoji(parsedAnime.sourceTag);
     const streams = [];
-    const blockedDomains = [
-      "jujutsukaisenanime.com",
-      "onepunchman.it",
-      "dragonballhd.it",
-      "narutolegend.it"
-    ];
-    const directUrl = toAbsoluteUrl(selected.link || selected.fileName || null);
-    if (directUrl && /^https?:\/\//i.test(directUrl)) {
-      const lowerLink = directUrl.toLowerCase();
-      const isBlocked = lowerLink.endsWith(".mkv.mp4") || blockedDomains.some((domain) => lowerLink.includes(domain));
-      if (!isBlocked) {
-        let quality = extractQualityHint(directUrl);
-        if (quality === "Unknown") quality = extractQualityHint(selected.fileName);
-        if (lowerLink.includes(".m3u8")) {
-          const detected = yield checkQualityFromPlaylist(directUrl, {
-            "User-Agent": USER_AGENT,
-            Referer: getUnityBaseUrl()
-          });
-          if (detected) quality = detected;
-        }
-        quality = normalizeAnimeUnityQuality(quality);
-        streams.push({
-          name: `AnimeUnity${labelSuffix}`,
-          title: displayTitle,
-          url: directUrl,
-          language: streamLanguage,
-          quality,
-          type: "direct",
-          headers: {
-            "User-Agent": USER_AGENT,
-            Referer: getUnityBaseUrl()
-          }
-        });
-      }
-    }
     if (selected.scwsId && (selected.embedUrl || selected.episodeId)) {
       try {
         let embedUrl2 = toAbsoluteUrl(selected.embedUrl || null);
