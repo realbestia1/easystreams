@@ -1840,7 +1840,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             }
                             proxiedByEasyProxy = true;
                         } else if (name === 'animeunity') {
-                            const sourceUrl = (s.easyProxySourceUrl || s.url).replace('vixcloud.co', 'unitv.mom');
+                            const sourceUrl = s.easyProxySourceUrl || s.url;
                             if (hasEasyProxy) {
                                 finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                     easyProxyEntries,
@@ -2170,13 +2170,24 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                 for (const [k, v] of Object.entries(qualityOrder)) {
                     if (str.includes(k)) return v;
                 }
+                if (/2160|4k/i.test(str)) return 10;
+                if (/1440|2k/i.test(str)) return 9;
+                if (/1080|fhd/i.test(str)) return 8;
+                if (/720|hd/i.test(str)) return 7;
+                if (/480|sd|360|240/i.test(str)) return 1;
                 return 0;
             };
 
-            const scoreA = getScore(a.name);
-            const scoreB = getScore(b.name);
+            const scoreA = getScore(a.qualityTag || a.name || '');
+            const scoreB = getScore(b.qualityTag || b.name || '');
 
-            return scoreB - scoreA; // Descending
+            if (scoreA !== scoreB) return scoreB - scoreA; // Descending
+
+            // 4. Provider priority
+            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming', 'cinemacity', 'guardahd'];
+            const prioA = providerOrder.indexOf(providerA);
+            const prioB = providerOrder.indexOf(providerB);
+            return (prioA >= 0 ? prioA : 99) - (prioB >= 0 ? prioB : 99);
         });
 
         logVerbose(`[Stremio] Returning ${validStreams.length} streams total.`);

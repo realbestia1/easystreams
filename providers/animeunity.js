@@ -635,7 +635,8 @@ var require_vixcloud = __commonJS({
     function extractVixCloud2(url) {
       return __async(this, null, function* () {
         try {
-          const response = yield fetch(url, {
+          const fixedUrl = url.replace("vixcloud.co", "unitv.mom");
+          const response = yield fetch(fixedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
@@ -671,13 +672,14 @@ var require_vixcloud = __commonJS({
               finalUrl += "?" + parts.slice(1).join("?");
             }
             let quality = "1080p";
-            const detectedQuality = yield checkQualityFromPlaylist2(finalUrl, {
+            const checkUrl = finalUrl.replace("vixcloud.co", "unitv.mom");
+            const detectedQuality = yield checkQualityFromPlaylist2(checkUrl, {
               "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
             streams.push({
-              url: finalUrl,
+              url: finalUrl.replace("vixcloud.co", "unitv.mom"),
               quality,
               type: "m3u8",
               headers: {
@@ -8655,7 +8657,7 @@ function extractStreamsFromAnimePath(animePath, requestedEpisode) {
           if (Array.isArray(vixStreams) && vixStreams.length > 0) {
             streams.push(
               ...vixStreams.map((stream) => __spreadProps(__spreadValues({}, stream), {
-                easyProxySourceUrl: embedUrl2,
+                easyProxySourceUrl: embedUrl2.replace("vixcloud.co", "unitv.mom"),
                 name: `AnimeUnity - VixCloud${labelSuffix}`,
                 title: displayTitle,
                 language: stream.language || streamLanguage

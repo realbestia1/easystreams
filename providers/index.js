@@ -1621,7 +1621,8 @@ var require_vixcloud = __commonJS({
     function extractVixCloud(url) {
       return __async(this, null, function* () {
         try {
-          const response = yield fetch(url, {
+          const fixedUrl = url.replace("vixcloud.co", "unitv.mom");
+          const response = yield fetch(fixedUrl, {
             headers: {
               "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"
@@ -1657,13 +1658,14 @@ var require_vixcloud = __commonJS({
               finalUrl += "?" + parts.slice(1).join("?");
             }
             let quality = "1080p";
-            const detectedQuality = yield checkQualityFromPlaylist(finalUrl, {
+            const checkUrl = finalUrl.replace("vixcloud.co", "unitv.mom");
+            const detectedQuality = yield checkQualityFromPlaylist(checkUrl, {
               "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
             streams.push({
-              url: finalUrl,
+              url: finalUrl.replace("vixcloud.co", "unitv.mom"),
               quality,
               type: "m3u8",
               headers: {
@@ -13858,6 +13860,16 @@ function getStreams(id, type, season, episode) {
         streams.push(...result.streams);
       }
     }
+    const qualityRank = { "4K": 0, "2160p": 0, "1440p": 1, "1080p": 2, "fhd": 2, "720p": 3, "hd": 3, "480p": 4, "360p": 5, "240p": 6 };
+    streams.sort((a, b) => {
+      var _a, _b;
+      const qa = (_a = qualityRank[String(a.quality || "").toLowerCase()]) != null ? _a : 99;
+      const qb = (_b = qualityRank[String(b.quality || "").toLowerCase()]) != null ? _b : 99;
+      if (qa !== qb) return qa - qb;
+      const la = String(a.language || "").includes("\u{1F1EE}\u{1F1F9}") ? 0 : 1;
+      const lb = String(b.language || "").includes("\u{1F1EE}\u{1F1F9}") ? 0 : 1;
+      return la - lb;
+    });
     return streams;
   });
 }

@@ -286,6 +286,16 @@ async function getStreams(id, type, season, episode) {
         }
     }
 
+    const qualityRank = { '4K': 0, '2160p': 0, '1440p': 1, '1080p': 2, 'fhd': 2, '720p': 3, 'hd': 3, '480p': 4, '360p': 5, '240p': 6 };
+    streams.sort((a, b) => {
+        const qa = qualityRank[String(a.quality || '').toLowerCase()] ?? 99;
+        const qb = qualityRank[String(b.quality || '').toLowerCase()] ?? 99;
+        if (qa !== qb) return qa - qb;
+        const la = String(a.language || '').includes('🇮🇹') ? 0 : 1;
+        const lb = String(b.language || '').includes('🇮🇹') ? 0 : 1;
+        return la - lb;
+    });
+
     return streams;
 }
 

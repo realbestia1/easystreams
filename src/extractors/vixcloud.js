@@ -3,7 +3,8 @@ const { checkQualityFromPlaylist } = require('../quality_helper.js');
 
 async function extractVixCloud(url) {
     try {
-        const response = await fetch(url, {
+        const fixedUrl = url.replace('vixcloud.co', 'unitv.mom');
+        const response = await fetch(fixedUrl, {
             headers: {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://vixcloud.co/"
@@ -16,7 +17,6 @@ async function extractVixCloud(url) {
         const streams = [];
 
 
-        // Extract HLS (streams) using Python extractor logic
         const tokenRegex = /'token':\s*'(\w+)'/;
         const expiresRegex = /'expires':\s*'(\d+)'/;
         const urlRegex = /url:\s*'([^']+)'/;
@@ -33,7 +33,6 @@ async function extractVixCloud(url) {
             let serverUrl = urlMatch[1];
 
             let finalUrl = "";
-            // Logic from Python extractor
             if (serverUrl.includes("?b=1")) {
                 finalUrl = `${serverUrl}&token=${token}&expires=${expires}`;
             } else {
@@ -44,7 +43,6 @@ async function extractVixCloud(url) {
                 finalUrl += "&h=1";
             }
 
-            // Insert .m3u8 before query params
             const parts = finalUrl.split('?');
             finalUrl = parts[0] + '.m3u8';
             if (parts.length > 1) {
@@ -52,14 +50,15 @@ async function extractVixCloud(url) {
             }
 
             let quality = "1080p";
-            const detectedQuality = await checkQualityFromPlaylist(finalUrl, {
+            const checkUrl = finalUrl.replace('vixcloud.co', 'unitv.mom');
+            const detectedQuality = await checkQualityFromPlaylist(checkUrl, {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
 
             streams.push({
-                url: finalUrl,
+                url: finalUrl.replace('vixcloud.co', 'unitv.mom'),
                 quality: quality,
                 type: "m3u8",
                 headers: {
