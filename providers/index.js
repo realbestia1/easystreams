@@ -12644,6 +12644,13 @@ var require_cinemacity = __commonJS({
         const engAudio = parts.find((p) => /english|inglese/i.test(p) && p.endsWith(".m4a"));
         const fallbackAudio = parts.find((p) => p.endsWith(".m4a"));
         const selectedAudio = itaAudio || engAudio || fallbackAudio;
+        let originalSubtitles = null;
+        try {
+          const tempUrl = fileVal.startsWith("http") ? fileVal : `https://dummy.com/${fileVal}`;
+          const tempUrlObj = new URL(tempUrl);
+          originalSubtitles = tempUrlObj.searchParams.get("subtitle");
+        } catch (e) {
+        }
         const m3u8Entry = parts.find((p) => p.includes(".m3u8"));
         let url = cdnBase + cleanRest + (m3u8Entry ? "" : ".urlset/master.m3u8");
         try {
@@ -12656,9 +12663,13 @@ var require_cinemacity = __commonJS({
           const cleanTitle = movieTitle.replace(/[^a-zA-Z0-9]/g, ".");
           const langTag = itaAudio ? "Italian" : engAudio ? "English" : "Multi";
           urlObj.searchParams.set("name", `${cleanTitle}.${quality}.${langTag}`);
-          const subtitles = parts.filter((p) => p.endsWith(".vtt"));
-          if (subtitles.length > 0) {
-            urlObj.searchParams.set("subtitle", subtitles.join(","));
+          if (originalSubtitles) {
+            urlObj.searchParams.set("subtitle", originalSubtitles);
+          } else {
+            const subtitles = parts.filter((p) => p.endsWith(".vtt"));
+            if (subtitles.length > 0) {
+              urlObj.searchParams.set("subtitle", subtitles.join(","));
+            }
           }
           url = urlObj.toString();
         } catch (e) {

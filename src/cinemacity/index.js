@@ -523,6 +523,14 @@ function buildDownloadUrl(fileVal, movieTitle) {
     const fallbackAudio = parts.find(p => p.endsWith('.m4a'));
     const selectedAudio = itaAudio || engAudio || fallbackAudio;
 
+    // Extract subtitle from original fileVal if present
+    let originalSubtitles = null;
+    try {
+        const tempUrl = fileVal.startsWith('http') ? fileVal : `https://dummy.com/${fileVal}`;
+        const tempUrlObj = new URL(tempUrl);
+        originalSubtitles = tempUrlObj.searchParams.get('subtitle');
+    } catch (e) {}
+
     const m3u8Entry = parts.find(p => p.includes('.m3u8'));
     
     // Construct base HLS path
@@ -543,9 +551,13 @@ function buildDownloadUrl(fileVal, movieTitle) {
         urlObj.searchParams.set('name', `${cleanTitle}.${quality}.${langTag}`);
 
         // Attach subtitles
-        const subtitles = parts.filter(p => p.endsWith('.vtt'));
-        if (subtitles.length > 0) {
-            urlObj.searchParams.set('subtitle', subtitles.join(','));
+        if (originalSubtitles) {
+            urlObj.searchParams.set('subtitle', originalSubtitles);
+        } else {
+            const subtitles = parts.filter(p => p.endsWith('.vtt'));
+            if (subtitles.length > 0) {
+                urlObj.searchParams.set('subtitle', subtitles.join(','));
+            }
         }
 
         url = urlObj.toString();
