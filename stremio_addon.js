@@ -2205,7 +2205,10 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
 
                             nameUI = `EasyStreams HTTP\n${resolution}`;
                             
-                            const lines = [`🎬 ${displayTitle} ${resolution}${fillerTag ? ` | ${fillerTag}` : ''}`];
+                            const lines = [`🎬 ${displayTitle} ${resolution}`];
+                            if (fillerTag) {
+                                lines.push(fillerTag);
+                            }
                             if (s.description) {
                                 const sizeMatch = String(s.description).match(/(\d+(?:\.\d+)?\s*(?:GB|MB|KB|TB))/i);
                                 if (sizeMatch) {
@@ -2293,7 +2296,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 }
                             }
 
-                            finalBehaviorHints.filename = `${displayTitle}${filenameYear}${seasonEpisodeStr} ${resolutionForFilename}.mp4`;
+                            const tagSuffix = fillerTag ? ` ${fillerTag}` : '';
+                            finalBehaviorHints.filename = `${displayTitle}${filenameYear}${seasonEpisodeStr} ${resolutionForFilename}${tagSuffix}.mp4`;
                         }
 
                         if (proxiedByEasyProxy) {
