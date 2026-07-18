@@ -400,6 +400,9 @@ var require_cf_bypass = __commonJS({
         if (options.headers) {
           args.push("--headers", JSON.stringify(options.headers));
         }
+        if (provider) {
+          args.push("--provider", provider);
+        }
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
         const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
         let pythonExe = "python3";
@@ -824,7 +827,16 @@ var require_cf_handler = __commonJS({
             if (options.meta && newSession.url) {
               options.meta.finalUrl = newSession.url;
             }
-            if (isUsefulHtml(newSession.response)) {
+            const isSamePath = (u1, u2) => {
+              try {
+                const p1 = new URL(u1).pathname.replace(/\/$/, "");
+                const p2 = new URL(u2).pathname.replace(/\/$/, "");
+                return p1 === p2;
+              } catch (e) {
+                return false;
+              }
+            };
+            if (isUsefulHtml(newSession.response) && isSamePath(newSession.url, url)) {
               return newSession.response;
             }
             let finalUrl = bypassUrl === url ? currentUrl : bypassUrl;

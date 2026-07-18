@@ -3,6 +3,24 @@
 const { formatStream } = require('../formatter.js');
 const { fetchWithTimeout } = require('../fetch_helper.js');
 
+const IS_SERVER = typeof process !== 'undefined' && process.versions && process.versions.node;
+
+if (!IS_SERVER) {
+    module.exports = {
+        getStreams: async (id, type, season, episode) => {
+            try {
+                const url = `https://easystreams.realbestia.com/resolve/cinemacity?id=${id}&type=${type}&s=${season || 1}&ep=${episode || 1}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                return data.streams || [];
+            } catch (e) {
+                console.error('[CinemaCity-Client] API Error:', e.message);
+                return [];
+            }
+        }
+    };
+} else {
+
 const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
 function base64Decode(str) {
@@ -61,14 +79,9 @@ function getMappingLanguage(providerContext = null) {
 }
 
 async function fetchViaWorker(url) {
-    const path = url.startsWith('http') ? new URL(url).pathname + new URL(url).search : url;
-    const targetUrl = ('https://' + base64Decode('Y2MucmVh' + 'bGJlc3Rp' + 'YS5jb20=')).replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
-    const response = await fetchWithTimeout(targetUrl, {
-        timeout: FETCH_TIMEOUT,
-        headers: { "User-Agent": USER_AGENT }
-    });
-    if (!response.ok) throw new Error(`Worker HTTP ${response.status}`);
-    return await response.text();
+    const { smartFetch } = require('../utils/cf_handler.js');
+    const targetUrl = url.startsWith('http') ? url : `${BASE_URL.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+    return await smartFetch(targetUrl, BASE_URL, { provider: 'cinemacity' });
 }
 
 function decodeHtmlEntities(str) {
@@ -160,72 +173,9 @@ async function fetchSitemapEntries(providerContext = null) {
     }
 
     console.log("[CinemaCity] Fetching sitemap catalog...");
-    let sitemapProxy = 'https://' + base64Decode('Y2MucmVh' + 'bGJlc3Rp' + 'YS5jb20=');
-
-    const sitemapPath = SITEMAP_URL.startsWith('http') ? new URL(SITEMAP_URL).pathname : SITEMAP_URL;
-
-    if (sitemapProxy) {
-        // Try paginated fetch first (new worker supports ?page=N&perPage=500)
-        const firstPageUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy.slice(0, -1)}${sitemapPath}?page=1&perPage=500` : `${sitemapProxy}${sitemapPath}?page=1&perPage=500`;
-        console.log(`[CinemaCity] Fetching sitemap page 1 via CF Proxy: ${firstPageUrl}`);
-        const firstResp = await fetchWithTimeout(firstPageUrl, {
-            timeout: FETCH_TIMEOUT,
-            headers: { "User-Agent": USER_AGENT }
-        });
-        if (firstResp.ok) {
-            const totalEntries = parseInt(firstResp.headers.get('x-total-entries') || '0', 10);
-            const firstXml = await firstResp.text();
-            let allEntries = parseSitemapEntries(firstXml);
-
-            if (totalEntries > 0) {
-                // Pagination supported - fetch remaining pages
-                const perPage = 500;
-                const totalPages = Math.ceil(totalEntries / perPage);
-                const pageFetches = [];
-                for (let p = 2; p <= totalPages; p++) {
-                    const pageUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy.slice(0, -1)}${sitemapPath}?page=${p}&perPage=500` : `${sitemapProxy}${sitemapPath}?page=${p}&perPage=500`;
-                    pageFetches.push(
-                        fetchWithTimeout(pageUrl, { timeout: FETCH_TIMEOUT, headers: { "User-Agent": USER_AGENT } })
-                            .then(r => r.ok ? r.text() : '')
-                            .then(xml => { if (xml) allEntries = allEntries.concat(parseSitemapEntries(xml)); })
-                            .catch(() => {})
-                    );
-                }
-                await Promise.all(pageFetches);
-            } else if (allEntries.length >= 1800) {
-                // Old worker returned full sitemap on first request - use it directly
-                console.log(`[CinemaCity] Full sitemap received (${allEntries.length} entries)`);
-                sitemapCache = { entries: allEntries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
-                return allEntries;
-            }
-
-            if (allEntries.length > 0) {
-                sitemapCache = { entries: allEntries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
-                console.log(`[CinemaCity] Sitemap catalog loaded: ${allEntries.length} entries`);
-                return allEntries;
-            }
-        }
-
-        // Fallback to full fetch without pagination params
-        const targetUrl = sitemapProxy.endsWith('/') ? `${sitemapProxy}${sitemapPath.replace(/^\//, '')}` : `${sitemapProxy}${sitemapPath}`;
-        console.log(`[CinemaCity] Fetching sitemap via CF Proxy (full): ${targetUrl}`);
-        const response = await fetchWithTimeout(targetUrl, {
-            timeout: FETCH_TIMEOUT,
-            headers: { "User-Agent": USER_AGENT }
-        });
-        if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
-        const xml = await response.text();
-        const entries = parseSitemapEntries(xml);
-        sitemapCache = { entries, expiresAt: Date.now() + SITEMAP_CACHE_MS };
-        console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
-        return entries;
-    } else {
-        const response = await fetchWithTimeout(SITEMAP_URL, {
-            timeout: FETCH_TIMEOUT,
-            headers: { "User-Agent": USER_AGENT }
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const xml = await response.text();
+    try {
+        const { smartFetch } = require('../utils/cf_handler.js');
+        const xml = await smartFetch(SITEMAP_URL, BASE_URL, { provider: 'cinemacity' });
         const entries = parseSitemapEntries(xml);
         sitemapCache = {
             entries,
@@ -233,6 +183,9 @@ async function fetchSitemapEntries(providerContext = null) {
         };
         console.log(`[CinemaCity] Sitemap catalog loaded: ${entries.length} entries`);
         return entries;
+    } catch (e) {
+        console.error("[CinemaCity] Error loading sitemap catalog:", e);
+        throw e;
     }
 }
 
@@ -733,3 +686,4 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 }
 
 module.exports = { getStreams };
+}

@@ -85,6 +85,7 @@ def main():
     parser.add_argument('--headers', help='JSON string of headers')
     parser.add_argument('--timeout', type=int, default=60000, help='Timeout in ms')
     parser.add_argument('--wait-until', default='domcontentloaded', help='Wait strategy')
+    parser.add_argument('--provider', default='default', help='Provider name for profile directory separation')
     args = parser.parse_args()
 
     try:
@@ -94,7 +95,7 @@ def main():
         sys.stderr.write("start: camoufox launch_options...\n")
         kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
         _lo = _cf_lo(**kw)
-        _td = os.path.join(tempfile.gettempdir(), "camoufox_ctx")
+        _td = os.path.join(tempfile.gettempdir(), f"camoufox_ctx_{args.provider}")
         os.makedirs(_td, exist_ok=True)
         sys.stderr.write("start: sync_playwright...\n")
         _pw = _sync_pw().__enter__()

@@ -92,6 +92,9 @@ function execPythonBypass(url, provider, options = {}) {
         if (options.headers) {
             args.push('--headers', JSON.stringify(options.headers));
         }
+        if (provider) {
+            args.push('--provider', provider);
+        }
 
         console.log(`[SC][${provider}] Avvio bypass Scrapling per: ${url}`);
         

@@ -322,8 +322,15 @@ async function smartFetch(url, domain, options = {}) {
                 options.meta.finalUrl = newSession.url;
             }
             
-            // Se FlareSolverr ha già restituito il contenuto della pagina, usiamolo
-            if (isUsefulHtml(newSession.response)) {
+            // Se FlareSolverr ha già restituito il contenuto della pagina, usiamolo (solo se l'URL coincide con quello richiesto)
+            const isSamePath = (u1, u2) => {
+                try {
+                    const p1 = new URL(u1).pathname.replace(/\/$/, '');
+                    const p2 = new URL(u2).pathname.replace(/\/$/, '');
+                    return p1 === p2;
+                } catch (e) { return false; }
+            };
+            if (isUsefulHtml(newSession.response) && isSamePath(newSession.url, url)) {
                 return newSession.response;
             }
 

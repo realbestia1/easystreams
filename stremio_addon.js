@@ -2368,6 +2368,36 @@ async function warmupGuardoserie(force = false) {
     }
 }
 
+async function warmupCinemacity(force = false) {
+    const forceWarmup = force || String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
+    const validSession = describeValidCfSession(['cinemacity']);
+    if (!forceWarmup && validSession) {
+        console.log(`[Warmup] Cinemacity saltato: sessione CF valida gia presente (${validSession}).`);
+        return;
+    }
+
+    try {
+        console.log('[Warmup] Riscaldamento Cinemacity (Login)...');
+        const email = process.env.CINEMACITY_EMAIL || 'realbestia';
+        const password = process.env.CINEMACITY_PASSWORD || 'kaxcob-4gafdE-jixwyb';
+        const body = `login_name=${encodeURIComponent(email)}&login_password=${encodeURIComponent(password)}&login=submit`;
+        
+        await getClearance('https://cinemacity.cc/', 'cinemacity', {
+            method: 'POST',
+            body: body,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
+            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
+            waitUntil: 'network_idle'
+        });
+        console.log('[Warmup] Cinemacity pronto (Login completato)!');
+    } catch (e) {
+        console.error(`[Warmup] Errore riscaldamento Cinemacity: ${e.message}`);
+    }
+}
+
 let server;
 (async () => {
     try {
@@ -2375,12 +2405,18 @@ let server;
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
         });
+        warmupCinemacity().catch(e => {
+            console.error('[Warmup] Errore critico Cinemacity:', e);
+        });
 
         // Configura il refresh in background ogni 50 minuti per mantenere i cookie sempre attivi
         setInterval(() => {
             console.log('[Warmup] Esecuzione refresh periodico in background...');
             warmupGuardoserie(true).catch(e => {
-                console.error('[Warmup] Errore durante il refresh periodico:', e.message);
+                console.error('[Warmup] Errore durante il refresh periodico Guardoserie:', e.message);
+            });
+            warmupCinemacity(true).catch(e => {
+                console.error('[Warmup] Errore durante il refresh periodico Cinemacity:', e.message);
             });
         }, 50 * 60 * 1000);
     } catch (e) {
