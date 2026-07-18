@@ -1822,6 +1822,14 @@ async function getAnimeFillerTagForEpisode(type, requestContext, season, episode
         normalizeTitleForMapping(animeTitle),
         normalizeTitleForMapping(cleanTitleForMapping(animeTitle))
     ];
+    const splitParts = animeTitle.split(/[:\-(]/);
+    if (splitParts.length > 1) {
+        const prefix = splitParts[0].trim();
+        if (prefix) {
+            searchKeys.push(normalizeTitleForMapping(prefix));
+            searchKeys.push(normalizeTitleForMapping(cleanTitleForMapping(prefix)));
+        }
+    }
 
     let foundSlug = null;
     for (const key of searchKeys) {
