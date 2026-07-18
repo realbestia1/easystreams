@@ -2205,10 +2205,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
 
                             nameUI = `EasyStreams HTTP\n${resolution}`;
                             
-                            const lines = [`🎬 ${displayTitle} ${resolution}`];
-                            if (fillerTag) {
-                                lines.push(fillerTag);
-                            }
+                            const lines = [`🎬 ${displayTitle} ${resolution}${fillerTag ? ` | ${fillerTag}` : ''}`];
                             if (s.description) {
                                 const sizeMatch = String(s.description).match(/(\d+(?:\.\d+)?\s*(?:GB|MB|KB|TB))/i);
                                 if (sizeMatch) {
