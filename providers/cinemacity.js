@@ -983,7 +983,7 @@ if (!IS_SERVER) {
       parsed.episode = Number.parseInt(match[3], 10) || parsed.episode;
     }
     return parsed;
-  }, buildDownloadUrl = function(fileVal, movieTitle) {
+  }, buildDownloadUrl = function(fileVal, movieTitle, subtitleVal = null) {
     const baseEnd = fileVal.indexOf("/public_files/");
     if (baseEnd === -1) return null;
     const cdnBase = fileVal.substring(0, baseEnd + "/public_files/".length);
@@ -1002,6 +1002,13 @@ if (!IS_SERVER) {
     const engAudio = parts.find((p) => /english|inglese/i.test(p) && p.endsWith(".m4a"));
     const fallbackAudio = parts.find((p) => p.endsWith(".m4a"));
     const selectedAudio = itaAudio || engAudio || fallbackAudio;
+    let originalSubtitles = null;
+    try {
+      const tempUrl = fileVal.startsWith("http") ? fileVal : `https://dummy.com/${fileVal}`;
+      const tempUrlObj = new URL(tempUrl);
+      originalSubtitles = tempUrlObj.searchParams.get("subtitle");
+    } catch (e) {
+    }
     const m3u8Entry = parts.find((p) => p.includes(".m3u8"));
     let url = cdnBase + cleanRest + (m3u8Entry ? "" : ".urlset/master.m3u8");
     try {
@@ -1014,9 +1021,29 @@ if (!IS_SERVER) {
       const cleanTitle = movieTitle.replace(/[^a-zA-Z0-9]/g, ".");
       const langTag = itaAudio ? "Italian" : engAudio ? "English" : "Multi";
       urlObj.searchParams.set("name", `${cleanTitle}.${quality}.${langTag}`);
-      const subtitles = parts.filter((p) => p.endsWith(".vtt"));
-      if (subtitles.length > 0) {
-        urlObj.searchParams.set("subtitle", subtitles.join(","));
+      let subtitleStr = "";
+      if (originalSubtitles) {
+        subtitleStr = originalSubtitles;
+      } else if (subtitleVal) {
+        const extractedSubtitles = [];
+        const subParts = String(subtitleVal).split(",");
+        for (const part of subParts) {
+          const match = part.match(/\/public_files\/(.*?\.vtt)/i);
+          if (match) {
+            extractedSubtitles.push(match[1]);
+          }
+        }
+        if (extractedSubtitles.length > 0) {
+          subtitleStr = extractedSubtitles.join(",");
+        }
+      } else {
+        const subtitles = parts.filter((p) => p.endsWith(".vtt"));
+        if (subtitles.length > 0) {
+          subtitleStr = subtitles.join(",");
+        }
+      }
+      if (subtitleStr) {
+        urlObj.searchParams.set("subtitle", subtitleStr);
       }
       url = urlObj.toString();
     } catch (e) {
@@ -1042,14 +1069,14 @@ if (!IS_SERVER) {
                   const epIdx = (episode || 1) - 1;
                   const ep = s.folder[epIdx];
                   if (ep && ep.file) {
-                    const dlUrl = buildDownloadUrl(ep.file, movieTitle);
+                    const dlUrl = buildDownloadUrl(ep.file, movieTitle, ep.subtitle);
                     if (dlUrl) return dlUrl;
                   }
                 }
               }
               const fileVal = parsed[0].file;
               if (fileVal && fileVal.startsWith("http")) {
-                const dlUrl = buildDownloadUrl(fileVal, movieTitle);
+                const dlUrl = buildDownloadUrl(fileVal, movieTitle, parsed[0].subtitle);
                 if (dlUrl) return dlUrl;
               }
             }

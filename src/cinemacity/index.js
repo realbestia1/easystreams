@@ -489,7 +489,7 @@ function parseCompositeSeriesId(rawId, season, episode) {
     return parsed;
 }
 
-function buildDownloadUrl(fileVal, movieTitle) {
+function buildDownloadUrl(fileVal, movieTitle, subtitleVal = null) {
     const baseEnd = fileVal.indexOf('/public_files/');
     if (baseEnd === -1) return null;
     const cdnBase = fileVal.substring(0, baseEnd + '/public_files/'.length);
@@ -523,6 +523,14 @@ function buildDownloadUrl(fileVal, movieTitle) {
     const fallbackAudio = parts.find(p => p.endsWith('.m4a'));
     const selectedAudio = itaAudio || engAudio || fallbackAudio;
 
+    // Extract subtitle from original fileVal if present
+    let originalSubtitles = null;
+    try {
+        const tempUrl = fileVal.startsWith('http') ? fileVal : `https://dummy.com/${fileVal}`;
+        const tempUrlObj = new URL(tempUrl);
+        originalSubtitles = tempUrlObj.searchParams.get('subtitle');
+    } catch (e) {}
+
     const m3u8Entry = parts.find(p => p.includes('.m3u8'));
     
     // Construct base HLS path
@@ -543,9 +551,30 @@ function buildDownloadUrl(fileVal, movieTitle) {
         urlObj.searchParams.set('name', `${cleanTitle}.${quality}.${langTag}`);
 
         // Attach subtitles
-        const subtitles = parts.filter(p => p.endsWith('.vtt'));
-        if (subtitles.length > 0) {
-            urlObj.searchParams.set('subtitle', subtitles.join(','));
+        let subtitleStr = "";
+        if (originalSubtitles) {
+            subtitleStr = originalSubtitles;
+        } else if (subtitleVal) {
+            const extractedSubtitles = [];
+            const subParts = String(subtitleVal).split(',');
+            for (const part of subParts) {
+                const match = part.match(/\/public_files\/(.*?\.vtt)/i);
+                if (match) {
+                    extractedSubtitles.push(match[1]);
+                }
+            }
+            if (extractedSubtitles.length > 0) {
+                subtitleStr = extractedSubtitles.join(',');
+            }
+        } else {
+            const subtitles = parts.filter(p => p.endsWith('.vtt'));
+            if (subtitles.length > 0) {
+                subtitleStr = subtitles.join(',');
+            }
+        }
+
+        if (subtitleStr) {
+            urlObj.searchParams.set('subtitle', subtitleStr);
         }
 
         url = urlObj.toString();
@@ -578,7 +607,7 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                                 const epIdx = (episode || 1) - 1;
                                 const ep = s.folder[epIdx];
                                 if (ep && ep.file) {
-                                    const dlUrl = buildDownloadUrl(ep.file, movieTitle);
+                                    const dlUrl = buildDownloadUrl(ep.file, movieTitle, ep.subtitle);
                                     if (dlUrl) return dlUrl;
                                 }
                             }
@@ -586,7 +615,7 @@ function extractStreamFromAtob(html, movieTitle, season, episode) {
                         // Movie: flat structure [{title, file, subtitle}]
                         const fileVal = parsed[0].file;
                         if (fileVal && fileVal.startsWith('http')) {
-                            const dlUrl = buildDownloadUrl(fileVal, movieTitle);
+                            const dlUrl = buildDownloadUrl(fileVal, movieTitle, parsed[0].subtitle);
                             if (dlUrl) return dlUrl;
                         }
                     }
