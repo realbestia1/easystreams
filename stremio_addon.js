@@ -482,7 +482,7 @@ function normalizeConfigBoolean(value) {
 }
 
 function resolveMappingLanguageFromConfig(config = null) {
-    return normalizeConfigBoolean(config?.easyCatalogsLangIt) ? 'it' : null;
+    return 'it';
 }
 
 function normalizeEasyProxyUrl(value) {

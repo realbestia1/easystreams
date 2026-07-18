@@ -8474,9 +8474,7 @@ var require_guardoserie = __commonJS({
         const normalized = String(value || "").trim().toLowerCase();
         return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
       }, getMappingLanguage2 = function(providerContext = null) {
-        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-        if (explicit === "it") return "it";
-        return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+        return "it";
       }, extractEpisodeUrlFromSeriesPage2 = function(pageHtml, season, episode) {
         if (!pageHtml) return null;
         const seasonIndex = parseInt(season, 10) - 1;
@@ -9479,15 +9477,8 @@ var require_animeunity = __commonJS({
       const parsed = Number.parseInt(String(value || ""), 10);
       return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
     }
-    function normalizeConfigBoolean(value) {
-      if (value === true) return true;
-      const normalized = String(value || "").trim().toLowerCase();
-      return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-    }
     function getMappingLanguage(providerContext = null) {
-      const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-      if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return "it";
     }
     function toAbsoluteUrl(href) {
       if (!href) return null;
@@ -10596,15 +10587,8 @@ var require_animeworld = __commonJS({
       }
       return out;
     }
-    function normalizeConfigBoolean(value) {
-      if (value === true) return true;
-      const normalized = String(value || "").trim().toLowerCase();
-      return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-    }
     function getMappingLanguage(providerContext = null) {
-      const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-      if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return "it";
     }
     function decodeHtmlEntities(raw) {
       const decodedNumeric = String(raw || "").replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
@@ -11501,15 +11485,8 @@ var require_animesaturn = __commonJS({
       const parsed = Number.parseInt(String(value || ""), 10);
       return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
     }
-    function normalizeConfigBoolean(value) {
-      if (value === true) return true;
-      const normalized = String(value || "").trim().toLowerCase();
-      return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-    }
     function getMappingLanguage(providerContext = null) {
-      const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-      if (explicit === "it") return "it";
-      return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+      return "it";
     }
     function toAbsoluteUrl(href, base = null) {
       if (!href) return null;
@@ -12514,9 +12491,7 @@ var require_cinemacity = __commonJS({
         const normalized = String(value || "").trim().toLowerCase();
         return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
       }, getMappingLanguage = function(providerContext = null) {
-        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-        if (explicit === "it") return "it";
-        return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+        return "it";
       }, decodeHtmlEntities = function(str) {
         return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
       }, getHttpStatusFromError = function(error) {
@@ -13185,9 +13160,7 @@ var require_vidxgo2 = __commonJS({
         const normalized = String(value || "").trim().toLowerCase();
         return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
       }, getMappingLanguage2 = function(providerContext = null) {
-        const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-        if (explicit === "it") return "it";
-        return normalizeConfigBoolean2(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+        return "it";
       }, getQualityFromName2 = function(qualityStr) {
         if (!qualityStr) return "Unknown";
         const quality = qualityStr.toUpperCase();

@@ -455,15 +455,8 @@ function normalizeRequestedSeason(value) {
   const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
-function normalizeConfigBoolean(value) {
-  if (value === true) return true;
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-}
 function getMappingLanguage(providerContext = null) {
-  const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-  if (explicit === "it") return "it";
-  return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+  return "it";
 }
 function toAbsoluteUrl(href, base = null) {
   if (!href) return null;

@@ -90,7 +90,7 @@ if (!IS_SERVER) {
   const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
   function getMappingApiUrl() { return "https://animemapping.realbestia.com"; }
   function normalizeConfigBoolean(value) { if (value === true) return true; const normalized = String(value || "").trim().toLowerCase(); return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized); }
-  function getMappingLanguage(providerContext = null) { const explicit = String(providerContext?.mappingLanguage || "").trim().toLowerCase(); if (explicit === "it") return "it"; return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? "it" : null; }
+  function getMappingLanguage(providerContext = null) { return "it"; }
   const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
   const { extractVidxGo } = require('../extractors/vidxgo');

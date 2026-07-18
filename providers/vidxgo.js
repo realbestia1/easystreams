@@ -533,9 +533,7 @@ if (!IS_SERVER) {
     const normalized = String(value || "").trim().toLowerCase();
     return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
   }, getMappingLanguage = function(providerContext = null) {
-    const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-    if (explicit === "it") return "it";
-    return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+    return "it";
   }, getQualityFromName = function(qualityStr) {
     if (!qualityStr) return "Unknown";
     const quality = qualityStr.toUpperCase();

@@ -849,9 +849,7 @@ if (!IS_SERVER) {
     const normalized = String(value || "").trim().toLowerCase();
     return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
   }, getMappingLanguage = function(providerContext = null) {
-    const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-    if (explicit === "it") return "it";
-    return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+    return "it";
   }, decodeHtmlEntities = function(str) {
     return String(str || "").replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec))).replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&ndash;|&mdash;/g, "-").replace(/\u2013|\u2014/g, "-");
   }, getHttpStatusFromError = function(error) {

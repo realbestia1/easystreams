@@ -388,15 +388,8 @@ function uniqueStrings(values) {
   }
   return out;
 }
-function normalizeConfigBoolean(value) {
-  if (value === true) return true;
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["1", "true", "yes", "on", "enabled", "checked"].includes(normalized);
-}
 function getMappingLanguage(providerContext = null) {
-  const explicit = String((providerContext == null ? void 0 : providerContext.mappingLanguage) || "").trim().toLowerCase();
-  if (explicit === "it") return "it";
-  return normalizeConfigBoolean(providerContext == null ? void 0 : providerContext.easyCatalogsLangIt) ? "it" : null;
+  return "it";
 }
 function decodeHtmlEntities(raw) {
   const decodedNumeric = String(raw || "").replace(/&#x([0-9a-f]+);/gi, (_, hex) => {

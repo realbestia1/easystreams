@@ -89,9 +89,7 @@ function normalizeConfigBoolean(value) {
 }
 
 function getMappingLanguage(providerContext = null) {
-  const explicit = String(providerContext?.mappingLanguage || "").trim().toLowerCase();
-  if (explicit === "it") return "it";
-  return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? "it" : null;
+  return "it";
 }
 
 function decodeHtmlEntities(raw) {

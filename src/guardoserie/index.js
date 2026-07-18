@@ -41,9 +41,7 @@ if (!IS_SERVER) {
         return ['1', 'true', 'yes', 'on', 'enabled', 'checked'].includes(normalized);
     }
     function getMappingLanguage(providerContext = null) {
-        const explicit = String(providerContext?.mappingLanguage || '').trim().toLowerCase();
-        if (explicit === 'it') return 'it';
-        return normalizeConfigBoolean(providerContext?.easyCatalogsLangIt) ? 'it' : null;
+        return 'it';
     }
 
     async function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
