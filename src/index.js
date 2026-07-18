@@ -4,7 +4,7 @@ const streamingcommunity = require('./streamingcommunity/index');
 const animeunity = require('./animeunity/index');
 const animeworld = require('./animeworld/index');
 const animesaturn = require('./animesaturn/index');
-const cinemacity = require('./cinemacity/index');
+
 const vidxgo = require('./vidxgo/index');
 const altadefinizionestreaming = require('./altadefinizionestreaming/index');
 const { createTimeoutSignal } = require('./fetch_helper.js');
@@ -186,7 +186,7 @@ async function getStreams(id, type, season, episode) {
         if (likelyAnime || isKitsuRequest) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
         } else {
-            selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming');
+            selectedProviders.push('streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming');
         }
     } else if (normalizedType === 'anime') {
         selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo');
@@ -195,13 +195,13 @@ async function getStreams(id, type, season, episode) {
             selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             if (isImdbRequest) {
-                selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming');
+                selectedProviders.push('streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming');
             } else {
-                selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming');
+                selectedProviders.push('streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming');
             }
         }
     } else {
-        selectedProviders.push('streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie');
+        selectedProviders.push('streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie');
     }
 
     for (const providerName of [...new Set(selectedProviders)]) {
@@ -269,14 +269,7 @@ async function getStreams(id, type, season, episode) {
             );
             continue;
         }
-        if (providerName === 'cinemacity') {
-            promises.push(
-                cinemacity.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)
-                    .then(s => ({ provider: 'CinemaCity', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'CinemaCity', error: e, status: 'rejected' }))
-            );
-            continue;
-        }
+
     }
 
     const results = await Promise.all(promises);

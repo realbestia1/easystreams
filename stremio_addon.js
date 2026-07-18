@@ -1427,7 +1427,7 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
-    cinemacity: require('./src/cinemacity/index.js'),
+
 };
 
 const FALLBACK_PROXY_URL = 'https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.m3u8?host=VixCloud&d=';
@@ -1490,15 +1490,15 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
     if (normalizedType === 'movie') {
         if (isKitsuRequest) {
             // For Kitsu movies, use anime providers first and keep non-anime fallbacks.
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd'];
         } else if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'cinemacity', 'guardahd']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
+                : ['streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1506,11 +1506,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+                : ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'cinemacity', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         }
     }
 
@@ -2182,7 +2182,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
             if (scoreA !== scoreB) return scoreB - scoreA; // Descending
 
             // 4. Provider priority
-            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming', 'cinemacity', 'guardahd'];
+            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming', 'guardahd'];
             const prioA = providerOrder.indexOf(providerA);
             const prioB = providerOrder.indexOf(providerB);
             return (prioA >= 0 ? prioA : 99) - (prioB >= 0 ? prioB : 99);
@@ -2368,35 +2368,7 @@ async function warmupGuardoserie(force = false) {
     }
 }
 
-async function warmupCinemacity(force = false) {
-    const forceWarmup = force || String(process.env.FORCE_CF_WARMUP || '').trim().toLowerCase() === '1';
-    const validSession = describeValidCfSession(['cinemacity']);
-    if (!forceWarmup && validSession) {
-        console.log(`[Warmup] Cinemacity saltato: sessione CF valida gia presente (${validSession}).`);
-        return;
-    }
 
-    try {
-        console.log('[Warmup] Riscaldamento Cinemacity (Login)...');
-        const email = process.env.CINEMACITY_EMAIL || 'realbestia';
-        const password = process.env.CINEMACITY_PASSWORD || 'kaxcob-4gafdE-jixwyb';
-        const body = `login_name=${encodeURIComponent(email)}&login_password=${encodeURIComponent(password)}&login=submit`;
-        
-        await getClearance('https://cinemacity.cc/', 'cinemacity', {
-            method: 'POST',
-            body: body,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            maxTimeout: readPositiveIntEnv('CF_WARMUP_MAX_TIMEOUT_MS', 35000),
-            requestTimeout: readPositiveIntEnv('CF_WARMUP_REQUEST_TIMEOUT_MS', 45000),
-            waitUntil: 'network_idle'
-        });
-        console.log('[Warmup] Cinemacity pronto (Login completato)!');
-    } catch (e) {
-        console.error(`[Warmup] Errore riscaldamento Cinemacity: ${e.message}`);
-    }
-}
 
 let server;
 (async () => {
@@ -2405,18 +2377,11 @@ let server;
         warmupGuardoserie().catch(e => {
             console.error('[Warmup] Errore critico Guardoserie:', e);
         });
-        warmupCinemacity().catch(e => {
-            console.error('[Warmup] Errore critico Cinemacity:', e);
-        });
-
         // Configura il refresh in background ogni 50 minuti per mantenere i cookie sempre attivi
         setInterval(() => {
             console.log('[Warmup] Esecuzione refresh periodico in background...');
             warmupGuardoserie(true).catch(e => {
                 console.error('[Warmup] Errore durante il refresh periodico Guardoserie:', e.message);
-            });
-            warmupCinemacity(true).catch(e => {
-                console.error('[Warmup] Errore durante il refresh periodico Cinemacity:', e.message);
             });
         }, 50 * 60 * 1000);
     } catch (e) {
