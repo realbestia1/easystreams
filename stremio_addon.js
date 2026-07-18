@@ -1613,6 +1613,264 @@ async function fetchMediaYearCached(type, tmdbId, imdbId) {
     return year;
 }
 
+// AnimeFillerList Integration
+function normalizeTitleForMapping(title) {
+    return String(title || "").toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+}
+
+function cleanTitleForMapping(title) {
+    return String(title || "")
+        .replace(/\s+season\s+\d+/gi, '')
+        .replace(/\s+part\s+\d+/gi, '')
+        .replace(/\s+cour\s+\d+/gi, '')
+        .replace(/\s+\d+(st|nd|rd|th)?\s+season/gi, '')
+        .replace(/\s+\d+$/g, '')
+        .trim();
+}
+
+const animeTitlesCache = new Map();
+let animeFillerShowsCache = null;
+const animeFillerEpisodesCache = new Map();
+
+async function getAnimeFillerShowsMap() {
+    if (animeFillerShowsCache) return animeFillerShowsCache;
+    try {
+        const res = await fetch("https://www.animefillerlist.com/shows");
+        const html = await res.text();
+        const map = {};
+        
+        const linkRegex = /<a href="\/shows\/([^"]+)">([^<]+)<\/a>/gi;
+        let match;
+        while ((match = linkRegex.exec(html)) !== null) {
+            const slug = match[1];
+            const fullName = match[2];
+            
+            map[normalizeTitleForMapping(fullName)] = slug;
+            
+            const parenMatch = fullName.match(/\(([^)]+)\)/);
+            if (parenMatch) {
+                map[normalizeTitleForMapping(parenMatch[1])] = slug;
+                const outsideParen = fullName.replace(/\([^)]+\)/g, '').trim();
+                map[normalizeTitleForMapping(outsideParen)] = slug;
+            }
+            map[slug.replace(/-/g, '')] = slug;
+        }
+
+        animeFillerShowsCache = map;
+        return animeFillerShowsCache;
+    } catch (error) {
+        console.error("[EasyStreams] Error fetching AnimeFillerList shows:", error);
+        return {};
+    }
+}
+
+async function getAnimeFillerEpisodes(slug) {
+    if (animeFillerEpisodesCache.has(slug)) {
+        return animeFillerEpisodesCache.get(slug);
+    }
+
+    try {
+        const showRes = await fetch(`https://www.animefillerlist.com/shows/${slug}`);
+        if (!showRes.ok) return null;
+        const showHtml = await showRes.text();
+
+        const rows = showHtml.split(/<tr/i).slice(1);
+        const episodes = [];
+        for (const row of rows) {
+            const numMatch = row.match(/class="Number">(\d+)<\/td>/i);
+            const typeMatch = row.match(/class="Type"><span>([^<]+)<\/span>/i);
+            const dateMatch = row.match(/class="Date">([^<]*)<\/td>/i);
+            if (numMatch && typeMatch) {
+                episodes.push({
+                    number: parseInt(numMatch[1], 10),
+                    type: typeMatch[1].trim(),
+                    date: dateMatch ? dateMatch[1].trim() : ""
+                });
+            }
+        }
+
+        if (episodes.length > 0) {
+            animeFillerEpisodesCache.set(slug, episodes);
+        }
+        return episodes;
+    } catch (error) {
+        console.error(`[EasyStreams] Error fetching episodes for ${slug}:`, error);
+        return null;
+    }
+}
+
+function cleanDateString(dateStr) {
+    if (!dateStr) return null;
+    const match = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : null;
+}
+
+function getDaysDifference(d1, d2) {
+    try {
+        const timeDiff = Math.abs(new Date(d1).getTime() - new Date(d2).getTime());
+        return Math.ceil(timeDiff / (1000 * 3600 * 24));
+    } catch (e) {
+        return 999;
+    }
+}
+
+async function fetchKitsuTitleAndEpisodeDate(kitsuId, episodeNumber) {
+    const cacheKey = `kitsu:ep:${kitsuId}:${episodeNumber}`;
+    if (animeTitlesCache.has(cacheKey)) {
+        return animeTitlesCache.get(cacheKey);
+    }
+
+    try {
+        let showTitle = animeTitlesCache.get(`kitsu:show:${kitsuId}`);
+        if (!showTitle) {
+            const showRes = await fetch(`https://kitsu.io/api/edge/anime/${kitsuId}`, { timeout: 5000 });
+            if (showRes.ok) {
+                const payload = await showRes.json();
+                const attr = payload?.data?.attributes;
+                showTitle = attr?.canonicalTitle || attr?.titles?.en || attr?.titles?.en_jp || "";
+                if (showTitle) {
+                    animeTitlesCache.set(`kitsu:show:${kitsuId}`, showTitle);
+                }
+            }
+        }
+
+        const epRes = await fetch(`https://kitsu.io/api/edge/episodes?filter[mediaId]=${kitsuId}&filter[number]=${episodeNumber}`, { timeout: 5000 });
+        let airdate = "";
+        if (epRes.ok) {
+            const payload = await epRes.json();
+            const epData = payload?.data?.[0];
+            airdate = epData?.attributes?.airdate || "";
+        }
+
+        const result = { showTitle: showTitle || "", airdate: airdate || "" };
+        animeTitlesCache.set(cacheKey, result);
+        return result;
+    } catch (e) {
+        console.error("[EasyStreams] Kitsu details fetch error:", e.message);
+        return { showTitle: "", airdate: "" };
+    }
+}
+
+async function fetchTmdbEpisodeDate(tmdbId, season, episode) {
+    const cacheKey = `tmdb:ep:${tmdbId}:${season}:${episode}`;
+    if (animeTitlesCache.has(cacheKey)) {
+        return animeTitlesCache.get(cacheKey);
+    }
+
+    try {
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${season}/episode/${episode}?api_key=${TMDB_API_KEY}`;
+        const res = await fetch(url, { timeout: 5000 });
+        let airdate = "";
+        if (res.ok) {
+            const payload = await res.json();
+            airdate = payload?.air_date || "";
+        }
+        animeTitlesCache.set(cacheKey, airdate);
+        return airdate;
+    } catch (e) {
+        console.error("[EasyStreams] TMDB episode date fetch error:", e.message);
+        return "";
+    }
+}
+
+async function getAnimeFillerTagForEpisode(type, requestContext, season, episode) {
+    if (!requestContext) return "";
+    
+    let isAnime = type === 'anime' || requestContext.idType === 'kitsu';
+    if (!isAnime && requestContext.tmdbId) {
+        isAnime = await detectAnimeByTmdb(type, requestContext);
+    }
+    if (!isAnime) return "";
+
+    let animeTitle = "";
+    let episodeAirdate = "";
+    let absoluteNumber = episode;
+
+    if (requestContext.kitsuId) {
+        const details = await fetchKitsuTitleAndEpisodeDate(requestContext.kitsuId, episode);
+        animeTitle = details.showTitle;
+        episodeAirdate = details.airdate;
+    } else if (requestContext.tmdbId) {
+        const key = `tmdb:${requestContext.tmdbId}`;
+        animeTitle = animeTitlesCache.get(key);
+        if (!animeTitle) {
+            const endpoint = type === 'movie' ? 'movie' : 'tv';
+            const payload = await fetchTmdbMetadataForAnimeDetection(endpoint, requestContext.tmdbId);
+            if (payload) {
+                animeTitle = payload.name || payload.title || payload.original_name || payload.original_title || '';
+                if (animeTitle) animeTitlesCache.set(key, animeTitle);
+            }
+        }
+        
+        const seasonCounts = await getTmdbSeasonEpisodeCounts(requestContext.tmdbId);
+        const resolvedAbsolute = toAbsoluteEpisodeFromSeasonCounts(seasonCounts, season, episode);
+        if (resolvedAbsolute !== null && resolvedAbsolute !== undefined) {
+            absoluteNumber = resolvedAbsolute;
+        }
+
+        if (season !== null && season !== undefined) {
+            episodeAirdate = await fetchTmdbEpisodeDate(requestContext.tmdbId, season, episode);
+        }
+    }
+
+    if (!animeTitle) return "";
+
+    const showsMap = await getAnimeFillerShowsMap();
+    const searchKeys = [
+        normalizeTitleForMapping(animeTitle),
+        normalizeTitleForMapping(cleanTitleForMapping(animeTitle))
+    ];
+
+    let foundSlug = null;
+    for (const key of searchKeys) {
+        if (showsMap[key]) {
+            foundSlug = showsMap[key];
+            break;
+        }
+    }
+
+    if (!foundSlug) {
+        foundSlug = animeTitle.toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .trim()
+            .replace(/\s+/g, '-');
+    }
+
+    const episodes = await getAnimeFillerEpisodes(foundSlug);
+    if (!episodes || episodes.length === 0) return "";
+
+    let match = null;
+
+    const videoDate = cleanDateString(episodeAirdate);
+    if (videoDate) {
+        match = episodes.find(ep => cleanDateString(ep.date) === videoDate);
+        if (!match) {
+            match = episodes.find(ep => ep.date && getDaysDifference(ep.date, videoDate) <= 1);
+        }
+    }
+
+    if (!match) {
+        match = episodes.find(ep => ep.number === absoluteNumber);
+    }
+
+    if (match) {
+        const lowerType = match.type.toLowerCase();
+        if (lowerType.includes("mixed")) {
+            return "⚠️ MIXED CANON";
+        } else if (lowerType.includes("filler")) {
+            return "⛔ FILLER";
+        } else if (lowerType === "anime canon") {
+            return "🔵 ANIME CANON";
+        } else if (lowerType === "manga canon" || lowerType.includes("canon")) {
+            return "✅ MANGA CANON";
+        }
+    }
+
+    return "";
+}
+
 builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const mappingLanguage = resolveMappingLanguageFromConfig(config);
     const easyProxyEntries = resolveEasyProxyEntriesFromConfig(config);
@@ -1630,6 +1888,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
     const season = parsedRequest.season;
     const episode = parsedRequest.episode;
     const requestContext = await resolveProviderRequestContext(type, providerId, season, episode, mappingLanguage, parsedRequest.seasonProvided);
+    const fillerTag = await getAnimeFillerTagForEpisode(type, requestContext, season, episode);
 
     // Resolve the media year from TMDB/IMDb (cached) if AIOStreams Mode is enabled
     let resolvedMediaYear = null;
@@ -1947,6 +2206,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             nameUI = `EasyStreams HTTP\n${resolution}`;
                             
                             const lines = [`🎬 ${displayTitle} ${resolution}`];
+                            if (fillerTag) {
+                                lines.push(fillerTag);
+                            }
                             if (s.description) {
                                 const sizeMatch = String(s.description).match(/(\d+(?:\.\d+)?\s*(?:GB|MB|KB|TB))/i);
                                 if (sizeMatch) {
@@ -1956,8 +2218,6 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 }
                             }
                             
-                            // Convert standard language text or codes into country flag emojis
-                            // so that AIOStreams getLanguages parser (flag-based) detects it cleanly.
                             // Convert standard language text or codes into country flag emojis
                             // so that AIOStreams getLanguages parser (flag-based) detects it cleanly.
                             if (s.language) {
@@ -1992,7 +2252,11 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                         } else {
                             // Default formatting
                             nameUI = (s.qualityTag && s.qualityTag !== 'Unknown') ? s.qualityTag : (s.providerName || s.name || 'EasyStreams');
-                            titleUI = `📁 ${displayTitle}\n${s.providerName || s.name || 'EasyStreams'}`;
+                            titleUI = `📁 ${displayTitle}`;
+                            if (fillerTag) {
+                                titleUI += `\n${fillerTag}`;
+                            }
+                            titleUI += `\n${s.providerName || s.name || 'EasyStreams'}`;
                             if (s.description) titleUI += ` | ${s.description}`;
                             if (s.language) {
                                 titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
