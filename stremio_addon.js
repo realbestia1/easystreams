@@ -2296,8 +2296,8 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 }
                             }
 
-                            const tagSuffix = fillerTag ? ` ${fillerTag}` : '';
-                            finalBehaviorHints.filename = `${displayTitle}${filenameYear}${seasonEpisodeStr} ${resolutionForFilename}${tagSuffix}.mp4`;
+                             const tagSuffix = fillerTag ? ` ${fillerTag}` : '';
+                             finalBehaviorHints.filename = `${displayTitle}${tagSuffix}${filenameYear}${seasonEpisodeStr} ${resolutionForFilename}.mp4`;
                         }
 
                         if (proxiedByEasyProxy) {
