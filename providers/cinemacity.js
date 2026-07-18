@@ -987,14 +987,42 @@ if (!IS_SERVER) {
     const baseEnd = fileVal.indexOf("/public_files/");
     if (baseEnd === -1) return null;
     const cdnBase = fileVal.substring(0, baseEnd + "/public_files/".length);
-    const rest = fileVal.substring(baseEnd + "/public_files/".length);
-    const parts = rest.split(",");
-    const video = parts.find((p) => p.includes("1080p") && p.endsWith(".mp4")) || parts.find((p) => p.endsWith(".mp4"));
+    let rest = fileVal.substring(baseEnd + "/public_files/".length);
+    const queryIdx = rest.indexOf("?");
+    const cleanRest = queryIdx !== -1 ? rest.substring(0, queryIdx) : rest;
+    const parts = cleanRest.split(",");
+    const video = parts.find((p) => p.includes("1080p") && p.endsWith(".mp4")) || parts.find((p) => p.includes("720p") && p.endsWith(".mp4")) || parts.find((p) => p.includes("480p") && p.endsWith(".mp4")) || parts.find((p) => p.includes("360p") && p.endsWith(".mp4")) || parts.find((p) => p.endsWith(".mp4"));
     if (!video) return null;
+    let quality = "1080p";
+    if (video.includes("720p")) quality = "720p";
+    else if (video.includes("480p")) quality = "480p";
+    else if (video.includes("360p")) quality = "360p";
+    else if (video.includes("2160p") || video.includes("4k")) quality = "2160p";
     const itaAudio = parts.find((p) => /italian|italiano/i.test(p) && p.endsWith(".m4a"));
+    const engAudio = parts.find((p) => /english|inglese/i.test(p) && p.endsWith(".m4a"));
+    const fallbackAudio = parts.find((p) => p.endsWith(".m4a"));
+    const selectedAudio = itaAudio || engAudio || fallbackAudio;
     const m3u8Entry = parts.find((p) => p.includes(".m3u8"));
-    const url = cdnBase + rest + (m3u8Entry ? "" : ".urlset/master.m3u8");
-    return { url, hasItalian: !!itaAudio };
+    let url = cdnBase + cleanRest + (m3u8Entry ? "" : ".urlset/master.m3u8");
+    try {
+      const urlObj = new URL(url);
+      urlObj.searchParams.set("action", "download");
+      urlObj.searchParams.set("video", video);
+      if (selectedAudio) {
+        urlObj.searchParams.set("audio", selectedAudio);
+      }
+      const cleanTitle = movieTitle.replace(/[^a-zA-Z0-9]/g, ".");
+      const langTag = itaAudio ? "Italian" : engAudio ? "English" : "Multi";
+      urlObj.searchParams.set("name", `${cleanTitle}.${quality}.${langTag}`);
+      const subtitles = parts.filter((p) => p.endsWith(".vtt"));
+      if (subtitles.length > 0) {
+        urlObj.searchParams.set("subtitle", subtitles.join(","));
+      }
+      url = urlObj.toString();
+    } catch (e) {
+      url = cdnBase + rest + (m3u8Entry ? "" : ".urlset/master.m3u8");
+    }
+    return { url, hasItalian: !!itaAudio, quality };
   }, extractStreamFromAtob = function(html, movieTitle, season, episode) {
     const atobRegex = /atob\s*\(\s*['"]([^"']{20,})['"]\s*\)/gi;
     let match;
@@ -1414,13 +1442,18 @@ if (!IS_SERVER) {
           }
         }
         if (!selectedUrl) selectedUrl = links[0].url;
-        const streamUrl = resolveUrl(movieUrl, selectedUrl);
+        const buildResult = buildDownloadUrl(selectedUrl, movieTitle);
+        const streamUrl = buildResult ? buildResult.url : resolveUrl(movieUrl, selectedUrl);
+        const resolvedQuality = buildResult && buildResult.quality ? buildResult.quality : "1080p";
+        if (buildResult && buildResult.hasItalian) {
+          hasItalian = true;
+        }
         console.log(`[CinemaCity] Direct stream: ${streamUrl}`);
         const result = {
           name: "CinemaCity",
           title,
           url: streamUrl,
-          quality: "1080p",
+          quality: resolvedQuality,
           type: "hls",
           language: hasItalian ? "Italian" : "",
           behaviorHints: { notWebReady: true },
