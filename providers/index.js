@@ -1633,7 +1633,7 @@ var require_vixcloud = __commonJS({
     function extractVixCloud(url) {
       return __async(this, null, function* () {
         try {
-          const fixedUrl = url.replace("vixcloud.co", "unitv.mom");
+          const fixedUrl = url.replace("vixcloud.co", "cromosino.space");
           const response = yield fetch(fixedUrl, {
             headers: {
               "User-Agent": USER_AGENT,
@@ -1670,14 +1670,14 @@ var require_vixcloud = __commonJS({
               finalUrl += "?" + parts.slice(1).join("?");
             }
             let quality = "1080p";
-            const checkUrl = finalUrl.replace("vixcloud.co", "unitv.mom");
+            const checkUrl = finalUrl.replace("vixcloud.co", "cromosino.space");
             const detectedQuality = yield checkQualityFromPlaylist(checkUrl, {
               "User-Agent": USER_AGENT,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
             streams.push({
-              url: finalUrl.replace("vixcloud.co", "unitv.mom"),
+              url: finalUrl.replace("vixcloud.co", "cromosino.space"),
               quality,
               type: "m3u8",
               headers: {
@@ -9076,7 +9076,7 @@ var require_guardoserie = __commonJS({
 var require_streamingcommunity = __commonJS({
   "src/streamingcommunity/index.js"(exports2, module2) {
     function getStreamingCommunityBaseUrl() {
-      return "https://unitv.mom";
+      return "https://cromosino.space";
     }
     var { formatStream } = require_formatter();
     require_fetch_helper();
@@ -9360,7 +9360,7 @@ var require_streamingcommunity = __commonJS({
               name: `StreamingCommunity`,
               title: finalDisplayName,
               url: rawPageUrl,
-              easyProxySourceUrl: rawPageUrl.replace("vixsrc.to", "unitv.mom"),
+              easyProxySourceUrl: rawPageUrl.replace("vixsrc.to", "cromosino.space"),
               quality: normalizedQuality,
               type: "direct",
               language: resultLanguage,
@@ -9374,7 +9374,7 @@ var require_streamingcommunity = __commonJS({
             name: `StreamingCommunity`,
             title: finalDisplayName,
             url: streamUrl,
-            easyProxySourceUrl: embedUrl.replace("vixsrc.to", "unitv.mom"),
+            easyProxySourceUrl: embedUrl.replace("vixsrc.to", "cromosino.space"),
             quality: normalizedQuality,
             type: "direct",
             headers: streamHeaders,
@@ -10395,7 +10395,7 @@ var require_animeunity = __commonJS({
               if (Array.isArray(vixStreams) && vixStreams.length > 0) {
                 streams.push(
                   ...vixStreams.map((stream) => __spreadProps(__spreadValues({}, stream), {
-                    easyProxySourceUrl: embedUrl2.replace("vixcloud.co", "unitv.mom"),
+                    easyProxySourceUrl: embedUrl2.replace("vixcloud.co", "cromosino.space"),
                     name: `AnimeUnity - VixCloud${labelSuffix}`,
                     title: displayTitle,
                     language: stream.language || streamLanguage
