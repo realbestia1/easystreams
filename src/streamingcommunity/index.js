@@ -1,5 +1,5 @@
 function getStreamingCommunityBaseUrl() {
-  return "https://unitv.mom";
+  return "https://cromosino.space";
 }
 
 const { formatStream } = require('../formatter.js');
@@ -330,7 +330,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         name: `StreamingCommunity`,
         title: finalDisplayName,
         url: rawPageUrl,
-        easyProxySourceUrl: rawPageUrl.replace('vixsrc.to', 'unitv.mom'),
+        easyProxySourceUrl: rawPageUrl.replace('vixsrc.to', 'cromosino.space'),
         quality: normalizedQuality,
         type: "direct",
         language: resultLanguage,
@@ -347,7 +347,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       name: `StreamingCommunity`,
       title: finalDisplayName,
       url: streamUrl,
-      easyProxySourceUrl: embedUrl.replace('vixsrc.to', 'unitv.mom'),
+      easyProxySourceUrl: embedUrl.replace('vixsrc.to', 'cromosino.space'),
       quality: normalizedQuality,
       type: "direct",
       headers: streamHeaders,
