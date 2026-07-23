@@ -634,7 +634,7 @@ var require_vixcloud = __commonJS({
     function extractVixCloud2(url) {
       return __async(this, null, function* () {
         try {
-          const fixedUrl = url.replace("vixcloud.co", "unitv.mom");
+          const fixedUrl = url.replace("vixcloud.co", "cromosino.space");
           const response = yield fetch(fixedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
@@ -671,14 +671,14 @@ var require_vixcloud = __commonJS({
               finalUrl += "?" + parts.slice(1).join("?");
             }
             let quality = "1080p";
-            const checkUrl = finalUrl.replace("vixcloud.co", "unitv.mom");
+            const checkUrl = finalUrl.replace("vixcloud.co", "cromosino.space");
             const detectedQuality = yield checkQualityFromPlaylist(checkUrl, {
               "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
             streams.push({
-              url: finalUrl.replace("vixcloud.co", "unitv.mom"),
+              url: finalUrl.replace("vixcloud.co", "cromosino.space"),
               quality,
               type: "m3u8",
               headers: {

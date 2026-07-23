@@ -1490,15 +1490,15 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
     if (normalizedType === 'movie') {
         if (isKitsuRequest) {
             // For Kitsu movies, use anime providers first and keep non-anime fallbacks.
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd'];
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity'];
         } else if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd']
-                : ['streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity']
+                : ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -2455,7 +2455,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
             if (scoreA !== scoreB) return scoreB - scoreA; // Descending
 
             // 4. Provider priority
-            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming', 'guardahd'];
+            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming'];
             const prioA = providerOrder.indexOf(providerA);
             const prioB = providerOrder.indexOf(providerB);
             return (prioA >= 0 ? prioA : 99) - (prioB >= 0 ? prioB : 99);

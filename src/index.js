@@ -184,9 +184,9 @@ async function getStreams(id, type, season, episode) {
     const selectedProviders = [];
     if (normalizedType === 'movie') {
         if (likelyAnime || isKitsuRequest) {
-            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'guardahd');
+            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity');
         } else {
-            selectedProviders.push('streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie', 'altadefinizionestreaming');
+            selectedProviders.push('streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming');
         }
     } else if (normalizedType === 'anime') {
         selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo');
@@ -201,7 +201,7 @@ async function getStreams(id, type, season, episode) {
             }
         }
     } else {
-        selectedProviders.push('streamingcommunity', 'vidxgo', 'guardahd', 'guardoserie');
+        selectedProviders.push('streamingcommunity', 'vidxgo', 'guardoserie');
     }
 
     for (const providerName of [...new Set(selectedProviders)]) {
