@@ -536,6 +536,9 @@ function extractMediasetItems(data) {
 
 function normalizeMediasetEntry(entry) {
   const media = Array.isArray(entry.media) ? entry.media[0] : null;
+  const channelLabels = Array.isArray(entry.channelLabels)
+    ? entry.channelLabels.filter((label) => label && (label.id || label.title || label.name))
+    : [];
   const cardLink = (entry.cardLink && (entry.cardLink.value || entry.cardLink)) || '';
   const rawGuid = entry.guid || entry.id || (media && media.guid) || '';
   const guid = /^F[A-Z0-9]{15}$/i.test(String(rawGuid)) ? String(rawGuid) : String(cardLink || entry.publicUrl || '').match(/\bF[A-Z0-9]{15}\b/i)?.[0];
@@ -553,6 +556,7 @@ function normalizeMediasetEntry(entry) {
     season: positiveInt(entry.tvSeasonNumber || entry.seasonNumber || entry['mediasetprogram$seasonNumber']),
     episode: positiveInt(entry.tvSeasonEpisodeNumber || entry.episodeNumber || entry['mediasetprogram$episodeNumber']),
     isClip: /clip|promo|trailer|backstage/i.test(`${kind} ${entry['mediasetprogram$category'] || ''} ${title}`) || (duration > 0 && duration < 600),
+    isPaid: channelLabels.length > 0,
     isFullEpisode: duration >= 600 && (/episode/i.test(kind) || entry.tvSeasonEpisodeNumber != null),
     pageUrl: validMediasetPage(entry['mediasetprogram$videoPageUrl'] || cardLink || entry.publicUrl || entry['mediasetprogram$pageUrl'] || (media && media.publicUrl))
   };
@@ -801,78 +805,6 @@ function buildLazyExtractorUrl(candidate, proxyEntry) {
   return endpoint.href;
 }
 
-async function inspectMediasetCandidate(candidate) {
-  const cacheKey = `mediaset-playback:${candidate.guid}`;
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached;
-  const sessionFactories = [
-    () => getMediasetSession(),
-    () => createMediasetSession('embed//mediasetplay-embed')
-  ];
-  let sessionsTried = 0;
-  let explicitRightsErrors = 0;
-  for (const createSession of sessionFactories) {
-    try {
-      const session = await createSession();
-      sessionsTried += 1;
-      const playback = await fetchJson(
-        'https://api-ott-prod-fe.mediaset.net/PROD/play/playback/check/v2.0',
-        {
-          method: 'POST',
-          headers: { ...mediasetHeaders(session, true), 'content-type': 'application/json' },
-          body: JSON.stringify({ contentId: candidate.guid, streamType: 'VOD' })
-        },
-        8000
-      );
-      if (playback.error) {
-        explicitRightsErrors += 1;
-        debug(`Mediaset playback ${playback.error.code || 'error'} for ${candidate.guid}`);
-        continue;
-      }
-      const selector = playback.response && playback.response.mediaSelector;
-      if (!selector || !selector.url) throw new Error('Mediaset media selector missing');
-      const selectorUrl = new URL(selector.url);
-      const params = {
-        format: 'SMIL',
-        auth: session.beToken,
-        formats: 'MPEG4,M3U,MPEG-DASH',
-        assetTypes: 'HD,browser,widevine,geoIT|geoNo:HR,browser,widevine,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo',
-        balance: 'true',
-        auto: 'true',
-        tracking: 'true',
-        delivery: 'Streaming'
-      };
-      if (selector.publicUrl) params.publicUrl = selector.publicUrl;
-      for (const [key, value] of Object.entries(params)) selectorUrl.searchParams.set(key, value);
-      const smil = await fetchText(selectorUrl, {
-        headers: {
-          accept: 'application/json,text/plain,*/*',
-          origin: MEDIASET_ORIGIN,
-          referer: `${MEDIASET_ORIGIN}/`
-        }
-      }, 8000);
-      const manifests = [];
-      for (const match of smil.matchAll(/<(?:ref|video)\b([^>]*)>/gi)) {
-        const source = decodeHtml(match[1].match(/\bsrc=["']([^"']+)/i)?.[1] || '');
-        if (/\.(?:mpd|m3u8)(?:$|\?)/i.test(source)) manifests.push(source);
-      }
-      if (!manifests.length) throw new Error('Mediaset manifest missing');
-      const quality = await detectManifestQuality(manifests[0], {
-        origin: MEDIASET_ORIGIN,
-        referer: `${MEDIASET_ORIGIN}/`,
-        'user-agent': USER_AGENT
-      });
-      return cacheSet(cacheKey, { available: true, quality }, 15 * 60 * 1000);
-    } catch (error) {
-      debug(`Mediaset lightweight inspection failed for ${candidate.guid}`, error);
-    }
-  }
-  if (sessionsTried > 0 && explicitRightsErrors === sessionsTried) {
-    return cacheSet(cacheKey, { available: false, quality: '720p' }, 30 * 1000);
-  }
-  return { available: true, quality: '720p' };
-}
-
 async function inspectRaiCandidate(candidate) {
   const cacheKey = `rai-playback:${candidate.contentId}`;
   const cached = cacheGet(cacheKey);
@@ -950,7 +882,7 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
     const ranked = deduplicate(all)
       .map((candidate) => ({ ...candidate, score: scoreCandidate(target, candidate) }))
       .filter((candidate) => {
-        if (candidate.score < MIN_MATCH_SCORE || candidate.isClip) return false;
+        if (candidate.score < MIN_MATCH_SCORE || candidate.isClip || candidate.isPaid) return false;
         if (target.type !== 'series') return true;
         if (candidate.season != null && Number(candidate.season) !== Number(target.season)) return false;
         if (candidate.episode != null && Number(candidate.episode) !== Number(target.episode)) return false;
@@ -961,9 +893,12 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
       .slice(0, 6);
     for (const candidate of ranked) {
       try {
+        // Mediaset playback checks are intentionally delegated to EasyProxy.
+        // Running them from the addon's IP can return false PL053 rights errors
+        // for otherwise playable archive titles and duplicates WARP/DRM work.
         const inspection = provider === 'raiplay'
           ? await inspectRaiCandidate(candidate)
-          : await inspectMediasetCandidate(candidate);
+          : { available: true, quality: '720p' };
         if (!inspection.available) continue;
         const label = providerLabel(candidate);
         const title = target.type === 'series'
