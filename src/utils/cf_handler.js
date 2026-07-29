@@ -59,9 +59,11 @@ async function smartFetch(url, domain, options = {}) {
     const loadSession = (providerName = provider, targetHost = urlHost) => {
         const targetSessionFile = sessionFileForProvider(providerName);
 
-        const cached = sessionCache.get(providerName);
-        if (cached && cached.cookies && (Date.now() - cached.timestamp < 115 * 60 * 1000)) {
-            return cached;
+        if (providerName !== 'guardoserie') {
+            const cached = sessionCache.get(providerName);
+            if (cached && cached.cookies && (Date.now() - cached.timestamp < 115 * 60 * 1000)) {
+                return cached;
+            }
         }
 
         if (fs.existsSync(targetSessionFile)) {
@@ -87,7 +89,9 @@ async function smartFetch(url, domain, options = {}) {
                             }
                         } catch (e) {}
                     }
-                    sessionCache.set(providerName, data);
+                    if (providerName !== 'guardoserie') {
+                        sessionCache.set(providerName, data);
+                    }
                     return data;
                 }
             } catch (e) { return {}; }

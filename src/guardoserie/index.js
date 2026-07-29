@@ -508,18 +508,21 @@ if (!IS_SERVER) {
                 try {
                     const html = await smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, {
                         method: 'GET', headers: { 'Referer': `${baseUrl}/`, 'Accept': 'text/html' },
-                        provider: 'guardoserie', skipBypassOnFailure: true, timeout: 5000
+                        provider: 'guardoserie', skipBypassOnFailure: true, timeout: 3000
                     });
                     if (!html || html.length < 200) return [];
                     return extractSearchResultsFromHtml(html, baseUrl);
                 } catch (e) { return []; }
             };
 
-            // Parallel search: all queries at once, pick first with results
+            // Sequential search: stops at first match
             let allResults = [];
-            if (allQueries.length > 0) {
-                const searchResults = await Promise.all(allQueries.map(q => searchWp(q)));
-                allResults = searchResults.find(r => r && r.length > 0) || [];
+            for (const q of allQueries) {
+                const wpRes = await searchWp(q);
+                if (wpRes && wpRes.length > 0) {
+                    allResults = wpRes;
+                    break;
+                }
             }
             if (allResults.length === 0 && allQueries.length > 0) {
                 allResults = await searchProvider(allQueries[0]);
