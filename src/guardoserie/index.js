@@ -248,6 +248,8 @@ if (!IS_SERVER) {
 
         // Preferred patterns (common WordPress themes + Guardoserie specific)
         const patterns = [
+            /<a[^>]+href=["']([^"']+)["'][^>]*title=["']([^"']+)["']/gi,
+            /<a[^>]+title=["']([^"']+)["'][^>]*href=["']([^"']+)["']/gi,
             /<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*ml-mask[^"']*["'][^>]*>.*?<h2>(.*?)<\/h2>/gis,
             /<div[^>]*class=["'][^"']*ml-item[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+)["'][^>]*>.*?<h2>(.*?)<\/h2>/gis,
             /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
@@ -516,10 +518,18 @@ if (!IS_SERVER) {
                 } catch (e) { return []; }
             };
 
-            // Esegui AJAX + WP per ogni query in parallelo
-            let allResults = Array.from(new Map((await Promise.all(
-                allQueries.map(q => Promise.all([searchProvider(q), searchWp(q)]))
-            )).flat(2).map(r => [r.url, r])).values());
+            // Sequential fast search: stops as soon as matches are found
+            let allResults = [];
+            for (const q of allQueries) {
+                const wpRes = await searchWp(q);
+                if (wpRes && wpRes.length > 0) {
+                    allResults = wpRes;
+                    break;
+                }
+            }
+            if (allResults.length === 0 && allQueries.length > 0) {
+                allResults = await searchProvider(allQueries[0]);
+            }
 
             mark('search_done', { queries: allQueries.length, results: allResults.length });
 

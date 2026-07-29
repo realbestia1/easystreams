@@ -8354,6 +8354,8 @@ if (!IS_SERVER) {
       results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
     };
     const patterns = [
+      /<a[^>]+href=["']([^"']+)["'][^>]*title=["']([^"']+)["']/gi,
+      /<a[^>]+title=["']([^"']+)["'][^>]*href=["']([^"']+)["']/gi,
       new RegExp(`<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*ml-mask[^"']*["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
       new RegExp(`<div[^>]*class=["'][^"']*ml-item[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+)["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
       /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
@@ -8633,9 +8635,17 @@ if (!IS_SERVER) {
             return [];
           }
         });
-        let allResults = Array.from(new Map((yield Promise.all(
-          allQueries.map((q) => Promise.all([searchProvider(q), searchWp(q)]))
-        )).flat(2).map((r) => [r.url, r])).values());
+        let allResults = [];
+        for (const q of allQueries) {
+          const wpRes = yield searchWp(q);
+          if (wpRes && wpRes.length > 0) {
+            allResults = wpRes;
+            break;
+          }
+        }
+        if (allResults.length === 0 && allQueries.length > 0) {
+          allResults = yield searchProvider(allQueries[0]);
+        }
         mark("search_done", { queries: allQueries.length, results: allResults.length });
         if (allResults.length === 0) {
           console.log(`[Guardoserie] Nessun risultato per ${title}`);
