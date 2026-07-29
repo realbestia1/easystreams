@@ -72,6 +72,16 @@ function normalizeProviderId(providerName) {
     return normalized || undefined;
 }
 
+function normalizeEpisodeTemplate(value) {
+    return String(value || '')
+        .replace(/\b(\d{1,3})[xX](\d{1,3})\b/g, (_, season, episode) =>
+            `S${season.padStart(2, '0')}E${episode.padStart(2, '0')}`
+        )
+        .replace(/\bS(\d{1,3})\s*E(\d{1,3})\b/gi, (_, season, episode) =>
+            `S${season.padStart(2, '0')}E${episode.padStart(2, '0')}`
+        );
+}
+
 function formatStream(stream, providerName) {
     // 1. Filter MixDrop (removed from shared formatter, handled in Stremio addon separately)
     // const server = (stream.server || "").toLowerCase();
@@ -90,8 +100,10 @@ function formatStream(stream, providerName) {
     else if (quality === '576p' || quality === '480p' || quality === '360p' || quality === '240p') quality = '💩 Low Quality';
     else if (!quality || ['auto', 'unknown', 'unknow'].includes(String(quality).toLowerCase())) quality = '💿 HD';
 
+    const normalizedTitle = normalizeEpisodeTemplate(stream.title || 'Stream');
+
     // Format title with emoji
-    let title = `📁 ${stream.title || 'Stream'}`;
+    let title = `📁 ${normalizedTitle}`;
 
     // Extract language if not present
     let language = stream.language;
@@ -99,7 +111,7 @@ function formatStream(stream, providerName) {
         language = '🇮🇹';
     } else if (stream.name && (stream.name.includes('SUB ITA') || stream.name.includes('SUB'))) {
         language = '🇯🇵 🇮🇹';
-    } else if (stream.title && (stream.title.includes('SUB ITA') || stream.title.includes('SUB'))) {
+    } else if (normalizedTitle.includes('SUB ITA') || normalizedTitle.includes('SUB')) {
         language = '🇯🇵 🇮🇹';
     } else if (language === undefined || language === null) {
         language = '';
@@ -177,7 +189,7 @@ function formatStream(stream, providerName) {
     }
 
     const finalName = pName;
-    let finalTitle = `📁 ${stream.title || 'Stream'}`;
+    let finalTitle = `📁 ${normalizedTitle}`;
     if (desc) finalTitle += ` | ${desc}`;
     if (language) finalTitle += ` | ${language}`;
     const playbackReferer = stream.referer || finalHeaders?.Referer || finalHeaders?.referer;
@@ -191,7 +203,7 @@ function formatStream(stream, providerName) {
         providerName: pName,
         qualityTag: quality,
         description: desc,
-        originalTitle: stream.title || 'Stream',
+        originalTitle: normalizedTitle,
         // Ensure language is set for Stremio/Nuvio sorting
         language: language,
         // Mark as formatted

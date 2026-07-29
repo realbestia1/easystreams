@@ -13,7 +13,9 @@ const PROVIDER_META = {
     animeworld: { display: 'AnimeWorld', category: 'Anime', accent: '#3B82F6', icon: 'sparkle' },
     animesaturn: { display: 'AnimeSaturn', category: 'Anime', accent: '#EF4444', icon: 'sparkle' },
     streamingcommunity: { display: 'StreamingCommunity', category: 'Film & Serie', accent: '#E50914', icon: 'film' },
-    cinemacity: { display: 'CinemaCity', category: 'Film & Serie', accent: '#EC4899', icon: 'film' }
+    cinemacity: { display: 'CinemaCity', category: 'Film & Serie', accent: '#EC4899', icon: 'film' },
+    mediaset: { display: 'Mediaset Infinity', category: 'Film & Serie ufficiali', accent: '#FF5A1F', icon: 'tv' },
+    raiplay: { display: 'RaiPlay', category: 'Film & Serie ufficiali', accent: '#0066CC', icon: 'tv' }
 };
 
 const ICON_SVG = {

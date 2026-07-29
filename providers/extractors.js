@@ -7411,7 +7411,6 @@ var require_streamhg = __commonJS({
 // src/extractors/vidxgo.js
 var require_vidxgo = __commonJS({
   "src/extractors/vidxgo.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2 } = require_common();
     var VIDXGO_HEADERS = {
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -7445,7 +7444,7 @@ var require_vidxgo = __commonJS({
           const resp = yield fetch(url, { headers, redirect: "follow" });
           if (!resp.ok) {
             console.warn("[VidxGo] HTTP", resp.status, "for", url);
-            return { url, headers: { "User-Agent": USER_AGENT2, "Referer": referer } };
+            return null;
           }
           const html = yield resp.text();
           let match;
@@ -7483,7 +7482,7 @@ var require_vidxgo = __commonJS({
             return null;
           }
           console.warn("[VidxGo] No stream URL found in page");
-          return { url, headers: { "User-Agent": USER_AGENT2, "Referer": referer } };
+          return null;
         } catch (e) {
           console.error("[VidxGo] Extraction error:", e);
           return null;

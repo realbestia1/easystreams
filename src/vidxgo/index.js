@@ -51,14 +51,34 @@ if (!IS_SERVER) {
           : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
           
         const cleanProxyUrl = proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
-        
-        const targetUrl = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
+        const preflightUrl = new URL('/extractor/video', `${cleanProxyUrl}/`);
+        preflightUrl.searchParams.set('host', 'vidxgo');
+        preflightUrl.searchParams.set('d', vidxgoUrl);
+        preflightUrl.searchParams.set('api_password', proxyPassword);
+        const preflightResponse = await fetch(preflightUrl.href, {
+          headers: { Accept: 'application/json' }
+        });
+        if (!preflightResponse.ok) {
+          console.warn(`[VidxGo-Client] Content unavailable: HTTP ${preflightResponse.status}`);
+          return [];
+        }
+        const preflight = await preflightResponse.json().catch(() => null);
+        if (!preflight || !/^https?:\/\//i.test(String(preflight.destination_url || ''))) {
+          console.warn('[VidxGo-Client] Content unavailable: invalid EasyProxy extractor response.');
+          return [];
+        }
+
+        const targetUrl = new URL('/extractor/video.m3u8', `${cleanProxyUrl}/`);
+        targetUrl.searchParams.set('host', 'vidxgo');
+        targetUrl.searchParams.set('d', vidxgoUrl);
+        targetUrl.searchParams.set('redirect_stream', 'true');
+        targetUrl.searchParams.set('api_password', proxyPassword);
         
         const contentTitle = isMovie ? "Film" : "Serie";
         const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         
         const result = {
-          url: targetUrl,
+          url: targetUrl.href,
           name: "VidxGo",
           title: displayName,
           quality: "1080p",

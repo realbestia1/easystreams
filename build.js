@@ -5,6 +5,7 @@ const path = require('path');
 // Configuration
 const PROVIDERS_DIR = path.join(__dirname, 'providers');
 const SRC_DIR = path.join(__dirname, 'src');
+const STREMIO_ONLY_PROVIDERS = new Set(['mediaset', 'raiplay']);
 
 async function build() {
     const args = process.argv.slice(2);
@@ -103,7 +104,9 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
         return;
     }
 
-    let providers = fs.readdirSync(SRC_DIR).filter(f => fs.statSync(path.join(SRC_DIR, f)).isDirectory());
+    let providers = fs.readdirSync(SRC_DIR)
+        .filter(f => fs.statSync(path.join(SRC_DIR, f)).isDirectory())
+        .filter(f => !STREMIO_ONLY_PROVIDERS.has(f));
 
     if (specificProviders.length > 0) {
         providers = providers.filter(p => specificProviders.includes(p));

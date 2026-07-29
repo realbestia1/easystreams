@@ -48,6 +48,8 @@ const PROVIDER_LOG_PREFIXES = [
     '[AnimeWorld]',
     '[AnimeSaturn]',
     '[StreamingCommunity]',
+    '[Mediaset]',
+    '[RaiPlay]',
     '[QualityHelper]'
 ];
 
@@ -1427,12 +1429,14 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     animesaturn: require('./src/animesaturn/index.js'),
     streamingcommunity: require('./src/streamingcommunity/index.js'),
+    mediaset: require('./src/mediaset/index.js'),
+    raiplay: require('./src/raiplay/index.js'),
 
 };
 
 const FALLBACK_PROXY_URL = 'https://edn591-ptn164-gnw494.kristianvenzi.com/extractor/video.m3u8?host=VixCloud&d=';
 
-const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo']);
+const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo', 'mediaset', 'raiplay']);
 
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
@@ -1494,11 +1498,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity']
-                : ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1506,11 +1510,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         }
     }
 
@@ -1523,7 +1527,7 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.1.1',
+    version: '1.2.0',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
@@ -2148,6 +2152,9 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                                 )
                             );
                             proxiedByEasyProxy = finalStreamUrl !== s.url;
+                        } else if (name === 'mediaset' || name === 'raiplay') {
+                            // Official VOD providers already return the selected EasyProxy URL.
+                            proxiedByEasyProxy = true;
                         } else if (isMixdropStream(s)) {
                             const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
                             if (hasEasyProxy) {
@@ -2455,7 +2462,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
             if (scoreA !== scoreB) return scoreB - scoreA; // Descending
 
             // 4. Provider priority
-            const providerOrder = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming'];
+            const providerOrder = ['mediaset', 'raiplay', 'animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity', 'vidxgo', 'altadefinizionestreaming'];
             const prioA = providerOrder.indexOf(providerA);
             const prioB = providerOrder.indexOf(providerB);
             return (prioA >= 0 ? prioA : 99) - (prioB >= 0 ? prioB : 99);
@@ -2698,5 +2705,3 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[FATAL] Unhandled Rejection:', reason.message || reason);
 });
-
-
