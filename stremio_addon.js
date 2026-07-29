@@ -1421,7 +1421,7 @@ async function resolveCanonicalStreamCacheKey(type, providerId, season, episode,
 
 // Import providers
 const providers = {
-    guardahd: require('./src/guardahd/index.js'),
+
     guardoserie: require('./src/guardoserie/index.js'),
     vidxgo: require('./src/vidxgo/index.js'),
     altadefinizionestreaming: require('./src/altadefinizionestreaming/index.js'),
@@ -2156,7 +2156,7 @@ builder.defineStreamHandler(async ({ type, id, config = {} }) => {
                             // Official VOD providers already return the selected EasyProxy URL.
                             proxiedByEasyProxy = true;
                         } else if (isMixdropStream(s)) {
-                            const mixdropExtension = name === 'guardahd' ? 'mp4' : 'm3u8';
+                            const mixdropExtension = 'm3u8';
                             if (hasEasyProxy) {
                                 finalStreamUrl = await buildEasyProxyUrlWithFailover(
                                     easyProxyEntries,

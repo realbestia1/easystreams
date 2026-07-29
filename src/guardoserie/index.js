@@ -26,7 +26,7 @@ if (!IS_SERVER) {
     const { smartFetch } = require('../utils/cf_handler');
     const { hasActiveBypass } = require('../../cf_bypass');
     const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
-    const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require('../extractors');
+    const { extractLoadm } = require('../extractors');
     const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
     function getGuardoserieBaseUrl() {
         return 'https://guardoserie.study';
@@ -146,7 +146,7 @@ if (!IS_SERVER) {
             normalized = `https:${normalized}`;
         } else if (normalized.startsWith('/')) {
             normalized = `${getGuardoserieBaseUrl()}${normalized}`;
-        } else if (!/^https?:\/\//i.test(normalized) && /(loadm|uqload|dropload|dr0pstream)/i.test(normalized)) {
+        } else if (!/^https?:\/\//i.test(normalized) && /loadm/i.test(normalized)) {
             normalized = `https://${normalized.replace(/^\/+/, '')}`;
         }
 
@@ -169,8 +169,8 @@ if (!IS_SERVER) {
 
         // Fallback: search for direct URLs in scripts/text
         const directRegexes = [
-            /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig,
-            /https?:\\\/\\\/(?:www\\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig
+            /https?:\/\/(?:www\.)?loadm[^"'<\s]+/ig,
+            /https?:\\\/\\\/(?:www\\.)?loadm[^"'<\s]+/ig
         ];
 
         for (const regex of directRegexes) {
@@ -661,32 +661,6 @@ if (!IS_SERVER) {
                         language: 'Italian',
                         behaviorHints: s.behaviorHints
                     }, 'Guardoserie'));
-                } else if (playerLink.includes('uqload')) {
-                    extracted = await extractUqload(playerLink);
-                    if (!extracted?.url) return [];
-                    const quality = await checkQualityFromPlaylist(extracted.url, extracted.headers);
-                    return [formatStream({
-                        url: extracted.url,
-                        headers: extracted.headers,
-                        name: `Guardoserie - Uqload`,
-                        title: displayName,
-                        quality: getQualityFromName(quality || "HD"),
-                        type: "direct",
-                        language: 'Italian'
-                    }, 'Guardoserie')];
-                } else if (playerLink.includes('mixdrop') || playerLink.includes('m1xdrop')) {
-                    extracted = await extractMixDrop(playerLink);
-                    if (!extracted?.url) return [];
-                    const quality = await checkQualityFromPlaylist(extracted.url, extracted.headers);
-                    return [formatStream({
-                        url: extracted.url,
-                        headers: extracted.headers,
-                        name: `Guardoserie - MixDrop`,
-                        title: displayName,
-                        quality: getQualityFromName(quality || "HD"),
-                        type: "direct",
-                        language: 'Italian'
-                    }, 'Guardoserie')];
                 }
             } catch (e) { }
             return [];

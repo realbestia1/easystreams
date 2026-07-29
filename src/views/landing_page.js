@@ -5,7 +5,7 @@ const templatePath = path.join(__dirname, 'landing_page.html');
 const landingPageTemplate = fs.readFileSync(templatePath, 'utf8');
 
 const PROVIDER_META = {
-    guardahd: { display: 'GuardaHD', category: 'Film', accent: '#10B981', icon: 'film' },
+
     guardoserie: { display: 'Guardoserie', category: 'Serie TV', accent: '#F59E0B', icon: 'tv' },
     vidxgo: { display: 'VidxGo', category: 'Film & Serie', accent: '#06B6D4', icon: 'film' },
     altadefinizionestreaming: { display: 'Altadefinizione', category: 'Film', accent: '#A855F7', icon: 'film' },

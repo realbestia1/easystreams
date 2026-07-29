@@ -8346,7 +8346,7 @@ if (!IS_SERVER) {
       normalized = `https:${normalized}`;
     } else if (normalized.startsWith("/")) {
       normalized = `${getGuardoserieBaseUrl()}${normalized}`;
-    } else if (!/^https?:\/\//i.test(normalized) && /(loadm|uqload|dropload|dr0pstream)/i.test(normalized)) {
+    } else if (!/^https?:\/\//i.test(normalized) && /loadm/i.test(normalized)) {
       normalized = `https://${normalized.replace(/^\/+/, "")}`;
     }
     return /^https?:\/\//i.test(normalized) ? normalized : null;
@@ -8363,8 +8363,8 @@ if (!IS_SERVER) {
       }
     }
     const directRegexes = [
-      /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig,
-      /https?:\\\/\\\/(?:www\\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig
+      /https?:\/\/(?:www\.)?loadm[^"'<\s]+/ig,
+      /https?:\\\/\\\/(?:www\\.)?loadm[^"'<\s]+/ig
     ];
     for (const regex of directRegexes) {
       const matches = html.match(regex) || [];
@@ -8475,7 +8475,7 @@ if (!IS_SERVER) {
   const { smartFetch } = require_cf_handler();
   const { hasActiveBypass } = require_cf_bypass();
   const { USER_AGENT, getProxiedUrl } = require_common();
-  const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
+  const { extractLoadm } = require_extractors();
   const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
   const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
   function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
@@ -8825,32 +8825,6 @@ if (!IS_SERVER) {
               language: "Italian",
               behaviorHints: s.behaviorHints
             }, "Guardoserie"));
-          } else if (playerLink.includes("uqload")) {
-            extracted = yield extractUqload(playerLink);
-            if (!(extracted == null ? void 0 : extracted.url)) return [];
-            const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-            return [formatStream({
-              url: extracted.url,
-              headers: extracted.headers,
-              name: `Guardoserie - Uqload`,
-              title: displayName,
-              quality: getQualityFromName(quality || "HD"),
-              type: "direct",
-              language: "Italian"
-            }, "Guardoserie")];
-          } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-            extracted = yield extractMixDrop(playerLink);
-            if (!(extracted == null ? void 0 : extracted.url)) return [];
-            const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-            return [formatStream({
-              url: extracted.url,
-              headers: extracted.headers,
-              name: `Guardoserie - MixDrop`,
-              title: displayName,
-              quality: getQualityFromName(quality || "HD"),
-              type: "direct",
-              language: "Italian"
-            }, "Guardoserie")];
           }
         } catch (e) {
         }

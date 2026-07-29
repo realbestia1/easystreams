@@ -22,7 +22,7 @@ function safeRequire(modulePath) {
   }
 }
 
-const guardahd = safeRequire('../guardahd/index');
+
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
@@ -165,16 +165,7 @@ async function hasGuardaFallbackResults(id, type, season, episode, providerConte
   const normalizedType = String(type).toLowerCase();
   const checks = [];
 
-  if (normalizedType === "movie" && guardahd && typeof guardahd.getStreams === "function") {
-    checks.push(
-      guardahd.getStreams(id, normalizedType, season, episode)
-        .then((streams) => Array.isArray(streams) && streams.length > 0)
-        .catch((e) => {
-          console.warn("[StreamingCommunity] GuardaHD fallback check failed:", e);
-          return false;
-        })
-    );
-  }
+
 
   if (checks.length === 0) return false;
   const results = await Promise.all(checks);

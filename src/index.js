@@ -1,4 +1,4 @@
-const guardahd = require('./guardahd/index');
+
 const guardoserie = require('./guardoserie/index');
 const streamingcommunity = require('./streamingcommunity/index');
 const animeunity = require('./animeunity/index');
@@ -213,14 +213,7 @@ async function getStreams(id, type, season, episode) {
             );
             continue;
         }
-        if (providerName === 'guardahd') {
-            promises.push(
-                guardahd.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode)
-                    .then(s => ({ provider: 'GuardaHD', streams: s, status: 'fulfilled' }))
-                    .catch(e => ({ provider: 'GuardaHD', error: e, status: 'rejected' }))
-            );
-            continue;
-        }
+
         if (providerName === 'animeunity') {
             promises.push(
                 animeunity.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext)

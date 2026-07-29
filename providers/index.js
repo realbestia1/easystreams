@@ -54,303 +54,6 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 
-// src/extractors/common.js
-var require_common = __commonJS({
-  "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    function getProxiedUrl(url) {
-      let proxyUrl = null;
-      try {
-        if (typeof global !== "undefined" && global.CF_PROXY_URL) {
-          proxyUrl = global.CF_PROXY_URL;
-        }
-      } catch (e) {
-      }
-      if (proxyUrl && url) {
-        const separator = proxyUrl.includes("?") ? "&" : "?";
-        return `${proxyUrl}${separator}url=${encodeURIComponent(url)}`;
-      }
-      return url;
-    }
-    function unPack(p, a, c, k, e, d) {
-      e = function(c2) {
-        return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
-      };
-      if (!"".replace(/^/, String)) {
-        while (c--) {
-          d[e(c)] = k[c] || e(c);
-        }
-        k = [function(e2) {
-          return d[e2] || e2;
-        }];
-        e = function() {
-          return "\\w+";
-        };
-        c = 1;
-      }
-      while (c--) {
-        if (k[c]) {
-          p = p.replace(new RegExp("\\b" + e(c) + "\\b", "g"), k[c]);
-        }
-      }
-      return p;
-    }
-    function isFlareSolverrBlockedError(error) {
-      const message = String(error && error.message || error || "");
-      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
-    }
-    module2.exports = {
-      USER_AGENT,
-      unPack,
-      getProxiedUrl,
-      isFlareSolverrBlockedError
-    };
-  }
-});
-
-// src/extractors/mixdrop.js
-var require_mixdrop = __commonJS({
-  "src/extractors/mixdrop.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
-    function isMixDropDisabled() {
-      const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
-      return ["1", "true", "yes", "on"].includes(rawEnv);
-    }
-    function normalizeUrl(url, baseUrl) {
-      try {
-        return new URL(String(url || ""), baseUrl).toString();
-      } catch (e) {
-        return null;
-      }
-    }
-    function extractPackedStream(html) {
-      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
-      const match = packedRegex.exec(String(html || ""));
-      if (!match) return null;
-      const p = match[1];
-      const a = parseInt(match[2]);
-      const c = parseInt(match[3]);
-      const k = match[4].split("|");
-      const unpacked = unPack(p, a, c, k, null, {});
-      const wurlMatch = unpacked.match(/wurl\s*=\s*["']([^"']+)["']/);
-      if (!wurlMatch) return null;
-      let streamUrl = wurlMatch[1];
-      if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-      return streamUrl;
-    }
-    function extractEmbedUrl(html, pageUrl) {
-      const match = String(html || "").match(/<iframe\b[^>]+src=["']([^"']*\/e\/[^"']+)["']/i);
-      if (match) return normalizeUrl(match[1], pageUrl);
-      const converted = String(pageUrl || "").replace(/\/f\//i, "/e/");
-      return converted !== pageUrl ? converted : null;
-    }
-    function extractMixDrop(url, refererBase = "https://m1xdrop.net/") {
-      return __async(this, null, function* () {
-        if (isMixDropDisabled()) return null;
-        try {
-          if (url.startsWith("//")) url = "https:" + url;
-          const fetchHtml = (targetUrl2, referer) => __async(null, null, function* () {
-            const response = yield fetch(targetUrl2, {
-              headers: {
-                "User-Agent": USER_AGENT,
-                "Referer": referer,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-              }
-            });
-            if (!response.ok) return null;
-            return {
-              url: response.url || targetUrl2,
-              html: yield response.text()
-            };
-          });
-          let page = yield fetchHtml(url, refererBase);
-          if (!page) return null;
-          let streamUrl = extractPackedStream(page.html);
-          let pageUrl = page.url;
-          if (!streamUrl) {
-            const embedUrl = extractEmbedUrl(page.html, pageUrl);
-            if (embedUrl && embedUrl !== pageUrl) {
-              const embedPage = yield fetchHtml(embedUrl, pageUrl);
-              if (embedPage) {
-                page = embedPage;
-                pageUrl = embedPage.url;
-                streamUrl = extractPackedStream(embedPage.html);
-              }
-            }
-          }
-          if (!streamUrl) return null;
-          const origin = (() => {
-            try {
-              return new URL(pageUrl).origin;
-            } catch (e) {
-              return "";
-            }
-          })();
-          return {
-            url: streamUrl,
-            referer: pageUrl,
-            userAgent: USER_AGENT,
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": pageUrl,
-              "Origin": origin,
-              "Accept": "*/*",
-              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            }
-          };
-        } catch (e) {
-          console.error("[Extractors] MixDrop extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractMixDrop };
-  }
-});
-
-// src/extractors/streamhg.js
-var require_streamhg = __commonJS({
-  "src/extractors/streamhg.js"(exports2, module2) {
-    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
-    function resolveAbsoluteUrl(candidate, baseUrl) {
-      if (!candidate) return null;
-      try {
-        return new URL(candidate, baseUrl).toString();
-      } catch (_) {
-        return null;
-      }
-    }
-    function getOrigin(url) {
-      try {
-        return new URL(url).origin;
-      } catch (_) {
-        return null;
-      }
-    }
-    function getBaseHeaders(referer) {
-      const headers = {
-        "User-Agent": USER_AGENT
-      };
-      if (referer) headers["Referer"] = referer;
-      return headers;
-    }
-    function extractStreamHG(url, refererBase = null) {
-      return __async(this, null, function* () {
-        try {
-          if (url.startsWith("//")) url = "https:" + url;
-          const initialReferer = refererBase || `${getOrigin(url) || "https://dhcplay.com"}/`;
-          const candidates = [url];
-          try {
-            const parsed = new URL(url);
-            const idMatch = parsed.pathname.match(/\/e\/([^/?#]+)/i);
-            if (idMatch && /(^|\.)dhcplay\.com$/i.test(parsed.hostname)) {
-              candidates.push(`https://vibuxer.com/e/${idMatch[1]}`);
-            }
-          } catch (_) {
-          }
-          let finalUrl = null;
-          let packedMatch = null;
-          for (const candidate of candidates) {
-            const response = yield fetch(getProxiedUrl(candidate), {
-              headers: getBaseHeaders(initialReferer),
-              redirect: "follow"
-            });
-            if (!response.ok) continue;
-            const html = yield response.text();
-            const match = html.match(new RegExp("eval\\(function\\(p,a,c,k,e,d\\)\\{.*?\\}\\('(.*?)',(\\d+),(\\d+),'(.*?)'\\.split\\('\\|'\\)", "s"));
-            if (!match) continue;
-            finalUrl = response.url || candidate;
-            packedMatch = match;
-            break;
-          }
-          if (!packedMatch || !finalUrl) return null;
-          const p = packedMatch[1];
-          const a = parseInt(packedMatch[2], 10);
-          const c = parseInt(packedMatch[3], 10);
-          const k = packedMatch[4].split("|");
-          const unpacked = unPack(p, a, c, k, null, {});
-          let streamUrl = null;
-          const hls2Match = unpacked.match(/["']hls2["']\s*:\s*["']([^"']+)["']/i);
-          const hls4Match = unpacked.match(/["']hls4["']\s*:\s*["']([^"']+)["']/i);
-          const fileMatch = unpacked.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
-          streamUrl = hls2Match && hls2Match[1] || hls4Match && hls4Match[1] || fileMatch && fileMatch[1] || null;
-          streamUrl = resolveAbsoluteUrl(streamUrl, finalUrl);
-          if (!streamUrl) return null;
-          return {
-            url: streamUrl,
-            headers: { "Referer": getOrigin(finalUrl) + "/", "User-Agent": USER_AGENT }
-          };
-        } catch (e) {
-          console.error("[Extractors] StreamHG extraction error:", e);
-          return null;
-        }
-      });
-    }
-    module2.exports = { extractStreamHG };
-  }
-});
-
-// src/fetch_helper.js
-var require_fetch_helper = __commonJS({
-  "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 3e4;
-    function createTimeoutSignal2(timeoutMs) {
-      const parsed = Number.parseInt(String(timeoutMs), 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return { signal: void 0, cleanup: null, timed: false };
-      }
-      if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-        return { signal: AbortSignal.timeout(parsed), cleanup: null, timed: true };
-      }
-      if (typeof AbortController !== "undefined" && typeof setTimeout === "function") {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, parsed);
-        return {
-          signal: controller.signal,
-          cleanup: () => clearTimeout(timeoutId),
-          timed: true
-        };
-      }
-      return { signal: void 0, cleanup: null, timed: false };
-    }
-    function fetchWithTimeout(_0) {
-      return __async(this, arguments, function* (url, options = {}) {
-        if (typeof fetch === "undefined") {
-          throw new Error("No fetch implementation found!");
-        }
-        const _a = options, { timeout } = _a, fetchOptions = __objRest(_a, ["timeout"]);
-        const requestTimeout = timeout || FETCH_TIMEOUT;
-        const timeoutConfig = createTimeoutSignal2(requestTimeout);
-        const requestOptions = __spreadValues({}, fetchOptions);
-        if (timeoutConfig.signal) {
-          if (requestOptions.signal && typeof AbortSignal !== "undefined" && typeof AbortSignal.any === "function") {
-            requestOptions.signal = AbortSignal.any([requestOptions.signal, timeoutConfig.signal]);
-          } else if (!requestOptions.signal) {
-            requestOptions.signal = timeoutConfig.signal;
-          }
-        }
-        try {
-          const response = yield fetch(url, requestOptions);
-          return response;
-        } catch (error) {
-          if (error && error.name === "AbortError" && timeoutConfig.timed) {
-            throw new Error(`Request to ${url} timed out after ${requestTimeout}ms`);
-          }
-          throw error;
-        } finally {
-          if (typeof timeoutConfig.cleanup === "function") {
-            timeoutConfig.cleanup();
-          }
-        }
-      });
-    }
-    module2.exports = { fetchWithTimeout, createTimeoutSignal: createTimeoutSignal2 };
-  }
-});
-
 // src/formatter.js
 var require_formatter = __commonJS({
   "src/formatter.js"(exports2, module2) {
@@ -485,6 +188,66 @@ var require_formatter = __commonJS({
   }
 });
 
+// src/fetch_helper.js
+var require_fetch_helper = __commonJS({
+  "src/fetch_helper.js"(exports2, module2) {
+    var FETCH_TIMEOUT = 3e4;
+    function createTimeoutSignal2(timeoutMs) {
+      const parsed = Number.parseInt(String(timeoutMs), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return { signal: void 0, cleanup: null, timed: false };
+      }
+      if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+        return { signal: AbortSignal.timeout(parsed), cleanup: null, timed: true };
+      }
+      if (typeof AbortController !== "undefined" && typeof setTimeout === "function") {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, parsed);
+        return {
+          signal: controller.signal,
+          cleanup: () => clearTimeout(timeoutId),
+          timed: true
+        };
+      }
+      return { signal: void 0, cleanup: null, timed: false };
+    }
+    function fetchWithTimeout(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        if (typeof fetch === "undefined") {
+          throw new Error("No fetch implementation found!");
+        }
+        const _a = options, { timeout } = _a, fetchOptions = __objRest(_a, ["timeout"]);
+        const requestTimeout = timeout || FETCH_TIMEOUT;
+        const timeoutConfig = createTimeoutSignal2(requestTimeout);
+        const requestOptions = __spreadValues({}, fetchOptions);
+        if (timeoutConfig.signal) {
+          if (requestOptions.signal && typeof AbortSignal !== "undefined" && typeof AbortSignal.any === "function") {
+            requestOptions.signal = AbortSignal.any([requestOptions.signal, timeoutConfig.signal]);
+          } else if (!requestOptions.signal) {
+            requestOptions.signal = timeoutConfig.signal;
+          }
+        }
+        try {
+          const response = yield fetch(url, requestOptions);
+          return response;
+        } catch (error) {
+          if (error && error.name === "AbortError" && timeoutConfig.timed) {
+            throw new Error(`Request to ${url} timed out after ${requestTimeout}ms`);
+          }
+          throw error;
+        } finally {
+          if (typeof timeoutConfig.cleanup === "function") {
+            timeoutConfig.cleanup();
+          }
+        }
+      });
+    }
+    module2.exports = { fetchWithTimeout, createTimeoutSignal: createTimeoutSignal2 };
+  }
+});
+
 // src/quality_helper.js
 var require_quality_helper = __commonJS({
   "src/quality_helper.js"(exports2, module2) {
@@ -562,248 +325,6 @@ var require_quality_helper = __commonJS({
       return null;
     }
     module2.exports = { checkQualityFromPlaylist, getQualityFromUrl, checkQualityFromText, checkItalianAudioInPlaylist };
-  }
-});
-
-// src/guardahd/index.js
-var require_guardahd = __commonJS({
-  "src/guardahd/index.js"(exports2, module2) {
-    var __async2 = (__this, __arguments, generator) => {
-      return new Promise((resolve, reject) => {
-        var fulfilled = (value) => {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        };
-        var rejected = (value) => {
-          try {
-            step(generator.throw(value));
-          } catch (e) {
-            reject(e);
-          }
-        };
-        var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
-        step((generator = generator.apply(__this, __arguments)).next());
-      });
-    };
-    function getGuardaHdBaseUrl() {
-      return "https://guardahd.stream";
-    }
-    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-    var { extractMixDrop } = require_mixdrop();
-    var { extractStreamHG } = require_streamhg();
-    require_fetch_helper();
-    var { formatStream } = require_formatter();
-    var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();
-    function getQualityFromName(qualityStr) {
-      if (!qualityStr) return "Unknown";
-      const quality = qualityStr.toUpperCase();
-      if (quality === "ORG" || quality === "ORIGINAL") return "Original";
-      if (quality === "4K" || quality === "2160P") return "4K";
-      if (quality === "1440P" || quality === "2K") return "1440p";
-      if (quality === "1080P" || quality === "FHD") return "1080p";
-      if (quality === "720P" || quality === "HD") return "720p";
-      if (quality === "480P" || quality === "SD") return "480p";
-      if (quality === "360P") return "360p";
-      if (quality === "240P") return "240p";
-      const match = qualityStr.match(/(\d{3,4})[pP]?/);
-      if (match) {
-        const resolution = parseInt(match[1]);
-        if (resolution >= 2160) return "4K";
-        if (resolution >= 1440) return "1440p";
-        if (resolution >= 1080) return "1080p";
-        if (resolution >= 720) return "720p";
-        if (resolution >= 480) return "480p";
-        if (resolution >= 360) return "360p";
-        return "240p";
-      }
-      return "Unknown";
-    }
-    function getImdbId(tmdbId, type) {
-      return __async2(this, null, function* () {
-        try {
-          const normalizedType = String(type).toLowerCase();
-          const endpoint = normalizedType === "movie" ? "movie" : "tv";
-          const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}`;
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          const data = yield response.json();
-          if (data.imdb_id) {
-            console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
-            return data.imdb_id;
-          }
-          const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY2}`;
-          const extResponse = yield fetch(externalUrl);
-          if (extResponse.ok) {
-            const extData = yield extResponse.json();
-            if (extData.imdb_id) {
-              console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
-              return extData.imdb_id;
-            }
-          }
-          console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
-          return null;
-        } catch (e) {
-          console.error("[GuardaHD] Conversion error:", e);
-          return null;
-        }
-      });
-    }
-    function getMetadata(id, type) {
-      return __async2(this, null, function* () {
-        try {
-          const normalizedType = String(type).toLowerCase();
-          let queryId = id;
-          let url;
-          if (String(queryId).startsWith("tt")) {
-            url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id&language=it-IT`;
-          } else {
-            const endpoint = normalizedType === "movie" ? "movie" : "tv";
-            url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY2}&language=it-IT`;
-          }
-          const response = yield fetch(url);
-          if (!response.ok) return null;
-          const data = yield response.json();
-          if (String(queryId).startsWith("tt")) {
-            const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
-            if (results && results.length > 0) return results[0];
-          } else {
-            return data;
-          }
-          return null;
-        } catch (e) {
-          console.error("[GuardaHD] Metadata error:", e);
-          return null;
-        }
-      });
-    }
-    function getStreams2(id, type, season, episode) {
-      if (["series", "tv"].includes(String(type).toLowerCase())) return [];
-      return __async2(this, null, function* () {
-        const normalizedType = String(type).toLowerCase();
-        let cleanId = id.toString();
-        if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
-        let imdbId = cleanId;
-        if (!cleanId.startsWith("tt")) {
-          const convertedId = yield getImdbId(cleanId, type);
-          if (convertedId) imdbId = convertedId;
-          else return [];
-        }
-        let metadata = null;
-        try {
-          metadata = yield getMetadata(cleanId, type);
-        } catch (e) {
-          console.error("[GuardaHD] Error fetching metadata:", e);
-        }
-        const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
-        const baseUrl = getGuardaHdBaseUrl();
-        let url;
-        if (normalizedType === "movie") {
-          url = `${baseUrl}/set-movie-a/${imdbId}`;
-        } else if (normalizedType === "tv") {
-          url = `${baseUrl}/set-tv-a/${imdbId}/${season}/${episode}`;
-        } else {
-          return [];
-        }
-        try {
-          const response = yield fetch(url, {
-            headers: {
-              "User-Agent": USER_AGENT,
-              "Referer": baseUrl
-            }
-          });
-          if (!response.ok) return [];
-          const html = yield response.text();
-          const linksSet = /* @__PURE__ */ new Set();
-          const iframeRegex = /<iframe\b[^>]+src=["']([^"']+)["']/gi;
-          let iframeMatch;
-          while ((iframeMatch = iframeRegex.exec(html)) !== null) {
-            linksSet.add(iframeMatch[1]);
-          }
-          const linkRegex = /data-link=["']([^"']+)["']/g;
-          let match;
-          while ((match = linkRegex.exec(html)) !== null) {
-            linksSet.add(match[1]);
-          }
-          const directRegex = /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|streamtape|dhcplay|vibuxer)[^"'<\s]+/ig;
-          const directMatches = html.match(directRegex) || [];
-          for (const raw of directMatches) {
-            linksSet.add(raw);
-          }
-          const streams = [];
-          const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
-          const processUrl = (streamUrl) => __async(null, null, function* () {
-            if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-            try {
-              if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
-                console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
-                const extracted = yield extractMixDrop(streamUrl);
-                if (extracted && extracted.url) {
-                  let quality = "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                  if (playlistQuality) quality = playlistQuality;
-                  const normalizedQuality = getQualityFromName(quality);
-                  streams.push({
-                    name: `GuardaHD - MixDrop`,
-                    title: displayName,
-                    url: extracted.url,
-                    easyProxySourceUrl: streamUrl,
-                    headers: extracted.headers,
-                    quality: normalizedQuality,
-                    type: "direct",
-                    language: "Italian"
-                  });
-                }
-              } else if (streamUrl.includes("dhcplay") || streamUrl.includes("vibuxer")) {
-                console.log(`[GuardaHD] Attempting StreamHG extraction for ${streamUrl}`);
-                const extracted = yield extractStreamHG(streamUrl);
-                if (extracted && extracted.url) {
-                  let quality = getQualityFromUrl(extracted.url) || "HD";
-                  const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
-                  if (playlistQuality) quality = playlistQuality;
-                  const normalizedQuality = getQualityFromName(quality);
-                  streams.push({
-                    name: `GuardaHD - StreamHG`,
-                    title: displayName,
-                    url: extracted.url,
-                    // EasyProxy must receive embed URL, not extracted master playlist URL.
-                    easyProxySourceUrl: streamUrl,
-                    headers: extracted.headers,
-                    quality: normalizedQuality,
-                    type: "direct",
-                    language: "Italian"
-                  });
-                }
-              } else if (streamUrl.includes("dropload") || streamUrl.includes("dr0pstream")) {
-                console.log(`[GuardaHD] DropLoad temporarily disabled: ${streamUrl}`);
-              } else if (streamUrl.includes("supervideo")) {
-                console.log(`[GuardaHD] SuperVideo temporarily disabled: ${streamUrl}`);
-              }
-            } catch (e) {
-              console.error("[GuardaHD] Process URL error:", e);
-            }
-          });
-          const uniqueLinks = Array.from(linksSet);
-          yield Promise.all(uniqueLinks.map((link) => processUrl(link)));
-          const uniqueStreams = [];
-          const seenUrls = /* @__PURE__ */ new Set();
-          for (const s of streams) {
-            if (!seenUrls.has(s.url)) {
-              seenUrls.add(s.url);
-              uniqueStreams.push(s);
-            }
-          }
-          return uniqueStreams.map((s) => formatStream(s, "GuardaHD")).filter((s) => s !== null);
-        } catch (error) {
-          console.error("[GuardaHD] Error:", error);
-          return [];
-        }
-      });
-    }
-    module2.exports = { getStreams: getStreams2 };
   }
 });
 
@@ -1423,6 +944,161 @@ var require_cf_handler = __commonJS({
       });
     }
     module2.exports = { smartFetch };
+  }
+});
+
+// src/extractors/common.js
+var require_common = __commonJS({
+  "src/extractors/common.js"(exports2, module2) {
+    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+    function getProxiedUrl(url) {
+      let proxyUrl = null;
+      try {
+        if (typeof global !== "undefined" && global.CF_PROXY_URL) {
+          proxyUrl = global.CF_PROXY_URL;
+        }
+      } catch (e) {
+      }
+      if (proxyUrl && url) {
+        const separator = proxyUrl.includes("?") ? "&" : "?";
+        return `${proxyUrl}${separator}url=${encodeURIComponent(url)}`;
+      }
+      return url;
+    }
+    function unPack(p, a, c, k, e, d) {
+      e = function(c2) {
+        return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
+      };
+      if (!"".replace(/^/, String)) {
+        while (c--) {
+          d[e(c)] = k[c] || e(c);
+        }
+        k = [function(e2) {
+          return d[e2] || e2;
+        }];
+        e = function() {
+          return "\\w+";
+        };
+        c = 1;
+      }
+      while (c--) {
+        if (k[c]) {
+          p = p.replace(new RegExp("\\b" + e(c) + "\\b", "g"), k[c]);
+        }
+      }
+      return p;
+    }
+    function isFlareSolverrBlockedError(error) {
+      const message = String(error && error.message || error || "");
+      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
+    }
+    module2.exports = {
+      USER_AGENT,
+      unPack,
+      getProxiedUrl,
+      isFlareSolverrBlockedError
+    };
+  }
+});
+
+// src/extractors/mixdrop.js
+var require_mixdrop = __commonJS({
+  "src/extractors/mixdrop.js"(exports2, module2) {
+    var { USER_AGENT, unPack } = require_common();
+    function isMixDropDisabled() {
+      const rawEnv = typeof process !== "undefined" && process && process.env && typeof process.env.DISABLE_MIXDROP === "string" ? process.env.DISABLE_MIXDROP.trim().toLowerCase() : "";
+      return ["1", "true", "yes", "on"].includes(rawEnv);
+    }
+    function normalizeUrl(url, baseUrl) {
+      try {
+        return new URL(String(url || ""), baseUrl).toString();
+      } catch (e) {
+        return null;
+      }
+    }
+    function extractPackedStream(html) {
+      const packedRegex = /eval\(function\(p,a,c,k,e,d\)\s*\{.*?\}\s*\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\),(\d+),(\{\})\)\)/;
+      const match = packedRegex.exec(String(html || ""));
+      if (!match) return null;
+      const p = match[1];
+      const a = parseInt(match[2]);
+      const c = parseInt(match[3]);
+      const k = match[4].split("|");
+      const unpacked = unPack(p, a, c, k, null, {});
+      const wurlMatch = unpacked.match(/wurl\s*=\s*["']([^"']+)["']/);
+      if (!wurlMatch) return null;
+      let streamUrl = wurlMatch[1];
+      if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+      return streamUrl;
+    }
+    function extractEmbedUrl(html, pageUrl) {
+      const match = String(html || "").match(/<iframe\b[^>]+src=["']([^"']*\/e\/[^"']+)["']/i);
+      if (match) return normalizeUrl(match[1], pageUrl);
+      const converted = String(pageUrl || "").replace(/\/f\//i, "/e/");
+      return converted !== pageUrl ? converted : null;
+    }
+    function extractMixDrop(url, refererBase = "https://m1xdrop.net/") {
+      return __async(this, null, function* () {
+        if (isMixDropDisabled()) return null;
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const fetchHtml = (targetUrl2, referer) => __async(null, null, function* () {
+            const response = yield fetch(targetUrl2, {
+              headers: {
+                "User-Agent": USER_AGENT,
+                "Referer": referer,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+              }
+            });
+            if (!response.ok) return null;
+            return {
+              url: response.url || targetUrl2,
+              html: yield response.text()
+            };
+          });
+          let page = yield fetchHtml(url, refererBase);
+          if (!page) return null;
+          let streamUrl = extractPackedStream(page.html);
+          let pageUrl = page.url;
+          if (!streamUrl) {
+            const embedUrl = extractEmbedUrl(page.html, pageUrl);
+            if (embedUrl && embedUrl !== pageUrl) {
+              const embedPage = yield fetchHtml(embedUrl, pageUrl);
+              if (embedPage) {
+                page = embedPage;
+                pageUrl = embedPage.url;
+                streamUrl = extractPackedStream(embedPage.html);
+              }
+            }
+          }
+          if (!streamUrl) return null;
+          const origin = (() => {
+            try {
+              return new URL(pageUrl).origin;
+            } catch (e) {
+              return "";
+            }
+          })();
+          return {
+            url: streamUrl,
+            referer: pageUrl,
+            userAgent: USER_AGENT,
+            headers: {
+              "User-Agent": USER_AGENT,
+              "Referer": pageUrl,
+              "Origin": origin,
+              "Accept": "*/*",
+              "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+          };
+        } catch (e) {
+          console.error("[Extractors] MixDrop extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractMixDrop };
   }
 });
 
@@ -8403,6 +8079,88 @@ var require_loadm = __commonJS({
   }
 });
 
+// src/extractors/streamhg.js
+var require_streamhg = __commonJS({
+  "src/extractors/streamhg.js"(exports2, module2) {
+    var { USER_AGENT, unPack, getProxiedUrl } = require_common();
+    function resolveAbsoluteUrl(candidate, baseUrl) {
+      if (!candidate) return null;
+      try {
+        return new URL(candidate, baseUrl).toString();
+      } catch (_) {
+        return null;
+      }
+    }
+    function getOrigin(url) {
+      try {
+        return new URL(url).origin;
+      } catch (_) {
+        return null;
+      }
+    }
+    function getBaseHeaders(referer) {
+      const headers = {
+        "User-Agent": USER_AGENT
+      };
+      if (referer) headers["Referer"] = referer;
+      return headers;
+    }
+    function extractStreamHG(url, refererBase = null) {
+      return __async(this, null, function* () {
+        try {
+          if (url.startsWith("//")) url = "https:" + url;
+          const initialReferer = refererBase || `${getOrigin(url) || "https://dhcplay.com"}/`;
+          const candidates = [url];
+          try {
+            const parsed = new URL(url);
+            const idMatch = parsed.pathname.match(/\/e\/([^/?#]+)/i);
+            if (idMatch && /(^|\.)dhcplay\.com$/i.test(parsed.hostname)) {
+              candidates.push(`https://vibuxer.com/e/${idMatch[1]}`);
+            }
+          } catch (_) {
+          }
+          let finalUrl = null;
+          let packedMatch = null;
+          for (const candidate of candidates) {
+            const response = yield fetch(getProxiedUrl(candidate), {
+              headers: getBaseHeaders(initialReferer),
+              redirect: "follow"
+            });
+            if (!response.ok) continue;
+            const html = yield response.text();
+            const match = html.match(new RegExp("eval\\(function\\(p,a,c,k,e,d\\)\\{.*?\\}\\('(.*?)',(\\d+),(\\d+),'(.*?)'\\.split\\('\\|'\\)", "s"));
+            if (!match) continue;
+            finalUrl = response.url || candidate;
+            packedMatch = match;
+            break;
+          }
+          if (!packedMatch || !finalUrl) return null;
+          const p = packedMatch[1];
+          const a = parseInt(packedMatch[2], 10);
+          const c = parseInt(packedMatch[3], 10);
+          const k = packedMatch[4].split("|");
+          const unpacked = unPack(p, a, c, k, null, {});
+          let streamUrl = null;
+          const hls2Match = unpacked.match(/["']hls2["']\s*:\s*["']([^"']+)["']/i);
+          const hls4Match = unpacked.match(/["']hls4["']\s*:\s*["']([^"']+)["']/i);
+          const fileMatch = unpacked.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
+          streamUrl = hls2Match && hls2Match[1] || hls4Match && hls4Match[1] || fileMatch && fileMatch[1] || null;
+          streamUrl = resolveAbsoluteUrl(streamUrl, finalUrl);
+          if (!streamUrl) return null;
+          return {
+            url: streamUrl,
+            headers: { "Referer": getOrigin(finalUrl) + "/", "User-Agent": USER_AGENT }
+          };
+        } catch (e) {
+          console.error("[Extractors] StreamHG extraction error:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { extractStreamHG };
+  }
+});
+
 // src/extractors/vidxgo.js
 var require_vidxgo = __commonJS({
   "src/extractors/vidxgo.js"(exports2, module2) {
@@ -8590,7 +8348,7 @@ var require_guardoserie = __commonJS({
           normalized = `https:${normalized}`;
         } else if (normalized.startsWith("/")) {
           normalized = `${getGuardoserieBaseUrl2()}${normalized}`;
-        } else if (!/^https?:\/\//i.test(normalized) && /(loadm|uqload|dropload|dr0pstream)/i.test(normalized)) {
+        } else if (!/^https?:\/\//i.test(normalized) && /loadm/i.test(normalized)) {
           normalized = `https://${normalized.replace(/^\/+/, "")}`;
         }
         return /^https?:\/\//i.test(normalized) ? normalized : null;
@@ -8607,8 +8365,8 @@ var require_guardoserie = __commonJS({
           }
         }
         const directRegexes = [
-          /https?:\/\/(?:www\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig,
-          /https?:\\\/\\\/(?:www\\.)?(?:loadm|uqload|dropload|dr0pstream|mixdrop|m1xdrop|supervideo|vidoza)[^"'<\s]+/ig
+          /https?:\/\/(?:www\.)?loadm[^"'<\s]+/ig,
+          /https?:\\\/\\\/(?:www\\.)?loadm[^"'<\s]+/ig
         ];
         for (const regex of directRegexes) {
           const matches = html.match(regex) || [];
@@ -8719,7 +8477,7 @@ var require_guardoserie = __commonJS({
       const { smartFetch } = require_cf_handler();
       const { hasActiveBypass } = require_cf_bypass();
       const { USER_AGENT, getProxiedUrl } = require_common();
-      const { extractLoadm, extractUqload, extractDropLoad, extractMixDrop, extractSuperVideo } = require_extractors();
+      const { extractLoadm } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       const TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
       function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
@@ -9069,32 +8827,6 @@ var require_guardoserie = __commonJS({
                   language: "Italian",
                   behaviorHints: s.behaviorHints
                 }, "Guardoserie"));
-              } else if (playerLink.includes("uqload")) {
-                extracted = yield extractUqload(playerLink);
-                if (!(extracted == null ? void 0 : extracted.url)) return [];
-                const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                return [formatStream({
-                  url: extracted.url,
-                  headers: extracted.headers,
-                  name: `Guardoserie - Uqload`,
-                  title: displayName,
-                  quality: getQualityFromName2(quality || "HD"),
-                  type: "direct",
-                  language: "Italian"
-                }, "Guardoserie")];
-              } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-                extracted = yield extractMixDrop(playerLink);
-                if (!(extracted == null ? void 0 : extracted.url)) return [];
-                const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                return [formatStream({
-                  url: extracted.url,
-                  headers: extracted.headers,
-                  name: `Guardoserie - MixDrop`,
-                  title: displayName,
-                  quality: getQualityFromName2(quality || "HD"),
-                  type: "direct",
-                  language: "Italian"
-                }, "Guardoserie")];
               }
             } catch (e) {
             }
@@ -9142,14 +8874,6 @@ var require_streamingcommunity = __commonJS({
     } catch (_) {
       ProxyAgent = null;
     }
-    function safeRequire(modulePath) {
-      try {
-        return require(modulePath);
-      } catch (e) {
-        return null;
-      }
-    }
-    var guardahd2 = safeRequire("../guardahd/index");
     var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
     var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     function getCommonHeaders() {
@@ -13014,7 +12738,6 @@ var require_altadefinizionestreaming = __commonJS({
 });
 
 // src/index.js
-var guardahd = require_guardahd();
 var guardoserie = require_guardoserie();
 var streamingcommunity = require_streamingcommunity();
 var animeunity = require_animeunity();
@@ -13192,12 +12915,6 @@ function getStreams(id, type, season, episode) {
       if (providerName === "streamingcommunity") {
         promises.push(
           streamingcommunity.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "StreamingCommunity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "StreamingCommunity", error: e, status: "rejected" }))
-        );
-        continue;
-      }
-      if (providerName === "guardahd") {
-        promises.push(
-          guardahd.getStreams(id, normalizedType, effectiveSeason, normalizedEpisode).then((s) => ({ provider: "GuardaHD", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "GuardaHD", error: e, status: "rejected" }))
         );
         continue;
       }

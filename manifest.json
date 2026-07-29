@@ -15,19 +15,7 @@
       "supportedTypes": ["movie", "tv", "series"],
       "enabled": true
     },
-    {
-      "id": "easystreams-guardahd",
-      "name": "GuardaHD",
-      "version": "1.1.20",
-      "description": "Movies from GuardaHD",
-      "resources": ["stream"],
-      "contentLanguage": ["it"],
-      "formats": ["mp4", "m3u8"],
-      "idPrefixes": ["tmdb:", "tt"],
-      "filename": "providers/guardahd.js",
-      "supportedTypes": ["movie", "series"],
-      "enabled": true
-    },
+
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
