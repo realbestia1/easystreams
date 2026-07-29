@@ -1,21 +1,23 @@
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 /**
- * Cloudflare Bypass using Scrapling (Python)
- * Replaces FlareSolverr with a more robust local browser-based solution.
+ * Cloudflare Bypass using Scrapling (Python) & Persistent Browser Daemon
  */
 
 const activeBypasses = new Map();
 const globalQueue = [];
 let activeGlobalRequests = 0;
 
-const MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || '2', 10);
-const MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || '20', 10);
+const MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || '5', 10);
+const MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || '50', 10);
 const GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || '60000', 10);
 const SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || '90000', 10);
 const SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || '15000', 10);
+
+let daemonProcess = null;
 
 function createRelease() {
     let released = false;
@@ -35,7 +37,6 @@ function drainGlobalQueue() {
         entry.done = true;
         clearTimeout(entry.timeoutId);
         activeGlobalRequests++;
-        console.log(`[SC] Slot Scrapling assegnato a [${entry.provider}]. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
         entry.resolve(createRelease());
     }
 }
@@ -51,15 +52,7 @@ function acquireGlobalSlot(provider, url) {
     }
 
     return new Promise((resolve, reject) => {
-        const entry = {
-            provider,
-            url,
-            done: false,
-            resolve,
-            reject,
-            timeoutId: null
-        };
-
+        const entry = { provider, url, done: false, resolve, reject, timeoutId: null };
         entry.timeoutId = setTimeout(() => {
             if (entry.done) return;
             entry.done = true;
@@ -67,13 +60,90 @@ function acquireGlobalSlot(provider, url) {
             if (index >= 0) globalQueue.splice(index, 1);
             reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
         }, GLOBAL_QUEUE_TIMEOUT);
-
         globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
+    });
+}
+
+function getPythonExe() {
+    const venvPython = path.join(process.cwd(), '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+    if (fs.existsSync(venvPython)) return venvPython;
+    return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+async function ensureDaemonStarted() {
+    if (daemonProcess) return;
+    const daemonScript = path.join(__dirname, 'src', 'utils', 'cf_daemon.py');
+    if (!fs.existsSync(daemonScript)) return;
+
+    const pythonExe = getPythonExe();
+    console.log(`[SC] Avvio Camoufox Daemon in background...`);
+    daemonProcess = spawn(pythonExe, [daemonScript], {
+        stdio: ['ignore', 'inherit', 'inherit'],
+        detached: process.platform !== 'win32'
+    });
+    daemonProcess.on('exit', () => {
+        daemonProcess = null;
+    });
+    // Wait for daemon HTTP server to start listening
+    await new Promise(r => setTimeout(r, 1500));
+}
+
+async function requestDaemon(url, provider, options = {}) {
+    await ensureDaemonStarted();
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            url,
+            provider,
+            method: options.method || 'GET',
+            data: options.body || null,
+            timeout: parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT
+        });
+
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: 8192,
+            path: '/bypass',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            },
+            timeout: (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + 5000
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed && parsed.status === 'ok') {
+                        resolve(parsed);
+                    } else {
+                        reject(new Error(parsed ? parsed.message : 'Daemon error'));
+                    }
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+
+        req.on('error', err => reject(err));
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Daemon HTTP request timeout'));
+        });
+        req.write(payload);
+        req.end();
     });
 }
 
 function execPythonBypass(url, provider, options = {}) {
+    return requestDaemon(url, provider, options).catch((err) => {
+        console.log(`[SC][${provider}] Daemon non disponibile (${err.message}), fallback a processo singolo...`);
+        return execPythonBypassSingle(url, provider, options);
+    });
+}
+
+function execPythonBypassSingle(url, provider, options = {}) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, 'src', 'utils', 'scrapling_bypass.py');
         const args = [

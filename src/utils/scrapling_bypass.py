@@ -93,7 +93,7 @@ def main():
         from playwright.sync_api import sync_playwright as _sync_pw
         import tempfile
         sys.stderr.write("start: camoufox launch_options...\n")
-        kw = {"headless": False, "humanize": True, "locale": "it-IT", "geoip": True}
+        kw = {"headless": True, "humanize": True, "locale": "it-IT", "geoip": True}
         _lo = _cf_lo(**kw)
         _td = os.path.join(tempfile.gettempdir(), f"camoufox_ctx_{args.provider}")
         os.makedirs(_td, exist_ok=True)
@@ -104,7 +104,6 @@ def main():
             ctx = _pw.firefox.launch_persistent_context(_td, no_viewport=True, **_lo)
             sys.stderr.write("start: Firefox avviato, creo pagina...\n")
             page = ctx.new_page()
-            page.evaluate("window.moveTo(0,0); window.resizeTo(1280, 720)")
             page.set_default_timeout(args.timeout)
 
             if args.method.upper() == 'POST':
@@ -113,9 +112,6 @@ def main():
             else:
                 page.goto(args.url, wait_until="domcontentloaded")
             sys.stderr.write(f"start: pagina caricata, title={safe_title(page)!r}\n")
-            sys.stderr.write(f"start: attendo 12s prima di interagire (auto-solve)...\n")
-            time.sleep(12)
-            sys.stderr.write(f"start: dopo 12s title={safe_title(page)!r}\n")
 
             # loop continuo con redirect monitoring
             challenge_titles = ["just a moment", "ci siamo quasi", "attention required",
