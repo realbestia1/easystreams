@@ -165,6 +165,27 @@ function scoreCandidate(target, candidate) {
   return Math.max(0, Math.min(1, score));
 }
 
+function exactCandidateTitleMatch(target, candidate) {
+  const targetTitle = normalizeTitle(target.title);
+  const candidateTitle = normalizeTitle(candidate.seriesTitle || candidate.title);
+  return targetTitle && candidateTitle === targetTitle ? 1 : 0;
+}
+
+function compareOfficialCandidates(target, left, right) {
+  const exactDifference = exactCandidateTitleMatch(target, right) - exactCandidateTitleMatch(target, left);
+  if (exactDifference !== 0) return exactDifference;
+
+  const scoreDifference = right.score - left.score;
+  if (scoreDifference !== 0) return scoreDifference;
+
+  // Prefer the Mediaset copy when the same episode is also mirrored on Witty.
+  // Some Witty mirrors expose a valid page but no DASH/Widevine asset.
+  const mediasetDifference = (right.source === 'mediaset' ? 1 : 0) - (left.source === 'mediaset' ? 1 : 0);
+  if (mediasetDifference !== 0) return mediasetDifference;
+
+  return 0;
+}
+
 async function resolveTarget(id, type, season, episode, context = {}) {
   const normalizedType = String(type || '').toLowerCase() === 'movie' ? 'movie' : 'series';
   let tmdbId = /^\d+$/.test(String(context.tmdbId || '')) ? String(context.tmdbId) : null;
@@ -876,8 +897,16 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
         ? await searchRai(query, target)
         : await searchMediaset(query, target);
       all.push(...found);
-      const ranked = deduplicate(all).map((candidate) => ({ ...candidate, score: scoreCandidate(target, candidate) })).sort((a, b) => b.score - a.score);
-      if (ranked[0] && ranked[0].score >= 0.88 && !ranked[0].isClip) break;
+      const ranked = deduplicate(all)
+        .map((candidate) => ({ ...candidate, score: scoreCandidate(target, candidate) }))
+        .sort((left, right) => compareOfficialCandidates(target, left, right));
+      const best = ranked[0];
+      if (
+        best
+        && best.score >= 0.88
+        && !best.isClip
+        && (provider !== 'mediaset' || best.source === 'mediaset')
+      ) break;
     }
     const ranked = deduplicate(all)
       .map((candidate) => ({ ...candidate, score: scoreCandidate(target, candidate) }))
@@ -889,7 +918,7 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
         if (candidate.source === 'witty' && candidate.isFullEpisode !== true) return false;
         return true;
       })
-      .sort((a, b) => b.score - a.score)
+      .sort((left, right) => compareOfficialCandidates(target, left, right))
       .slice(0, 6);
     for (const candidate of ranked) {
       try {
