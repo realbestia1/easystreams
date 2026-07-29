@@ -813,14 +813,16 @@ var require_cf_bypass = __commonJS({
     var { spawn, exec } = require("child_process");
     var path = require("path");
     var fs = require("fs");
+    var http = require("http");
     var activeBypasses = /* @__PURE__ */ new Map();
     var globalQueue = [];
     var activeGlobalRequests = 0;
-    var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "2", 10);
-    var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "20", 10);
+    var MAX_GLOBAL_CONCURRENT = parseInt(process.env.SCRAPLING_MAX_CONCURRENT || "5", 10);
+    var MAX_GLOBAL_QUEUE = parseInt(process.env.SCRAPLING_MAX_QUEUE || "50", 10);
     var GLOBAL_QUEUE_TIMEOUT = parseInt(process.env.SCRAPLING_QUEUE_TIMEOUT_MS || "60000", 10);
     var SCRAPLING_DEFAULT_TIMEOUT = parseInt(process.env.SCRAPLING_DEFAULT_TIMEOUT_MS || "90000", 10);
     var SCRAPLING_WATCHDOG_GRACE_MS = parseInt(process.env.SCRAPLING_WATCHDOG_GRACE_MS || "15000", 10);
+    var daemonProcess = null;
     function createRelease() {
       let released = false;
       return () => {
@@ -837,7 +839,6 @@ var require_cf_bypass = __commonJS({
         entry.done = true;
         clearTimeout(entry.timeoutId);
         activeGlobalRequests++;
-        console.log(`[SC] Slot Scrapling assegnato a [${entry.provider}]. Active=${activeGlobalRequests}, Queue=${globalQueue.length}`);
         entry.resolve(createRelease());
       }
     }
@@ -850,14 +851,7 @@ var require_cf_bypass = __commonJS({
         return Promise.reject(new Error(`Coda Scrapling piena (${globalQueue.length}/${MAX_GLOBAL_QUEUE}) per ${provider}`));
       }
       return new Promise((resolve, reject) => {
-        const entry = {
-          provider,
-          url,
-          done: false,
-          resolve,
-          reject,
-          timeoutId: null
-        };
+        const entry = { provider, url, done: false, resolve, reject, timeoutId: null };
         entry.timeoutId = setTimeout(() => {
           if (entry.done) return;
           entry.done = true;
@@ -866,10 +860,84 @@ var require_cf_bypass = __commonJS({
           reject(new Error(`Timeout coda Scrapling dopo ${GLOBAL_QUEUE_TIMEOUT}ms per ${provider}`));
         }, GLOBAL_QUEUE_TIMEOUT);
         globalQueue.push(entry);
-        console.log(`[SC] In coda Scrapling [${provider}] Queue=${globalQueue.length}/${MAX_GLOBAL_CONCURRENT}: ${url}`);
+      });
+    }
+    function getPythonExe() {
+      const venvPython = path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+      if (fs.existsSync(venvPython)) return venvPython;
+      return process.platform === "win32" ? "python" : "python3";
+    }
+    function ensureDaemonStarted() {
+      return __async(this, null, function* () {
+        if (daemonProcess) return;
+        const daemonScript = path.join(__dirname, "src", "utils", "cf_daemon.py");
+        if (!fs.existsSync(daemonScript)) return;
+        const pythonExe = getPythonExe();
+        console.log(`[SC] Avvio Camoufox Daemon in background...`);
+        daemonProcess = spawn(pythonExe, [daemonScript], {
+          stdio: ["ignore", "inherit", "inherit"],
+          detached: process.platform !== "win32"
+        });
+        daemonProcess.on("exit", () => {
+          daemonProcess = null;
+        });
+        yield new Promise((r) => setTimeout(r, 1500));
+      });
+    }
+    function requestDaemon(_0, _1) {
+      return __async(this, arguments, function* (url, provider, options = {}) {
+        yield ensureDaemonStarted();
+        return new Promise((resolve, reject) => {
+          const payload = JSON.stringify({
+            url,
+            provider,
+            method: options.method || "GET",
+            data: options.body || null,
+            timeout: parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT
+          });
+          const req = http.request({
+            hostname: "127.0.0.1",
+            port: 8192,
+            path: "/bypass",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload)
+            },
+            timeout: (parseInt(options.timeout, 10) || SCRAPLING_DEFAULT_TIMEOUT) + 5e3
+          }, (res) => {
+            let data = "";
+            res.on("data", (chunk) => data += chunk);
+            res.on("end", () => {
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed && parsed.status === "ok") {
+                  resolve(parsed);
+                } else {
+                  reject(new Error(parsed ? parsed.message : "Daemon error"));
+                }
+              } catch (e) {
+                reject(e);
+              }
+            });
+          });
+          req.on("error", (err) => reject(err));
+          req.on("timeout", () => {
+            req.destroy();
+            reject(new Error("Daemon HTTP request timeout"));
+          });
+          req.write(payload);
+          req.end();
+        });
       });
     }
     function execPythonBypass(url, provider, options = {}) {
+      return requestDaemon(url, provider, options).catch((err) => {
+        console.log(`[SC][${provider}] Daemon non disponibile (${err.message}), fallback a processo singolo...`);
+        return execPythonBypassSingle(url, provider, options);
+      });
+    }
+    function execPythonBypassSingle(url, provider, options = {}) {
       return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, "src", "utils", "scrapling_bypass.py");
         const args = [
@@ -8598,6 +8666,8 @@ var require_guardoserie = __commonJS({
           results.push({ url: resolved, title: title ? String(title).replace(/<[^>]+>/g, "").trim() : "" });
         };
         const patterns = [
+          /<a[^>]+href=["']([^"']+)["'][^>]*title=["']([^"']+)["']/gi,
+          /<a[^>]+title=["']([^"']+)["'][^>]*href=["']([^"']+)["']/gi,
           new RegExp(`<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*ml-mask[^"']*["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
           new RegExp(`<div[^>]*class=["'][^"']*ml-item[^"']*["'][^>]*>.*?<a[^>]+href=["']([^"']+)["'][^>]*>.*?<h2>(.*?)<\\/h2>`, "gis"),
           /<h2[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
@@ -8832,15 +8902,12 @@ var require_guardoserie = __commonJS({
               if (parenMatch && parenMatch[1].trim().length > 2) results.push(parenMatch[1].trim());
               return [...new Set(results)].filter((q2) => q2.length > 2);
             };
-            const allQueries = [.../* @__PURE__ */ new Set([...genQueries(title), ...genQueries(originalTitle)])].slice(0, 4);
+            const allQueries = [.../* @__PURE__ */ new Set([...genQueries(title), ...genQueries(originalTitle)])].slice(0, 5);
             const searchProvider = (query) => __async(null, null, function* () {
               const searchStartedAt = Date.now();
-              try {
-                yield smartFetch(baseUrl, baseUrl, { provider: "guardoserie", skipBypassOnFailure: true, timeout: 5e3 });
-              } catch (e) {
-              }
               const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-              const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
+              const enc = (s) => encodeURIComponent(s).replace(/%20/g, "+");
+              const body = `s=${enc(query)}&action=searchwp_live_search&swpengine=default&swpquery=${query}`;
               try {
                 const ajaxHtml = yield smartFetch(searchUrl, baseUrl, {
                   method: "POST",
@@ -8862,24 +8929,11 @@ var require_guardoserie = __commonJS({
                 return [];
               }
             });
-            const searchWp = (query) => __async(null, null, function* () {
-              try {
-                const html = yield smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, {
-                  method: "GET",
-                  headers: { "Referer": `${baseUrl}/`, "Accept": "text/html" },
-                  provider: "guardoserie",
-                  skipBypassOnFailure: true,
-                  timeout: 5e3
-                });
-                if (!html || html.length < 200) return [];
-                return extractSearchResultsFromHtml2(html, baseUrl);
-              } catch (e) {
-                return [];
-              }
-            });
-            let allResults = Array.from(new Map((yield Promise.all(
-              allQueries.map((q) => Promise.all([searchProvider(q), searchWp(q)]))
-            )).flat(2).map((r) => [r.url, r])).values());
+            let allResults = [];
+            if (allQueries.length > 0) {
+              const results = yield Promise.all(allQueries.map((q) => searchProvider(q)));
+              allResults = results.find((r) => r && r.length > 0) || [];
+            }
             mark("search_done", { queries: allQueries.length, results: allResults.length });
             if (allResults.length === 0) {
               console.log(`[Guardoserie] Nessun risultato per ${title}`);
@@ -8910,11 +8964,10 @@ var require_guardoserie = __commonJS({
               return 0;
             });
             targetUrl = null;
-            const topResults = allResults.slice(0, 5);
-            const verificationPromises = topResults.map((result) => __async(null, null, function* () {
+            for (const result of allResults.slice(0, 5)) {
               const nResult = normalizeTitle2(result.title);
               const matchScore = scoreTitleMatch(nResult);
-              if (matchScore < 1) return null;
+              if (matchScore < 1) continue;
               try {
                 const pageHtml = yield smartFetch(result.url, getGuardoserieBaseUrl2(), {
                   provider: "guardoserie"
@@ -8930,28 +8983,28 @@ var require_guardoserie = __commonJS({
                   if (anyYearMatch) foundYear = anyYearMatch[1];
                 }
                 if (hasTmdbId || hasExactPoster) {
-                  return { url: result.url, score: 3, exact: true };
+                  targetUrl = result.url;
+                  break;
                 }
                 if (foundYear) {
                   const targetYear = parseInt(year);
                   const fYear = parseInt(foundYear);
                   const maxDiff = matchScore === 3 ? 10 : 1;
                   if (fYear === targetYear || Math.abs(fYear - targetYear) <= maxDiff) {
-                    return { url: result.url, score: matchScore, exact: true };
+                    targetUrl = result.url;
+                    break;
                   }
                 }
                 if (matchScore >= 2) {
-                  return { url: result.url, score: matchScore, exact: false };
+                  targetUrl = result.url;
+                  break;
                 }
               } catch (e) {
-                if (matchScore >= 2) return { url: result.url, score: matchScore, exact: false };
+                if (matchScore >= 2) {
+                  targetUrl = result.url;
+                  break;
+                }
               }
-              return null;
-            }));
-            const verifiedResults = (yield Promise.all(verificationPromises)).filter(Boolean);
-            verifiedResults.sort((a, b) => b.score - a.score);
-            if (verifiedResults.length > 0) {
-              targetUrl = verifiedResults[0].url;
             }
             if (targetUrl) {
               return yield processTargetUrl(targetUrl, type, effectiveSeason, effectiveEpisode, baseUrl, title, id, benchStart, mark);
@@ -9000,56 +9053,48 @@ var require_guardoserie = __commonJS({
           const displayName = type === "tv" || type === "series" ? `${title} ${effectiveSeason}x${effectiveEpisode}` : title;
           const streamPromises = playerLinks.map((playerLink) => __async(null, null, function* () {
             try {
+              let extracted;
               if (playerLink.includes("loadm")) {
                 const domain = "guardoserie.study";
-                const extracted = yield extractLoadm(playerLink, domain);
-                return yield Promise.all((extracted || []).map((s) => __async(null, null, function* () {
-                  let quality = "HD";
-                  const detected = yield checkQualityFromPlaylist(s.url, s.headers);
-                  if (detected) quality = detected;
-                  return formatStream({
-                    url: s.url,
-                    headers: s.headers,
-                    name: `Guardoserie - Loadm`,
-                    title: displayName,
-                    quality: getQualityFromName2(quality),
-                    type: "direct",
-                    language: "Italian",
-                    behaviorHints: s.behaviorHints
-                  }, "Guardoserie");
-                })));
+                extracted = yield extractLoadm(playerLink, domain);
+                if (!extracted) return [];
+                const qualityResults = yield Promise.all((extracted || []).map((s) => checkQualityFromPlaylist(s.url, s.headers)));
+                return extracted.map((s, i) => formatStream({
+                  url: s.url,
+                  headers: s.headers,
+                  name: `Guardoserie - Loadm`,
+                  title: displayName,
+                  quality: getQualityFromName2(qualityResults[i] || "HD"),
+                  type: "direct",
+                  language: "Italian",
+                  behaviorHints: s.behaviorHints
+                }, "Guardoserie"));
               } else if (playerLink.includes("uqload")) {
-                const extracted = yield extractUqload(playerLink);
-                if (extracted == null ? void 0 : extracted.url) {
-                  let quality = "HD";
-                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                  if (detected) quality = detected;
-                  return [formatStream({
-                    url: extracted.url,
-                    headers: extracted.headers,
-                    name: `Guardoserie - Uqload`,
-                    title: displayName,
-                    quality: getQualityFromName2(quality),
-                    type: "direct",
-                    language: "Italian"
-                  }, "Guardoserie")];
-                }
+                extracted = yield extractUqload(playerLink);
+                if (!(extracted == null ? void 0 : extracted.url)) return [];
+                const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                return [formatStream({
+                  url: extracted.url,
+                  headers: extracted.headers,
+                  name: `Guardoserie - Uqload`,
+                  title: displayName,
+                  quality: getQualityFromName2(quality || "HD"),
+                  type: "direct",
+                  language: "Italian"
+                }, "Guardoserie")];
               } else if (playerLink.includes("mixdrop") || playerLink.includes("m1xdrop")) {
-                const extracted = yield extractMixDrop(playerLink);
-                if (extracted == null ? void 0 : extracted.url) {
-                  let quality = "HD";
-                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-                  if (detected) quality = detected;
-                  return [formatStream({
-                    url: extracted.url,
-                    headers: extracted.headers,
-                    name: `Guardoserie - MixDrop`,
-                    title: displayName,
-                    quality: getQualityFromName2(quality),
-                    type: "direct",
-                    language: "Italian"
-                  }, "Guardoserie")];
-                }
+                extracted = yield extractMixDrop(playerLink);
+                if (!(extracted == null ? void 0 : extracted.url)) return [];
+                const quality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
+                return [formatStream({
+                  url: extracted.url,
+                  headers: extracted.headers,
+                  name: `Guardoserie - MixDrop`,
+                  title: displayName,
+                  quality: getQualityFromName2(quality || "HD"),
+                  type: "direct",
+                  language: "Italian"
+                }, "Guardoserie")];
               }
             } catch (e) {
             }
@@ -12799,7 +12844,7 @@ var require_vidxgo2 = __commonJS({
 var require_altadefinizionestreaming = __commonJS({
   "src/altadefinizionestreaming/index.js"(exports2, module2) {
     var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-    var BASE_URL = "https://altadefinizionestreaming.com";
+    var BASE_URL = "https://altadefinizionestreaming.tv";
     var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     var SESSION_COOKIE = "sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21";
     var { extractMixDrop } = require_mixdrop();

@@ -484,7 +484,8 @@ if (!IS_SERVER) {
             const searchProvider = async (query) => {
                 const searchStartedAt = Date.now();
                 const searchUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-                const body = `s=${encodeURIComponent(query)}&action=searchwp_live_search&swpquery=${encodeURIComponent(query)}&swpengine=default`;
+                const enc = (s) => encodeURIComponent(s).replace(/%20/g, '+');
+                const body = `s=${enc(query)}&action=searchwp_live_search&swpengine=default&swpquery=${query}`;
                 try {
                     const ajaxHtml = await smartFetch(searchUrl, baseUrl, {
                         method: 'POST', body,
@@ -503,29 +504,11 @@ if (!IS_SERVER) {
                 }
             };
 
-            // Ricerca WordPress nativa
-            const searchWp = async (query) => {
-                try {
-                    const html = await smartFetch(`${baseUrl}/?s=${encodeURIComponent(query)}`, baseUrl, {
-                        method: 'GET', headers: { 'Referer': `${baseUrl}/`, 'Accept': 'text/html' },
-                        provider: 'guardoserie', skipBypassOnFailure: true, timeout: 3000
-                    });
-                    if (!html || html.length < 200) return [];
-                    return extractSearchResultsFromHtml(html, baseUrl);
-                } catch (e) { return []; }
-            };
-
-            // Sequential search: stops at first match
+            // AJAX search only: try queries in parallel, pick first result
             let allResults = [];
-            for (const q of allQueries) {
-                const wpRes = await searchWp(q);
-                if (wpRes && wpRes.length > 0) {
-                    allResults = wpRes;
-                    break;
-                }
-            }
-            if (allResults.length === 0 && allQueries.length > 0) {
-                allResults = await searchProvider(allQueries[0]);
+            if (allQueries.length > 0) {
+                const results = await Promise.all(allQueries.map(q => searchProvider(q)));
+                allResults = results.find(r => r && r.length > 0) || [];
             }
 
             mark('search_done', { queries: allQueries.length, results: allResults.length });
