@@ -89,6 +89,15 @@ var require_formatter = __commonJS({
       const normalized = String(providerName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
       return normalized || void 0;
     }
+    function normalizeEpisodeTemplate(value) {
+      return String(value || "").replace(
+        /\b(\d{1,3})[xX](\d{1,3})\b/g,
+        (_, season, episode) => `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
+      ).replace(
+        /\bS(\d{1,3})\s*E(\d{1,3})\b/gi,
+        (_, season, episode) => `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
+      );
+    }
     function formatStream2(stream, providerName) {
       let quality = stream.quality || "";
       if (quality === "2160p") quality = "\u{1F525}4K UHD";
@@ -97,13 +106,14 @@ var require_formatter = __commonJS({
       else if (quality === "720p") quality = "\u{1F4BF} HD";
       else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
-      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
+      const normalizedTitle = normalizeEpisodeTemplate(stream.title || "Stream");
+      let title = `\u{1F4C1} ${normalizedTitle}`;
       let language = stream.language;
       if (language === "Italian") {
         language = "\u{1F1EE}\u{1F1F9}";
       } else if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) {
         language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-      } else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) {
+      } else if (normalizedTitle.includes("SUB ITA") || normalizedTitle.includes("SUB")) {
         language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
       } else if (language === void 0 || language === null) {
         language = "";
@@ -148,7 +158,7 @@ var require_formatter = __commonJS({
         delete behaviorHints.notWebReady;
       }
       const finalName = pName;
-      let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
+      let finalTitle = `\u{1F4C1} ${normalizedTitle}`;
       if (desc) finalTitle += ` | ${desc}`;
       if (language) finalTitle += ` | ${language}`;
       const playbackReferer = stream.referer || (finalHeaders == null ? void 0 : finalHeaders.Referer) || (finalHeaders == null ? void 0 : finalHeaders.referer);
@@ -161,7 +171,7 @@ var require_formatter = __commonJS({
         providerName: pName,
         qualityTag: quality,
         description: desc,
-        originalTitle: stream.title || "Stream",
+        originalTitle: normalizedTitle,
         // Ensure language is set for Stremio/Nuvio sorting
         language,
         // Mark as formatted
@@ -178,64 +188,9 @@ var require_formatter = __commonJS({
   }
 });
 
-// src/extractors/common.js
-var require_common = __commonJS({
-  "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    function getProxiedUrl(url) {
-      let proxyUrl = null;
-      try {
-        if (typeof global !== "undefined" && global.CF_PROXY_URL) {
-          proxyUrl = global.CF_PROXY_URL;
-        }
-      } catch (e) {
-      }
-      if (proxyUrl && url) {
-        const separator = proxyUrl.includes("?") ? "&" : "?";
-        return `${proxyUrl}${separator}url=${encodeURIComponent(url)}`;
-      }
-      return url;
-    }
-    function unPack(p, a, c, k, e, d) {
-      e = function(c2) {
-        return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
-      };
-      if (!"".replace(/^/, String)) {
-        while (c--) {
-          d[e(c)] = k[c] || e(c);
-        }
-        k = [function(e2) {
-          return d[e2] || e2;
-        }];
-        e = function() {
-          return "\\w+";
-        };
-        c = 1;
-      }
-      while (c--) {
-        if (k[c]) {
-          p = p.replace(new RegExp("\\b" + e(c) + "\\b", "g"), k[c]);
-        }
-      }
-      return p;
-    }
-    function isFlareSolverrBlockedError(error) {
-      const message = String(error && error.message || error || "");
-      return /FlareSolverr in cooldown|Request failed with status code 500|Cloudflare has blocked/i.test(message);
-    }
-    module2.exports = {
-      USER_AGENT,
-      unPack,
-      getProxiedUrl,
-      isFlareSolverrBlockedError
-    };
-  }
-});
-
 // src/extractors/vidxgo.js
 var require_vidxgo = __commonJS({
   "src/extractors/vidxgo.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
     var VIDXGO_HEADERS = {
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -269,7 +224,7 @@ var require_vidxgo = __commonJS({
           const resp = yield fetch(url, { headers, redirect: "follow" });
           if (!resp.ok) {
             console.warn("[VidxGo] HTTP", resp.status, "for", url);
-            return { url, headers: { "User-Agent": USER_AGENT, "Referer": referer } };
+            return null;
           }
           const html = yield resp.text();
           let match;
@@ -307,7 +262,7 @@ var require_vidxgo = __commonJS({
             return null;
           }
           console.warn("[VidxGo] No stream URL found in page");
-          return { url, headers: { "User-Agent": USER_AGENT, "Referer": referer } };
+          return null;
         } catch (e) {
           console.error("[VidxGo] Extraction error:", e);
           return null;
@@ -501,11 +456,31 @@ if (!IS_SERVER) {
         const effectiveEpisode = parseInt(String(episode || ""), 10) || 1;
         const vidxgoUrl = isMovie ? `https://v.vidxgo.co/${imdbId}` : `https://v.vidxgo.co/${imdbId}/${effectiveSeason}/${effectiveEpisode}`;
         const cleanProxyUrl = proxyUrl.endsWith("/") ? proxyUrl.slice(0, -1) : proxyUrl;
-        const targetUrl = `${cleanProxyUrl}/extractor/video.m3u8?host=vidxgo&d=${vidxgoUrl}&redirect_stream=true&api_password=${proxyPassword}`;
+        const preflightUrl = new URL("/extractor/video", `${cleanProxyUrl}/`);
+        preflightUrl.searchParams.set("host", "vidxgo");
+        preflightUrl.searchParams.set("d", vidxgoUrl);
+        preflightUrl.searchParams.set("api_password", proxyPassword);
+        const preflightResponse = yield fetch(preflightUrl.href, {
+          headers: { Accept: "application/json" }
+        });
+        if (!preflightResponse.ok) {
+          console.warn(`[VidxGo-Client] Content unavailable: HTTP ${preflightResponse.status}`);
+          return [];
+        }
+        const preflight = yield preflightResponse.json().catch(() => null);
+        if (!preflight || !/^https?:\/\//i.test(String(preflight.destination_url || ""))) {
+          console.warn("[VidxGo-Client] Content unavailable: invalid EasyProxy extractor response.");
+          return [];
+        }
+        const targetUrl = new URL("/extractor/video.m3u8", `${cleanProxyUrl}/`);
+        targetUrl.searchParams.set("host", "vidxgo");
+        targetUrl.searchParams.set("d", vidxgoUrl);
+        targetUrl.searchParams.set("redirect_stream", "true");
+        targetUrl.searchParams.set("api_password", proxyPassword);
         const contentTitle = isMovie ? "Film" : "Serie";
         const displayName = isMovie ? contentTitle : `${contentTitle} ${effectiveSeason}x${effectiveEpisode}`;
         const result = {
-          url: targetUrl,
+          url: targetUrl.href,
           name: "VidxGo",
           title: displayName,
           quality: "1080p",

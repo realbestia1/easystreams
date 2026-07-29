@@ -1,5 +1,3 @@
-const { USER_AGENT } = require('./common');
-
 const VIDXGO_HEADERS = {
   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -36,7 +34,7 @@ async function extractVidxGo(url, referer = 'https://v.vidxgo.co/') {
     const resp = await fetch(url, { headers, redirect: 'follow' });
     if (!resp.ok) {
       console.warn("[VidxGo] HTTP", resp.status, "for", url);
-      return { url, headers: { "User-Agent": USER_AGENT, "Referer": referer } };
+      return null;
     }
 
     const html = await resp.text();
@@ -77,7 +75,7 @@ async function extractVidxGo(url, referer = 'https://v.vidxgo.co/') {
     }
 
     console.warn("[VidxGo] No stream URL found in page");
-    return { url, headers: { "User-Agent": USER_AGENT, "Referer": referer } };
+    return null;
   } catch (e) {
     console.error("[VidxGo] Extraction error:", e);
     return null;
