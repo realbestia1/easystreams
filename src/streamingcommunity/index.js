@@ -91,7 +91,11 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
     const entries = await getSitemap();
     if (!entries.length) return null;
 
-    const titlesToTry = [metadata?.title, metadata?.name, metadata?.original_title, metadata?.original_name].filter(Boolean);
+    const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ''));
+    const targetTmdb = metadata?.id || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, '') : null);
+    const targetImdb = metadata?.imdb_id || (!inputIsTmdb ? String(rawId) : null);
+
+    const titlesToTry = [targetImdb, metadata?.title, metadata?.name, metadata?.original_title, metadata?.original_name].filter(Boolean);
     const candidateMatches = [];
     for (const t of titlesToTry) {
       for (const m of findInSitemap(entries, t)) {
@@ -118,10 +122,6 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
         } catch (_) {}
       }
     }
-
-    const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ''));
-    const targetTmdb = metadata?.id || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, '') : null);
-    const targetImdb = metadata?.imdb_id || (!inputIsTmdb ? String(rawId) : null);
 
     let foundTitle = null;
     for (const m of candidateMatches.slice(0, 8)) {

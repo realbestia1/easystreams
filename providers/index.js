@@ -8962,7 +8962,10 @@ var require_streamingcommunity = __commonJS({
         try {
           const entries = yield getSitemap();
           if (!entries.length) return null;
-          const titlesToTry = [metadata == null ? void 0 : metadata.title, metadata == null ? void 0 : metadata.name, metadata == null ? void 0 : metadata.original_title, metadata == null ? void 0 : metadata.original_name].filter(Boolean);
+          const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ""));
+          const targetTmdb = (metadata == null ? void 0 : metadata.id) || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, "") : null);
+          const targetImdb = (metadata == null ? void 0 : metadata.imdb_id) || (!inputIsTmdb ? String(rawId) : null);
+          const titlesToTry = [targetImdb, metadata == null ? void 0 : metadata.title, metadata == null ? void 0 : metadata.name, metadata == null ? void 0 : metadata.original_title, metadata == null ? void 0 : metadata.original_name].filter(Boolean);
           const candidateMatches = [];
           for (const t of titlesToTry) {
             for (const m of findInSitemap(entries, t)) {
@@ -8989,9 +8992,6 @@ var require_streamingcommunity = __commonJS({
               }
             }
           }
-          const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ""));
-          const targetTmdb = (metadata == null ? void 0 : metadata.id) || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, "") : null);
-          const targetImdb = (metadata == null ? void 0 : metadata.imdb_id) || (!inputIsTmdb ? String(rawId) : null);
           let foundTitle = null;
           for (const m of candidateMatches.slice(0, 8)) {
             const scraped = yield scrapeTitle(m.id, m.slug);
