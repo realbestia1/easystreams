@@ -8958,6 +8958,7 @@ var require_streamingcommunity = __commonJS({
     }
     function resolveSczEmbed(metadata, normalizedType, season, episode, rawId) {
       return __async(this, null, function* () {
+        var _a;
         try {
           const entries = yield getSitemap();
           if (!entries.length) return null;
@@ -8966,6 +8967,26 @@ var require_streamingcommunity = __commonJS({
           for (const t of titlesToTry) {
             for (const m of findInSitemap(entries, t)) {
               if (!candidateMatches.some((c) => c.id === m.id)) candidateMatches.push(m);
+            }
+          }
+          if (!candidateMatches.length) {
+            for (const t of titlesToTry) {
+              try {
+                const r = yield fetch(`${SC_BASE}/it/search?q=${encodeURIComponent(t)}`);
+                if (!r.ok) continue;
+                const html = yield r.text();
+                const m = html.match(/data-page="({.+?})"/);
+                if (m) {
+                  const page = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+                  const titles = ((_a = page.props) == null ? void 0 : _a.titles) || [];
+                  for (const item of titles) {
+                    if (!candidateMatches.some((c) => c.id === item.id)) {
+                      candidateMatches.push({ id: item.id, slug: item.slug });
+                    }
+                  }
+                }
+              } catch (_) {
+              }
             }
           }
           const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ""));

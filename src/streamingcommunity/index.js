@@ -99,6 +99,26 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
       }
     }
 
+    if (!candidateMatches.length) {
+      for (const t of titlesToTry) {
+        try {
+          const r = await fetch(`${SC_BASE}/it/search?q=${encodeURIComponent(t)}`);
+          if (!r.ok) continue;
+          const html = await r.text();
+          const m = html.match(/data-page="({.+?})"/);
+          if (m) {
+            const page = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+            const titles = page.props?.titles || [];
+            for (const item of titles) {
+              if (!candidateMatches.some(c => c.id === item.id)) {
+                candidateMatches.push({ id: item.id, slug: item.slug });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
     const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ''));
     const targetTmdb = metadata?.id || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, '') : null);
     const targetImdb = metadata?.imdb_id || (!inputIsTmdb ? String(rawId) : null);
