@@ -978,16 +978,16 @@ function parseExplicitRequestId(rawId) {
   const value = String(rawId || "").trim();
   if (!value) return null;
 
-  let match = value.match(/^kitsu:(\d+)(?::(\d+))?(?::(\d+))?$/i);
+  let match = value.match(/^(kitsu|mal|anilist|anidb):(\d+)(?::(\d+))?(?::(\d+))?$/i);
   if (match) {
     return {
-      provider: "kitsu",
-      externalId: match[1],
-      seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
-      episodeFromId: match[3]
-        ? normalizeRequestedEpisode(match[3])
-        : match[2]
-          ? normalizeRequestedEpisode(match[2])
+      provider: match[1].toLowerCase(),
+      externalId: match[2],
+      seasonFromId: match[4] ? normalizeRequestedSeason(match[3]) : null,
+      episodeFromId: match[4]
+        ? normalizeRequestedEpisode(match[4])
+        : match[3]
+          ? normalizeRequestedEpisode(match[3])
           : null
     };
   }
@@ -1061,7 +1061,7 @@ function resolveLookupRequest(id, season, episode, providerContext = null) {
         ? explicit.seasonFromId
         : null;
 
-    if (explicit.provider === "kitsu") {
+    if (["kitsu", "mal", "anilist", "anidb"].includes(explicit.provider)) {
       requestedSeason = explicitSeason;
     } else if (explicitSeason !== null) {
       requestedSeason = explicitSeason;
@@ -1083,6 +1083,36 @@ function resolveLookupRequest(id, season, episode, providerContext = null) {
     return {
       provider: "kitsu",
       externalId: String(contextKitsu),
+      season: null,
+      episode: requestedEpisode
+    };
+  }
+
+  const contextMal = parsePositiveInt(providerContext?.malId);
+  if (contextMal) {
+    return {
+      provider: "mal",
+      externalId: String(contextMal),
+      season: null,
+      episode: requestedEpisode
+    };
+  }
+
+  const contextAnilist = parsePositiveInt(providerContext?.anilistId);
+  if (contextAnilist) {
+    return {
+      provider: "anilist",
+      externalId: String(contextAnilist),
+      season: null,
+      episode: requestedEpisode
+    };
+  }
+
+  const contextAnidb = parsePositiveInt(providerContext?.anidbId);
+  if (contextAnidb) {
+    return {
+      provider: "anidb",
+      externalId: String(contextAnidb),
       season: null,
       episode: requestedEpisode
     };
@@ -1123,10 +1153,10 @@ async function fetchMappingPayload(lookup, providerContext = null) {
   const requestedEpisode = normalizeRequestedEpisode(lookup.episode);
   const requestedSeason = normalizeRequestedSeason(lookup.season);
 
-  if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
+  if (!["kitsu", "mal", "anilist", "anidb", "imdb", "tmdb"].includes(provider)) return null;
   if (!externalId) return null;
 
-  const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+  const mappingLanguage = ["kitsu", "mal", "anilist", "anidb"].includes(provider) ? "it" : getMappingLanguage(providerContext);
   const mappingLanguageToken = mappingLanguage || "default";
   const cacheKey = `${provider}:${externalId}:s=${requestedSeason ?? "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
   const cached = getCached(caches.mapping, cacheKey);

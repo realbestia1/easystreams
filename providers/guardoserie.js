@@ -8478,10 +8478,10 @@ if (!IS_SERVER) {
   const { extractLoadm } = require_extractors();
   const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
   const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
-  function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
+  function getIdsFromAnimeProvider(provider, externalId, season, episode, providerContext = null) {
     return __async(this, null, function* () {
       try {
-        if (!kitsuId) return null;
+        if (!externalId || !provider) return null;
         const params = new URLSearchParams();
         const parsedEpisode = Number.parseInt(String(episode || ""), 10);
         const parsedSeason = Number.parseInt(String(season || ""), 10);
@@ -8494,7 +8494,7 @@ if (!IS_SERVER) {
           params.set("s", String(parsedSeason));
         }
         params.set("lang", "it");
-        const url = `${getMappingApiUrl()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+        const url = `${getMappingApiUrl()}/${encodeURIComponent(provider)}/${encodeURIComponent(String(externalId).trim())}?${params.toString()}`;
         const response = yield fetch(url);
         if (!response.ok) return null;
         const payload = yield response.json();
@@ -8514,14 +8514,18 @@ if (!IS_SERVER) {
         return {
           tmdbId,
           imdbId,
-          mappedSeason: Number.isInteger(mappedSeason) && mappedSeason > 0 ? mappedSeason : null,
+          mappedSeason: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : null,
           mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
           rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
         };
       } catch (e) {
-        console.error("[Guardoserie] Kitsu mapping error:", e);
         return null;
       }
+    });
+  }
+  function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
+    return __async(this, null, function* () {
+      return getIdsFromAnimeProvider("kitsu", kitsuId, season, episode, providerContext);
     });
   }
   function tryFetchPageHtml(url) {
@@ -8602,14 +8606,19 @@ if (!IS_SERVER) {
         const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
         const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
         const shouldIncludeSeasonHintForKitsu = providerContext && providerContext.seasonProvided === true;
-        if (id.toString().startsWith("kitsu:") || contextKitsuId) {
-          const kitsuId = contextKitsuId || ((id.toString().match(/^kitsu:(\d+)/i) || [])[1] || null);
-          const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-          const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
+        const contextMalId = providerContext && /^\d+$/.test(String(providerContext.malId || "")) ? String(providerContext.malId) : null;
+        const contextAnilistId = providerContext && /^\d+$/.test(String(providerContext.anilistId || "")) ? String(providerContext.anilistId) : null;
+        const contextAnidbId = providerContext && /^\d+$/.test(String(providerContext.anidbId || "")) ? String(providerContext.anidbId) : null;
+        const animeMatch = id.toString().match(/^(kitsu|mal|anilist|anidb):(\d+)/i);
+        const animeProvider = animeMatch ? animeMatch[1].toLowerCase() : contextKitsuId ? "kitsu" : contextMalId ? "mal" : contextAnilistId ? "anilist" : contextAnidbId ? "anidb" : null;
+        const animeExtId = animeMatch ? animeMatch[2] : contextKitsuId || contextMalId || contextAnilistId || contextAnidbId;
+        if (animeProvider && animeExtId) {
+          const seasonHintForAnime = shouldIncludeSeasonHintForKitsu ? season : null;
+          const mapped = yield getIdsFromAnimeProvider(animeProvider, animeExtId, seasonHintForAnime, episode, providerContext);
           mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
           if (mapped && mapped.tmdbId) {
             tmdbId = mapped.tmdbId;
-            console.log(`[Guardoserie] Kitsu ${kitsuId} mapped to TMDB ID ${tmdbId}`);
+            console.log(`[Guardoserie] ${animeProvider} ${animeExtId} mapped to TMDB ID ${tmdbId}`);
             if (mapped.mappedSeason && mapped.mappedEpisode) {
               effectiveSeason = mapped.mappedSeason;
               effectiveEpisode = mapped.mappedEpisode;
@@ -8619,7 +8628,7 @@ if (!IS_SERVER) {
               console.log(`[Guardoserie] Using mapped raw episode number ${effectiveEpisode}`);
             }
           } else {
-            console.log(`[Guardoserie] No Kitsu->TMDB mapping found for ${kitsuId}`);
+            console.log(`[Guardoserie] No ${animeProvider}->TMDB mapping found for ${animeExtId}`);
           }
         } else if (id.toString().startsWith("tt")) {
           if (contextTmdbId) {

@@ -68,6 +68,9 @@ async function resolveProviderRequestContext(id, type, season, seasonProvided = 
         requestedSeason: normalizedRequestedSeason,
         seasonProvided: seasonProvided === true,
         kitsuId: null,
+        malId: null,
+        anilistId: null,
+        anidbId: null,
         tmdbId: null,
         imdbId: null,
         canonicalSeason: normalizedRequestedSeason
@@ -93,6 +96,30 @@ async function resolveProviderRequestContext(id, type, season, seasonProvided = 
             const parts = idStr.split(':');
             if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
                 context.kitsuId = parts[1];
+            }
+        } else if (idStr.startsWith('mal:')) {
+            context.idType = 'mal';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.malId = parts[1];
+            }
+        } else if (idStr.startsWith('anilist:')) {
+            context.idType = 'anilist';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.anilistId = parts[1];
+            }
+        } else if (idStr.startsWith('anidb:')) {
+            context.idType = 'anidb';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.anidbId = parts[1];
+            }
+        } else if (idStr.startsWith('tvdb:')) {
+            context.idType = 'tvdb';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && parts[1]) {
+                context.tvdbId = parts[1];
             }
         } else if (/^tt\d+$/i.test(idStr)) {
             context.idType = 'imdb';
@@ -126,6 +153,9 @@ function buildProviderRequestContext(context) {
         requestedSeason: context.requestedSeason,
         seasonProvided: context.seasonProvided === true,
         kitsuId: context.kitsuId,
+        malId: context.malId,
+        anilistId: context.anilistId,
+        anidbId: context.anidbId,
         tmdbId: context.tmdbId,
         imdbId: context.imdbId
     };
@@ -141,7 +171,7 @@ function parseCompositeSeriesId(rawId, type, season, episode) {
     const normalizedType = String(type || '').toLowerCase();
     if (normalizedType === 'movie') return parsed;
 
-    const match = parsed.id.match(/^(tt\d+|\d+|tmdb:\d+|kitsu:\d+):(\d+):(\d+)$/i);
+    const match = parsed.id.match(/^(tt\d+|\d+|tmdb:\d+|kitsu:\d+|mal:\d+|anilist:\d+|anidb:\d+|tvdb:\d+):(\d+):(\d+)$/i);
     if (!match) return parsed;
 
     parsed.id = match[1];
@@ -174,17 +204,17 @@ async function getStreams(id, type, season, episode) {
     const promises = [];
     const likelyAnime = isLikelyAnimeRequest(normalizedType);
 
-    const isKitsuRequest =
-        String(providerContext?.idType || '').toLowerCase() === 'kitsu' ||
-        /^kitsu:\d+$/i.test(String(id || '').trim());
+    const isAnimeProviderRequest =
+        ['kitsu', 'mal', 'anilist', 'anidb'].includes(String(providerContext?.idType || '').toLowerCase()) ||
+        /^(kitsu|mal|anilist|anidb):\d+$/i.test(String(id || '').trim());
     const isImdbRequest =
         String(providerContext?.idType || '').toLowerCase() === 'imdb' ||
         /^tt\d+$/i.test(String(id || '').trim()) ||
         !!(providerContext && providerContext.imdbId && /^tt\d+$/i.test(providerContext.imdbId));
     const selectedProviders = [];
     if (normalizedType === 'movie') {
-        if (likelyAnime || isKitsuRequest) {
-            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity');
+        if (likelyAnime || isAnimeProviderRequest) {
+            selectedProviders.push('animeunity', 'animeworld', 'animesaturn', 'guardoserie');
         } else {
             selectedProviders.push('streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming');
         }

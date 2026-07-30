@@ -942,7 +942,7 @@ function parseStremioRequestId(type, id) {
                 season = null;
                 episode = Number.parseInt(parts[2], 10);
             }
-        } else if (normalizedId.startsWith('kitsu:')) {
+        } else if (normalizedId.startsWith('kitsu:') || normalizedId.startsWith('mal:') || normalizedId.startsWith('anilist:') || normalizedId.startsWith('anidb:') || normalizedId.startsWith('tvdb:')) {
             const parts = normalizedId.split(':');
             if (parts.length >= 4) {
                 providerId = `${parts[0]}:${parts[1]}`;
@@ -1103,6 +1103,26 @@ function applyMappingHintsToContext(context, payload) {
         context.kitsuId = kitsuCandidate;
     }
 
+    const malCandidate = String(payload.malId || payload.mal_id || payload?.mal?.id || '').trim();
+    if (/^\d+$/.test(malCandidate)) {
+        context.malId = malCandidate;
+    }
+
+    const anilistCandidate = String(payload.anilistId || payload.anilist_id || payload?.anilist?.id || '').trim();
+    if (/^\d+$/.test(anilistCandidate)) {
+        context.anilistId = anilistCandidate;
+    }
+
+    const anidbCandidate = String(payload.anidbId || payload.anidb_id || payload?.anidb?.id || '').trim();
+    if (/^\d+$/.test(anidbCandidate)) {
+        context.anidbId = anidbCandidate;
+    }
+
+    const tvdbCandidate = String(payload.tvdbId || payload.tvdb_id || payload?.tvdb?.id || '').trim();
+    if (tvdbCandidate) {
+        context.tvdbId = tvdbCandidate;
+    }
+
     const tmdbCandidate = String(payload.tmdbId || '').trim();
     if (/^tmdb:\d+$/i.test(tmdbCandidate)) {
         context.tmdbId = tmdbCandidate.split(':')[1];
@@ -1163,8 +1183,8 @@ async function fetchMappingByProvider(provider, value, season, episode, mappingL
     const mappingApiUrl = getMappingApiUrl();
     const normalizedProvider = String(provider || '').trim().toLowerCase();
     if (!mappingApiUrl || !normalizedProvider || !value) return null;
-    if (!['imdb', 'tmdb', 'kitsu'].includes(normalizedProvider)) return null;
-    const effectiveMappingLanguage = normalizedProvider === 'kitsu' ? 'it' : mappingLanguage;
+    if (!['imdb', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb', 'tvdb'].includes(normalizedProvider)) return null;
+    const effectiveMappingLanguage = ['kitsu', 'mal', 'anilist', 'anidb'].includes(normalizedProvider) ? 'it' : mappingLanguage;
 
     const encodedValue = encodeURIComponent(String(value).trim());
     let url = `${mappingApiUrl}/${normalizedProvider}/${encodedValue}`;
@@ -1241,6 +1261,10 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
         mappingLanguage: mappingLanguageToken === 'it' ? 'it' : null,
         seasonProvided: seasonProvided === true,
         kitsuId: null,
+        malId: null,
+        anilistId: null,
+        anidbId: null,
+        tvdbId: null,
         tmdbId: null,
         imdbId: null,
         mappedSeason: null,
@@ -1258,7 +1282,7 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
     const idStr = String(providerId || '').trim();
     const normalizedType = String(type || '').toLowerCase();
     const isImdbId = /^tt\d+$/i.test(idStr);
-    const isKitsuId = /^kitsu:\d+$/i.test(idStr);
+    const isAnimeId = /^(kitsu|mal|anilist|anidb|tvdb):\d+$/i.test(idStr);
     const isTmdbLikeId = idStr.startsWith('tmdb:') || /^\d+$/.test(idStr);
     try {
         if (idStr.startsWith('kitsu:')) {
@@ -1266,6 +1290,30 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
             const parts = idStr.split(':');
             if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
                 context.kitsuId = parts[1];
+            }
+        } else if (idStr.startsWith('mal:')) {
+            context.idType = 'mal';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.malId = parts[1];
+            }
+        } else if (idStr.startsWith('anilist:')) {
+            context.idType = 'anilist';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.anilistId = parts[1];
+            }
+        } else if (idStr.startsWith('anidb:')) {
+            context.idType = 'anidb';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                context.anidbId = parts[1];
+            }
+        } else if (idStr.startsWith('tvdb:')) {
+            context.idType = 'tvdb';
+            const parts = idStr.split(':');
+            if (parts.length >= 2 && parts[1]) {
+                context.tvdbId = parts[1];
             }
         } else if (idStr.startsWith('tmdb:')) {
             context.idType = 'tmdb';
@@ -1288,7 +1336,7 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
         }
 
         // Detect if it is an anime request
-        let isAnime = type === 'anime' || isKitsuId;
+        let isAnime = type === 'anime' || isAnimeId || ['kitsu', 'mal', 'anilist', 'anidb', 'tvdb'].includes(context.idType);
         if (!isAnime && context.tmdbId) {
             isAnime = await detectAnimeByTmdb(normalizedType, context);
         }
@@ -1304,6 +1352,30 @@ async function resolveProviderRequestContext(type, providerId, season, episode, 
                 if (byKitsu) {
                     applyMappingHintsToContext(context, byKitsu);
                     mappingSignalsFound = hasUsefulMappingSignals(byKitsu);
+                }
+            } else if (context.malId) {
+                const byMal = await fetchMappingByProvider('mal', context.malId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byMal) {
+                    applyMappingHintsToContext(context, byMal);
+                    mappingSignalsFound = hasUsefulMappingSignals(byMal);
+                }
+            } else if (context.anilistId) {
+                const byAnilist = await fetchMappingByProvider('anilist', context.anilistId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byAnilist) {
+                    applyMappingHintsToContext(context, byAnilist);
+                    mappingSignalsFound = hasUsefulMappingSignals(byAnilist);
+                }
+            } else if (context.anidbId) {
+                const byAnidb = await fetchMappingByProvider('anidb', context.anidbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byAnidb) {
+                    applyMappingHintsToContext(context, byAnidb);
+                    mappingSignalsFound = hasUsefulMappingSignals(byAnidb);
+                }
+            } else if (context.tvdbId) {
+                const byTvdb = await fetchMappingByProvider('tvdb', context.tvdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
+                if (byTvdb) {
+                    applyMappingHintsToContext(context, byTvdb);
+                    mappingSignalsFound = hasUsefulMappingSignals(byTvdb);
                 }
             } else if (context.imdbId) {
                 const byImdb = await fetchMappingByProvider('imdb', context.imdbId, context.requestedSeason, context.requestedEpisode, context.mappingLanguage);
@@ -1346,6 +1418,10 @@ function buildProviderRequestContext(context) {
         mappingLanguage: context.mappingLanguage || null,
         seasonProvided: context.seasonProvided === true,
         kitsuId: context.kitsuId,
+        malId: context.malId,
+        anilistId: context.anilistId,
+        anidbId: context.anidbId,
+        tvdbId: context.tvdbId,
         tmdbId: context.tmdbId,
         imdbId: context.imdbId,
         season: context.mappedSeason,
@@ -1441,7 +1517,7 @@ const EASY_PROXY_REQUIRED_PROVIDERS = new Set(['vidxgo', 'mediaset', 'raiplay'])
 function isLikelyAnimeRequest(type, providerId, requestContext) {
     const normalizedType = String(type || '').toLowerCase();
     if (normalizedType === 'anime') return true;
-    if (String(requestContext?.idType || '').toLowerCase() === 'kitsu') return true;
+    if (['kitsu', 'mal', 'anilist', 'anidb'].includes(String(requestContext?.idType || '').toLowerCase())) return true;
 
     if (requestContext?.longSeries === true && String(requestContext?.episodeMode || '').toLowerCase() === 'absolute') {
         return true;
@@ -1486,18 +1562,17 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         String(requestContext?.idType || '').toLowerCase() === 'imdb' ||
         /^tt\d+$/i.test(String(providerId || '').trim()) ||
         !!(requestContext && requestContext.imdbId && /^tt\d+$/i.test(requestContext.imdbId));
-    const isKitsuRequest =
-        String(requestContext?.idType || '').toLowerCase() === 'kitsu' ||
-        /^kitsu:\d+$/i.test(String(providerId || '').trim());
+    const isAnimeProviderRequest =
+        ['kitsu', 'mal', 'anilist', 'anidb', 'tvdb'].includes(String(requestContext?.idType || '').toLowerCase()) ||
+        /^(kitsu|mal|anilist|anidb|tvdb):\d+$/i.test(String(providerId || '').trim());
     let plan;
 
     if (normalizedType === 'movie') {
-        if (isKitsuRequest) {
-            // For Kitsu movies, use anime providers first and keep non-anime fallbacks.
-            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity'];
+        if (isAnimeProviderRequest) {
+            plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else if (isImdbRequest) {
             plan = likelyAnime
-                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'streamingcommunity']
+                ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
                 : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
@@ -1533,7 +1608,7 @@ const builder = new addonBuilder({
     catalogs: [],
     resources: ['stream'],
     types: ['movie', 'series', 'anime'],
-    idPrefixes: ['tt', 'tmdb', 'kitsu'],
+    idPrefixes: ['tt', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb'],
     behaviorHints: {
         configurable: true
     },

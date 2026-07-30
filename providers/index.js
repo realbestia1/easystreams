@@ -8480,10 +8480,10 @@ var require_guardoserie = __commonJS({
       const { extractLoadm } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
       const TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
-      function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
+      function getIdsFromAnimeProvider(provider, externalId, season, episode, providerContext = null) {
         return __async(this, null, function* () {
           try {
-            if (!kitsuId) return null;
+            if (!externalId || !provider) return null;
             const params = new URLSearchParams();
             const parsedEpisode = Number.parseInt(String(episode || ""), 10);
             const parsedSeason = Number.parseInt(String(season || ""), 10);
@@ -8496,7 +8496,7 @@ var require_guardoserie = __commonJS({
               params.set("s", String(parsedSeason));
             }
             params.set("lang", "it");
-            const url = `${getMappingApiUrl2()}/kitsu/${encodeURIComponent(String(kitsuId).trim())}?${params.toString()}`;
+            const url = `${getMappingApiUrl2()}/${encodeURIComponent(provider)}/${encodeURIComponent(String(externalId).trim())}?${params.toString()}`;
             const response = yield fetch(url);
             if (!response.ok) return null;
             const payload = yield response.json();
@@ -8516,14 +8516,18 @@ var require_guardoserie = __commonJS({
             return {
               tmdbId,
               imdbId,
-              mappedSeason: Number.isInteger(mappedSeason) && mappedSeason > 0 ? mappedSeason : null,
+              mappedSeason: Number.isInteger(mappedSeason) && mappedSeason >= 0 ? mappedSeason : null,
               mappedEpisode: Number.isInteger(mappedEpisode) && mappedEpisode > 0 ? mappedEpisode : null,
               rawEpisodeNumber: Number.isInteger(rawEpisodeNumber) && rawEpisodeNumber > 0 ? rawEpisodeNumber : null
             };
           } catch (e) {
-            console.error("[Guardoserie] Kitsu mapping error:", e);
             return null;
           }
+        });
+      }
+      function getIdsFromKitsu(kitsuId, season, episode, providerContext = null) {
+        return __async(this, null, function* () {
+          return getIdsFromAnimeProvider("kitsu", kitsuId, season, episode, providerContext);
         });
       }
       function tryFetchPageHtml(url) {
@@ -8604,14 +8608,19 @@ var require_guardoserie = __commonJS({
             const contextTmdbId = providerContext && /^\d+$/.test(String(providerContext.tmdbId || "")) ? String(providerContext.tmdbId) : null;
             const contextKitsuId = providerContext && /^\d+$/.test(String(providerContext.kitsuId || "")) ? String(providerContext.kitsuId) : null;
             const shouldIncludeSeasonHintForKitsu = providerContext && providerContext.seasonProvided === true;
-            if (id.toString().startsWith("kitsu:") || contextKitsuId) {
-              const kitsuId = contextKitsuId || ((id.toString().match(/^kitsu:(\d+)/i) || [])[1] || null);
-              const seasonHintForKitsu = shouldIncludeSeasonHintForKitsu ? season : null;
-              const mapped = kitsuId ? yield getIdsFromKitsu(kitsuId, seasonHintForKitsu, episode, providerContext) : null;
+            const contextMalId = providerContext && /^\d+$/.test(String(providerContext.malId || "")) ? String(providerContext.malId) : null;
+            const contextAnilistId = providerContext && /^\d+$/.test(String(providerContext.anilistId || "")) ? String(providerContext.anilistId) : null;
+            const contextAnidbId = providerContext && /^\d+$/.test(String(providerContext.anidbId || "")) ? String(providerContext.anidbId) : null;
+            const animeMatch = id.toString().match(/^(kitsu|mal|anilist|anidb):(\d+)/i);
+            const animeProvider = animeMatch ? animeMatch[1].toLowerCase() : contextKitsuId ? "kitsu" : contextMalId ? "mal" : contextAnilistId ? "anilist" : contextAnidbId ? "anidb" : null;
+            const animeExtId = animeMatch ? animeMatch[2] : contextKitsuId || contextMalId || contextAnilistId || contextAnidbId;
+            if (animeProvider && animeExtId) {
+              const seasonHintForAnime = shouldIncludeSeasonHintForKitsu ? season : null;
+              const mapped = yield getIdsFromAnimeProvider(animeProvider, animeExtId, seasonHintForAnime, episode, providerContext);
               mark("kitsu_mapping_done", { ok: Boolean(mapped && mapped.tmdbId) });
               if (mapped && mapped.tmdbId) {
                 tmdbId = mapped.tmdbId;
-                console.log(`[Guardoserie] Kitsu ${kitsuId} mapped to TMDB ID ${tmdbId}`);
+                console.log(`[Guardoserie] ${animeProvider} ${animeExtId} mapped to TMDB ID ${tmdbId}`);
                 if (mapped.mappedSeason && mapped.mappedEpisode) {
                   effectiveSeason = mapped.mappedSeason;
                   effectiveEpisode = mapped.mappedEpisode;
@@ -8621,7 +8630,7 @@ var require_guardoserie = __commonJS({
                   console.log(`[Guardoserie] Using mapped raw episode number ${effectiveEpisode}`);
                 }
               } else {
-                console.log(`[Guardoserie] No Kitsu->TMDB mapping found for ${kitsuId}`);
+                console.log(`[Guardoserie] No ${animeProvider}->TMDB mapping found for ${animeExtId}`);
               }
             } else if (id.toString().startsWith("tt")) {
               if (contextTmdbId) {
@@ -10070,13 +10079,13 @@ var require_animeunity = __commonJS({
     function parseExplicitRequestId(rawId) {
       const value = String(rawId || "").trim();
       if (!value) return null;
-      let match = value.match(/^kitsu:(\d+)(?::(\d+))?(?::(\d+))?$/i);
+      let match = value.match(/^(kitsu|mal|anilist|anidb):(\d+)(?::(\d+))?(?::(\d+))?$/i);
       if (match) {
         return {
-          provider: "kitsu",
-          externalId: match[1],
-          seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
-          episodeFromId: match[3] ? normalizeRequestedEpisode(match[3]) : match[2] ? normalizeRequestedEpisode(match[2]) : null
+          provider: match[1].toLowerCase(),
+          externalId: match[2],
+          seasonFromId: match[4] ? normalizeRequestedSeason(match[3]) : null,
+          episodeFromId: match[4] ? normalizeRequestedEpisode(match[4]) : match[3] ? normalizeRequestedEpisode(match[3]) : null
         };
       }
       match = value.match(/^imdb:(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
@@ -10128,7 +10137,7 @@ var require_animeunity = __commonJS({
       const explicit = parseExplicitRequestId(rawId);
       if (explicit) {
         const explicitSeason = Number.isInteger(explicit.seasonFromId) && explicit.seasonFromId >= 0 ? explicit.seasonFromId : null;
-        if (explicit.provider === "kitsu") {
+        if (["kitsu", "mal", "anilist", "anidb"].includes(explicit.provider)) {
           requestedSeason = explicitSeason;
         } else if (explicitSeason !== null) {
           requestedSeason = explicitSeason;
@@ -10148,6 +10157,33 @@ var require_animeunity = __commonJS({
         return {
           provider: "kitsu",
           externalId: String(contextKitsu),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextMal = parsePositiveInt(providerContext == null ? void 0 : providerContext.malId);
+      if (contextMal) {
+        return {
+          provider: "mal",
+          externalId: String(contextMal),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnilist = parsePositiveInt(providerContext == null ? void 0 : providerContext.anilistId);
+      if (contextAnilist) {
+        return {
+          provider: "anilist",
+          externalId: String(contextAnilist),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnidb = parsePositiveInt(providerContext == null ? void 0 : providerContext.anidbId);
+      if (contextAnidb) {
+        return {
+          provider: "anidb",
+          externalId: String(contextAnidb),
           season: null,
           episode: requestedEpisode
         };
@@ -10179,9 +10215,9 @@ var require_animeunity = __commonJS({
         const externalId = String(lookup.externalId || "").trim();
         const requestedEpisode = normalizeRequestedEpisode(lookup.episode);
         const requestedSeason = normalizeRequestedSeason(lookup.season);
-        if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
+        if (!["kitsu", "mal", "anilist", "anidb", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = ["kitsu", "mal", "anilist", "anidb"].includes(provider) ? "it" : getMappingLanguage(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -11079,13 +11115,13 @@ var require_animeworld = __commonJS({
     function parseExplicitRequestId(rawId) {
       const value = String(rawId || "").trim();
       if (!value) return null;
-      let match = value.match(/^kitsu:(\d+)(?::(\d+))?(?::(\d+))?$/i);
+      let match = value.match(/^(kitsu|mal|anilist|anidb):(\d+)(?::(\d+))?(?::(\d+))?$/i);
       if (match) {
         return {
-          provider: "kitsu",
-          externalId: match[1],
-          seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
-          episodeFromId: match[3] ? normalizeRequestedEpisode(match[3]) : match[2] ? normalizeRequestedEpisode(match[2]) : null
+          provider: match[1].toLowerCase(),
+          externalId: match[2],
+          seasonFromId: match[4] ? normalizeRequestedSeason(match[3]) : null,
+          episodeFromId: match[4] ? normalizeRequestedEpisode(match[4]) : match[3] ? normalizeRequestedEpisode(match[3]) : null
         };
       }
       match = value.match(/^imdb:(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
@@ -11137,7 +11173,7 @@ var require_animeworld = __commonJS({
       const explicit = parseExplicitRequestId(rawId);
       if (explicit) {
         const explicitSeason = Number.isInteger(explicit.seasonFromId) && explicit.seasonFromId >= 0 ? explicit.seasonFromId : null;
-        if (explicit.provider === "kitsu") {
+        if (["kitsu", "mal", "anilist", "anidb"].includes(explicit.provider)) {
           requestedSeason = explicitSeason;
         } else if (explicitSeason !== null) {
           requestedSeason = explicitSeason;
@@ -11157,6 +11193,33 @@ var require_animeworld = __commonJS({
         return {
           provider: "kitsu",
           externalId: String(contextKitsu),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextMal = parsePositiveInt(providerContext == null ? void 0 : providerContext.malId);
+      if (contextMal) {
+        return {
+          provider: "mal",
+          externalId: String(contextMal),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnilist = parsePositiveInt(providerContext == null ? void 0 : providerContext.anilistId);
+      if (contextAnilist) {
+        return {
+          provider: "anilist",
+          externalId: String(contextAnilist),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnidb = parsePositiveInt(providerContext == null ? void 0 : providerContext.anidbId);
+      if (contextAnidb) {
+        return {
+          provider: "anidb",
+          externalId: String(contextAnidb),
           season: null,
           episode: requestedEpisode
         };
@@ -11188,9 +11251,9 @@ var require_animeworld = __commonJS({
         const externalId = String(lookup.externalId || "").trim();
         const requestedEpisode = normalizeRequestedEpisode(lookup.episode);
         const requestedSeason = normalizeRequestedSeason(lookup.season);
-        if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
+        if (!["kitsu", "mal", "anilist", "anidb", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = ["kitsu", "mal", "anilist", "anidb"].includes(provider) ? "it" : getMappingLanguage(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -12125,13 +12188,13 @@ var require_animesaturn = __commonJS({
     function parseExplicitRequestId(rawId) {
       const value = String(rawId || "").trim();
       if (!value) return null;
-      let match = value.match(/^kitsu:(\d+)(?::(\d+))?(?::(\d+))?$/i);
+      let match = value.match(/^(kitsu|mal|anilist|anidb):(\d+)(?::(\d+))?(?::(\d+))?$/i);
       if (match) {
         return {
-          provider: "kitsu",
-          externalId: match[1],
-          seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
-          episodeFromId: match[3] ? normalizeRequestedEpisode(match[3]) : match[2] ? normalizeRequestedEpisode(match[2]) : null
+          provider: match[1].toLowerCase(),
+          externalId: match[2],
+          seasonFromId: match[4] ? normalizeRequestedSeason(match[3]) : null,
+          episodeFromId: match[4] ? normalizeRequestedEpisode(match[4]) : match[3] ? normalizeRequestedEpisode(match[3]) : null
         };
       }
       match = value.match(/^imdb:(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
@@ -12183,7 +12246,7 @@ var require_animesaturn = __commonJS({
       const explicit = parseExplicitRequestId(rawId);
       if (explicit) {
         const explicitSeason = Number.isInteger(explicit.seasonFromId) && explicit.seasonFromId >= 0 ? explicit.seasonFromId : null;
-        if (explicit.provider === "kitsu") {
+        if (["kitsu", "mal", "anilist", "anidb"].includes(explicit.provider)) {
           requestedSeason = explicitSeason;
         } else if (explicitSeason !== null) {
           requestedSeason = explicitSeason;
@@ -12203,6 +12266,33 @@ var require_animesaturn = __commonJS({
         return {
           provider: "kitsu",
           externalId: String(contextKitsu),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextMal = parsePositiveInt(providerContext == null ? void 0 : providerContext.malId);
+      if (contextMal) {
+        return {
+          provider: "mal",
+          externalId: String(contextMal),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnilist = parsePositiveInt(providerContext == null ? void 0 : providerContext.anilistId);
+      if (contextAnilist) {
+        return {
+          provider: "anilist",
+          externalId: String(contextAnilist),
+          season: null,
+          episode: requestedEpisode
+        };
+      }
+      const contextAnidb = parsePositiveInt(providerContext == null ? void 0 : providerContext.anidbId);
+      if (contextAnidb) {
+        return {
+          provider: "anidb",
+          externalId: String(contextAnidb),
           season: null,
           episode: requestedEpisode
         };
@@ -12234,9 +12324,9 @@ var require_animesaturn = __commonJS({
         const externalId = String(lookup.externalId || "").trim();
         const requestedEpisode = normalizeRequestedEpisode(lookup.episode);
         const requestedSeason = normalizeRequestedSeason(lookup.season);
-        if (!["kitsu", "imdb", "tmdb"].includes(provider)) return null;
+        if (!["kitsu", "mal", "anilist", "anidb", "imdb", "tmdb"].includes(provider)) return null;
         if (!externalId) return null;
-        const mappingLanguage = provider === "kitsu" ? "it" : getMappingLanguage(providerContext);
+        const mappingLanguage = ["kitsu", "mal", "anilist", "anidb"].includes(provider) ? "it" : getMappingLanguage(providerContext);
         const mappingLanguageToken = mappingLanguage || "default";
         const cacheKey = `${provider}:${externalId}:s=${requestedSeason != null ? requestedSeason : "na"}:ep=${requestedEpisode}:lang=${mappingLanguageToken}`;
         const cached = getCached(caches.mapping, cacheKey);
@@ -12946,6 +13036,9 @@ function resolveProviderRequestContext(id, type, season, seasonProvided = false)
       requestedSeason: normalizedRequestedSeason,
       seasonProvided: seasonProvided === true,
       kitsuId: null,
+      malId: null,
+      anilistId: null,
+      anidbId: null,
       tmdbId: null,
       imdbId: null,
       canonicalSeason: normalizedRequestedSeason
@@ -12968,6 +13061,30 @@ function resolveProviderRequestContext(id, type, season, seasonProvided = false)
         const parts = idStr.split(":");
         if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
           context.kitsuId = parts[1];
+        }
+      } else if (idStr.startsWith("mal:")) {
+        context.idType = "mal";
+        const parts = idStr.split(":");
+        if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+          context.malId = parts[1];
+        }
+      } else if (idStr.startsWith("anilist:")) {
+        context.idType = "anilist";
+        const parts = idStr.split(":");
+        if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+          context.anilistId = parts[1];
+        }
+      } else if (idStr.startsWith("anidb:")) {
+        context.idType = "anidb";
+        const parts = idStr.split(":");
+        if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+          context.anidbId = parts[1];
+        }
+      } else if (idStr.startsWith("tvdb:")) {
+        context.idType = "tvdb";
+        const parts = idStr.split(":");
+        if (parts.length >= 2 && parts[1]) {
+          context.tvdbId = parts[1];
         }
       } else if (/^tt\d+$/i.test(idStr)) {
         context.idType = "imdb";
@@ -12998,6 +13115,9 @@ function buildProviderRequestContext(context) {
     requestedSeason: context.requestedSeason,
     seasonProvided: context.seasonProvided === true,
     kitsuId: context.kitsuId,
+    malId: context.malId,
+    anilistId: context.anilistId,
+    anidbId: context.anidbId,
     tmdbId: context.tmdbId,
     imdbId: context.imdbId
   };
@@ -13010,7 +13130,7 @@ function parseCompositeSeriesId(rawId, type, season, episode) {
   };
   const normalizedType = String(type || "").toLowerCase();
   if (normalizedType === "movie") return parsed;
-  const match = parsed.id.match(/^(tt\d+|\d+|tmdb:\d+|kitsu:\d+):(\d+):(\d+)$/i);
+  const match = parsed.id.match(/^(tt\d+|\d+|tmdb:\d+|kitsu:\d+|mal:\d+|anilist:\d+|anidb:\d+|tvdb:\d+):(\d+):(\d+)$/i);
   if (!match) return parsed;
   parsed.id = match[1];
   parsed.season = Number.parseInt(match[2], 10);
@@ -13034,12 +13154,12 @@ function getStreams(id, type, season, episode) {
     const sharedContext = buildProviderRequestContext(providerContext);
     const promises = [];
     const likelyAnime = isLikelyAnimeRequest(normalizedType);
-    const isKitsuRequest = String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase() === "kitsu" || /^kitsu:\d+$/i.test(String(id || "").trim());
+    const isAnimeProviderRequest = ["kitsu", "mal", "anilist", "anidb"].includes(String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase()) || /^(kitsu|mal|anilist|anidb):\d+$/i.test(String(id || "").trim());
     const isImdbRequest = String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase() === "imdb" || /^tt\d+$/i.test(String(id || "").trim()) || !!(providerContext && providerContext.imdbId && /^tt\d+$/i.test(providerContext.imdbId));
     const selectedProviders = [];
     if (normalizedType === "movie") {
-      if (likelyAnime || isKitsuRequest) {
-        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie", "streamingcommunity");
+      if (likelyAnime || isAnimeProviderRequest) {
+        selectedProviders.push("animeunity", "animeworld", "animesaturn", "guardoserie");
       } else {
         selectedProviders.push("streamingcommunity", "vidxgo", "guardoserie", "altadefinizionestreaming");
       }
