@@ -8982,6 +8982,7 @@ var require_streamingcommunity = __commonJS({
               break;
             }
           }
+          if (!foundTitle) return null;
           let episodeId = null;
           if (normalizedType === "tv" && foundTitle.episodes) {
             const epNum = Number(episode) || 1;
@@ -9261,11 +9262,13 @@ var require_streamingcommunity = __commonJS({
             const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
             const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
             const resultLanguage = isItalianAudio ? "Italian" : "";
+            const isStremioAddon = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
+            const targetProxySource = isStremioAddon ? cleanIframeUrl : cleanEmbedUrl;
             const result = {
               name: `StreamingCommunity`,
               title: finalDisplayName,
               url: streamUrl,
-              easyProxySourceUrl: cleanIframeUrl,
+              easyProxySourceUrl: targetProxySource,
               quality: normalizedQuality,
               type: "direct",
               headers: streamHeaders,

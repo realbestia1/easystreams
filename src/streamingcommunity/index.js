@@ -115,6 +115,8 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
       }
     }
 
+    if (!foundTitle) return null;
+
     let episodeId = null;
     if (normalizedType === 'tv' && foundTitle.episodes) {
       const epNum = Number(episode) || 1;
@@ -425,11 +427,14 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
       const resultLanguage = isItalianAudio ? 'Italian' : '';
 
+      const isStremioAddon = Boolean(providerContext?.proxyUrl);
+      const targetProxySource = isStremioAddon ? cleanIframeUrl : cleanEmbedUrl;
+
       const result = {
         name: `StreamingCommunity`,
         title: finalDisplayName,
         url: streamUrl,
-        easyProxySourceUrl: cleanIframeUrl,
+        easyProxySourceUrl: targetProxySource,
         quality: normalizedQuality,
         type: "direct",
         headers: streamHeaders,
