@@ -8924,11 +8924,14 @@ var require_streamingcommunity = __commonJS({
       }
       return [...exact, ...prefix];
     }
-    function scrapeTitle(id, slug) {
+    function scrapeTitle(id, slug, season = null) {
       return __async(this, null, function* () {
-        var _a, _b, _c;
+        var _a, _b;
         try {
-          const r = yield fetch(`${SC_BASE}/it/titles/${id}${slug ? "-" + slug : ""}`);
+          const baseSlug = slug ? String(slug).replace(/\/season-\d+.*$/i, "") : "";
+          let url = `${SC_BASE}/it/titles/${id}${baseSlug ? "-" + baseSlug : ""}`;
+          if (season) url += `/season-${season}`;
+          const r = yield fetch(url);
           if (!r.ok) return null;
           const html = yield r.text();
           const m = html.match(/data-page="({.+?})"/);
@@ -8936,7 +8939,8 @@ var require_streamingcommunity = __commonJS({
           const page = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
           const t = (_a = page == null ? void 0 : page.props) == null ? void 0 : _a.title;
           if (!t) return null;
-          const ep = (_c = (_b = page == null ? void 0 : page.props) == null ? void 0 : _b.loadedSeason) == null ? void 0 : _c.episodes;
+          const loadedSeason = (_b = page == null ? void 0 : page.props) == null ? void 0 : _b.loadedSeason;
+          const ep = loadedSeason == null ? void 0 : loadedSeason.episodes;
           return {
             id: t.id,
             slug: t.slug,
@@ -8945,6 +8949,7 @@ var require_streamingcommunity = __commonJS({
             tmdb_id: t.tmdb_id,
             imdb_id: t.imdb_id,
             coming_soon: Boolean(t.coming_soon),
+            seasonNumber: (loadedSeason == null ? void 0 : loadedSeason.number) || null,
             episodes: (ep == null ? void 0 : ep.map((e) => ({ id: e.id, number: e.number, name: e.name }))) || null
           };
         } catch (e) {
@@ -9004,7 +9009,7 @@ var require_streamingcommunity = __commonJS({
           }
           let foundTitle = null;
           for (const m of candidateMatches.slice(0, 8)) {
-            const scraped = yield scrapeTitle(m.id, m.slug);
+            const scraped = yield scrapeTitle(m.id, m.slug, normalizedType === "tv" ? season : null);
             if (!scraped) continue;
             const matchTmdb = targetTmdb && scraped.tmdb_id !== null && String(scraped.tmdb_id) === String(targetTmdb);
             const matchImdb = targetImdb && scraped.imdb_id && String(scraped.imdb_id).toLowerCase() === String(targetImdb).toLowerCase();
@@ -9015,7 +9020,9 @@ var require_streamingcommunity = __commonJS({
           }
           if (!foundTitle || foundTitle.coming_soon) return null;
           let episodeId = null;
-          if (normalizedType === "tv" && foundTitle.episodes) {
+          if (normalizedType === "tv") {
+            const targetSeason = Number(season) || 1;
+            if (foundTitle.seasonNumber !== targetSeason || !foundTitle.episodes) return null;
             const epNum = Number(episode) || 1;
             const epObj = foundTitle.episodes.find((e) => e.number === epNum);
             if (!epObj) return null;

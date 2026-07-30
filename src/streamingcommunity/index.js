@@ -56,9 +56,12 @@ function findInSitemap(entries, name) {
   return [...exact, ...prefix];
 }
 
-async function scrapeTitle(id, slug) {
+async function scrapeTitle(id, slug, season = null) {
   try {
-    const r = await fetch(`${SC_BASE}/it/titles/${id}${slug ? '-' + slug : ''}`);
+    const baseSlug = slug ? String(slug).replace(/\/season-\d+.*$/i, '') : '';
+    let url = `${SC_BASE}/it/titles/${id}${baseSlug ? '-' + baseSlug : ''}`;
+    if (season) url += `/season-${season}`;
+    const r = await fetch(url);
     if (!r.ok) return null;
     const html = await r.text();
     const m = html.match(/data-page="({.+?})"/);
@@ -66,10 +69,12 @@ async function scrapeTitle(id, slug) {
     const page = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
     const t = page?.props?.title;
     if (!t) return null;
-    const ep = page?.props?.loadedSeason?.episodes;
+    const loadedSeason = page?.props?.loadedSeason;
+    const ep = loadedSeason?.episodes;
     return {
       id: t.id, slug: t.slug, name: t.name, type: t.type,
       tmdb_id: t.tmdb_id, imdb_id: t.imdb_id, coming_soon: Boolean(t.coming_soon),
+      seasonNumber: loadedSeason?.number || null,
       episodes: ep?.map(e => ({ id: e.id, number: e.number, name: e.name })) || null
     };
   } catch (e) { return null; }
@@ -125,7 +130,7 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
 
     let foundTitle = null;
     for (const m of candidateMatches.slice(0, 8)) {
-      const scraped = await scrapeTitle(m.id, m.slug);
+      const scraped = await scrapeTitle(m.id, m.slug, normalizedType === 'tv' ? season : null);
       if (!scraped) continue;
       const matchTmdb = targetTmdb && scraped.tmdb_id !== null && String(scraped.tmdb_id) === String(targetTmdb);
       const matchImdb = targetImdb && scraped.imdb_id && String(scraped.imdb_id).toLowerCase() === String(targetImdb).toLowerCase();
@@ -138,7 +143,9 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
     if (!foundTitle || foundTitle.coming_soon) return null;
 
     let episodeId = null;
-    if (normalizedType === 'tv' && foundTitle.episodes) {
+    if (normalizedType === 'tv') {
+      const targetSeason = Number(season) || 1;
+      if (foundTitle.seasonNumber !== targetSeason || !foundTitle.episodes) return null;
       const epNum = Number(episode) || 1;
       const epObj = foundTitle.episodes.find(e => e.number === epNum);
       if (!epObj) return null;
