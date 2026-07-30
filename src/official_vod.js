@@ -912,6 +912,13 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
       .map((candidate) => ({ ...candidate, score: scoreCandidate(target, candidate) }))
       .filter((candidate) => {
         if (candidate.score < MIN_MATCH_SCORE || candidate.isClip || candidate.isPaid) return false;
+        if (
+          target.type === 'movie'
+          && candidate.source === 'raiplay'
+          && target.year
+          && candidate.year
+          && Math.abs(Number(target.year) - Number(candidate.year)) > 1
+        ) return false;
         if (target.type !== 'series') return true;
         if (candidate.season != null && Number(candidate.season) !== Number(target.season)) return false;
         if (candidate.episode != null && Number(candidate.episode) !== Number(target.episode)) return false;
