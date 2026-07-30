@@ -171,6 +171,52 @@ function exactCandidateTitleMatch(target, candidate) {
   return targetTitle && candidateTitle === targetTitle ? 1 : 0;
 }
 
+function titleIdentityScore(leftTitles, rightTitle) {
+  if (!rightTitle) return 0;
+  return Math.max(0, ...leftTitles.filter(Boolean).map((left) => Math.max(
+    diceSimilarity(left, rightTitle),
+    tokenSimilarity(left, rightTitle),
+    0.55 * diceSimilarity(left, rightTitle) + 0.45 * tokenSimilarity(left, rightTitle)
+  )));
+}
+
+function isStrongOfficialSeriesIdentity(target, candidate) {
+  if (!['mediaset', 'witty'].includes(candidate.source)) return true;
+  const targetTitles = [target.title, target.originalTitle];
+  if (titleIdentityScore(
+    targetTitles,
+    candidate.seriesTitle
+  ) < 0.72) return false;
+  try {
+    const url = new URL(candidate.pageUrl);
+    if (url.hostname.endsWith('wittytv.it')) {
+      const seriesSlug = url.pathname.split('/').filter(Boolean)[0] || '';
+      return titleIdentityScore(
+        targetTitles,
+        titleFromSlug(seriesSlug)
+      ) >= 0.72;
+    }
+  } catch { }
+  return true;
+}
+
+function matchingMediasetEpisodeBlock(target, candidate) {
+  if (
+    candidate.source !== 'mediaset'
+    || !String(candidate.title || '').includes('/')
+  ) return null;
+  if (!target.episodeTitle) return false;
+  const parts = String(candidate.title || '').split('/');
+  return parts.some((part) => {
+    const normalizedPart = String(part)
+      .replace(/^\s*ep\.?\s*\d+\s*-\s*/i, '')
+      .replace(/\s*-\s*(?:I|II|prima|seconda)\s+parte\s*$/i, '')
+      .trim();
+    return !/\s*-\s*(?:I|II|prima|seconda)\s+parte\s*$/i.test(part)
+      && titleIdentityScore([target.episodeTitle], normalizedPart) >= 0.72;
+  });
+}
+
 function compareOfficialCandidates(target, left, right) {
   const exactDifference = exactCandidateTitleMatch(target, right) - exactCandidateTitleMatch(target, left);
   if (exactDifference !== 0) return exactDifference;
@@ -699,6 +745,7 @@ const WITTY_ORIGIN = 'https://www.wittytv.it';
 function isStrongWittyEpisode(candidate, target) {
   if (!candidate || candidate.isClip || candidate.isFullEpisode !== true) return false;
   if (!target || target.type !== 'series') return true;
+  if (!isStrongOfficialSeriesIdentity(target, candidate)) return false;
   if (candidate.episode != null && Number(candidate.episode) !== Number(target.episode)) return false;
   if (candidate.season != null && Number(candidate.season) !== Number(target.season)) return false;
   return candidate.episode != null
@@ -920,8 +967,15 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
           && Math.abs(Number(target.year) - Number(candidate.year)) > 1
         ) return false;
         if (target.type !== 'series') return true;
+        if (!isStrongOfficialSeriesIdentity(target, candidate)) return false;
+        const matchingEpisodeBlock = matchingMediasetEpisodeBlock(target, candidate);
+        if (matchingEpisodeBlock === false) return false;
         if (candidate.season != null && Number(candidate.season) !== Number(target.season)) return false;
-        if (candidate.episode != null && Number(candidate.episode) !== Number(target.episode)) return false;
+        if (
+          matchingEpisodeBlock !== true
+          && candidate.episode != null
+          && Number(candidate.episode) !== Number(target.episode)
+        ) return false;
         if (candidate.source === 'witty' && candidate.isFullEpisode !== true) return false;
         return true;
       })
