@@ -69,7 +69,7 @@ async function scrapeTitle(id, slug) {
     const ep = page?.props?.loadedSeason?.episodes;
     return {
       id: t.id, slug: t.slug, name: t.name, type: t.type,
-      tmdb_id: t.tmdb_id, imdb_id: t.imdb_id,
+      tmdb_id: t.tmdb_id, imdb_id: t.imdb_id, coming_soon: Boolean(t.coming_soon),
       episodes: ep?.map(e => ({ id: e.id, number: e.number, name: e.name })) || null
     };
   } catch (e) { return null; }
@@ -135,7 +135,7 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
       }
     }
 
-    if (!foundTitle) return null;
+    if (!foundTitle || foundTitle.coming_soon) return null;
 
     let episodeId = null;
     if (normalizedType === 'tv' && foundTitle.episodes) {
@@ -371,8 +371,8 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     ]);
 
     const embedSources = [];
-    if (vixRes?.embedUrl) embedSources.push({ ...vixRes, source: 'vixsrc' });
-    if (sczRes?.embedUrl && sczRes.embedUrl !== vixRes?.embedUrl) embedSources.push({ ...sczRes, source: 'scz' });
+    if (sczRes?.embedUrl) embedSources.push({ ...sczRes, source: 'scz' });
+    if (vixRes?.embedUrl && vixRes.embedUrl !== sczRes?.embedUrl) embedSources.push({ ...vixRes, source: 'vixsrc' });
 
     if (embedSources.length === 0) {
       console.log("[StreamingCommunity] Could not find embed src from any source");
@@ -443,8 +443,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       }
 
       const normalizedQuality = getQualityFromName(quality);
-      const hasOriginalItalian = metadata && (metadata.original_language === 'it' || metadata.original_language === 'ita');
-      const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
+      const isItalianAudio = isSczSource || (playlistFetched && hasItalianAudio);
       const resultLanguage = isItalianAudio ? 'Italian' : '';
 
       const isStremioAddon = Boolean(providerContext?.proxyUrl);

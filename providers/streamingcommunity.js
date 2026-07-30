@@ -403,6 +403,7 @@ function scrapeTitle(id, slug) {
         type: t.type,
         tmdb_id: t.tmdb_id,
         imdb_id: t.imdb_id,
+        coming_soon: Boolean(t.coming_soon),
         episodes: (ep == null ? void 0 : ep.map((e) => ({ id: e.id, number: e.number, name: e.name }))) || null
       };
     } catch (e) {
@@ -471,7 +472,7 @@ function resolveSczEmbed(metadata, normalizedType, season, episode, rawId) {
           break;
         }
       }
-      if (!foundTitle) return null;
+      if (!foundTitle || foundTitle.coming_soon) return null;
       let episodeId = null;
       if (normalizedType === "tv" && foundTitle.episodes) {
         const epNum = Number(episode) || 1;
@@ -683,8 +684,8 @@ function getStreams(id, type, season, episode, providerContext = null) {
         resolveSczEmbed(metadata, normalizedType, resolvedSeason, episode, id)
       ]);
       const embedSources = [];
-      if (vixRes == null ? void 0 : vixRes.embedUrl) embedSources.push(__spreadProps(__spreadValues({}, vixRes), { source: "vixsrc" }));
-      if ((sczRes == null ? void 0 : sczRes.embedUrl) && sczRes.embedUrl !== (vixRes == null ? void 0 : vixRes.embedUrl)) embedSources.push(__spreadProps(__spreadValues({}, sczRes), { source: "scz" }));
+      if (sczRes == null ? void 0 : sczRes.embedUrl) embedSources.push(__spreadProps(__spreadValues({}, sczRes), { source: "scz" }));
+      if ((vixRes == null ? void 0 : vixRes.embedUrl) && vixRes.embedUrl !== (sczRes == null ? void 0 : sczRes.embedUrl)) embedSources.push(__spreadProps(__spreadValues({}, vixRes), { source: "vixsrc" }));
       if (embedSources.length === 0) {
         console.log("[StreamingCommunity] Could not find embed src from any source");
         return [];
@@ -748,8 +749,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           continue;
         }
         const normalizedQuality = getQualityFromName(quality);
-        const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-        const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
+        const isItalianAudio = isSczSource || playlistFetched && hasItalianAudio;
         const resultLanguage = isItalianAudio ? "Italian" : "";
         const isStremioAddon = Boolean(providerContext == null ? void 0 : providerContext.proxyUrl);
         const targetProxySource = isStremioAddon ? cleanIframeUrl : cleanEmbedUrl;
