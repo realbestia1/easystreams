@@ -103,7 +103,16 @@ function readPositiveIntEnv(name, fallback) {
     return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-app.get('/health/scrapling', (req, res) => {
+const ADDON_SECRET = process.env.ADDON_SECRET || '';
+
+function requireSecret(req, res, next) {
+    if (!ADDON_SECRET) return next();
+    const provided = req.headers['x-addon-secret'] || req.query.secret;
+    if (provided !== ADDON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+    next();
+}
+
+app.get('/health/scrapling', requireSecret, (req, res) => {
     res.json({
         ok: true,
         scrapling: getFlareStats()
