@@ -342,6 +342,129 @@ try {
 } catch (_) {
   ProxyAgent = null;
 }
+var SC_BASE = "https://streamingcommunityz.team";
+var _sitemapCache = null;
+var _sitemapPromise = null;
+function getSitemap() {
+  return __async(this, null, function* () {
+    if (_sitemapCache) return _sitemapCache;
+    if (_sitemapPromise) return yield _sitemapPromise;
+    _sitemapPromise = (() => __async(null, null, function* () {
+      try {
+        const r = yield fetch(`${SC_BASE}/titles_it_sitemap.xml`);
+        if (!r.ok) return [];
+        const xml = yield r.text();
+        const entries = [];
+        const re = /titles\/(\d+)-([^<]+)/g;
+        let m;
+        while (m = re.exec(xml)) entries.push({ id: Number(m[1]), slug: m[2] });
+        _sitemapCache = entries;
+        return entries;
+      } catch (e) {
+        console.warn("[StreamingCommunity] Sitemap fetch error:", e.message);
+        return [];
+      } finally {
+        _sitemapPromise = null;
+      }
+    }))();
+    return yield _sitemapPromise;
+  });
+}
+function findInSitemap(entries, name) {
+  if (!name) return [];
+  const cname = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (cname.length < 2) return [];
+  const exact = [];
+  const prefix = [];
+  for (const e of entries) {
+    const cslug = e.slug.replace(/[^a-z0-9]/g, "");
+    if (cslug === cname) exact.push(e);
+    else if (cslug.startsWith(cname) || cname.startsWith(cslug)) prefix.push(e);
+  }
+  return [...exact, ...prefix];
+}
+function scrapeTitle(id, slug) {
+  return __async(this, null, function* () {
+    var _a, _b, _c;
+    try {
+      const r = yield fetch(`${SC_BASE}/it/titles/${id}${slug ? "-" + slug : ""}`);
+      if (!r.ok) return null;
+      const html = yield r.text();
+      const m = html.match(/data-page="({.+?})"/);
+      if (!m) return null;
+      const page = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+      const t = (_a = page == null ? void 0 : page.props) == null ? void 0 : _a.title;
+      if (!t) return null;
+      const ep = (_c = (_b = page == null ? void 0 : page.props) == null ? void 0 : _b.loadedSeason) == null ? void 0 : _c.episodes;
+      return {
+        id: t.id,
+        slug: t.slug,
+        name: t.name,
+        type: t.type,
+        tmdb_id: t.tmdb_id,
+        imdb_id: t.imdb_id,
+        episodes: (ep == null ? void 0 : ep.map((e) => ({ id: e.id, number: e.number, name: e.name }))) || null
+      };
+    } catch (e) {
+      return null;
+    }
+  });
+}
+function getCamEmbed(titleId, episodeId) {
+  return __async(this, null, function* () {
+    try {
+      let url = `${SC_BASE}/it/iframe/${titleId}`;
+      if (episodeId) url += `?episode_id=${episodeId}`;
+      const r = yield fetch(url);
+      if (!r.ok) return null;
+      const m = (yield r.text()).match(/src="(https:\/\/vixcloud\.co\/embed\/[^"]+)"/);
+      return m ? m[1].replace(/&amp;/g, "&") : null;
+    } catch (e) {
+      return null;
+    }
+  });
+}
+function resolveSczEmbed(metadata, normalizedType, season, episode, rawId) {
+  return __async(this, null, function* () {
+    try {
+      const entries = yield getSitemap();
+      if (!entries.length) return null;
+      const titlesToTry = [metadata == null ? void 0 : metadata.title, metadata == null ? void 0 : metadata.name, metadata == null ? void 0 : metadata.original_title, metadata == null ? void 0 : metadata.original_name].filter(Boolean);
+      const candidateMatches = [];
+      for (const t of titlesToTry) {
+        for (const m of findInSitemap(entries, t)) {
+          if (!candidateMatches.some((c) => c.id === m.id)) candidateMatches.push(m);
+        }
+      }
+      const inputIsTmdb = /^\d+$/.test(String(rawId).replace(/^tmdb:/i, ""));
+      const targetTmdb = (metadata == null ? void 0 : metadata.id) || (inputIsTmdb ? String(rawId).replace(/^tmdb:/i, "") : null);
+      const targetImdb = (metadata == null ? void 0 : metadata.imdb_id) || (!inputIsTmdb ? String(rawId) : null);
+      let foundTitle = null;
+      for (const m of candidateMatches.slice(0, 8)) {
+        const scraped = yield scrapeTitle(m.id, m.slug);
+        if (!scraped) continue;
+        const matchTmdb = targetTmdb && scraped.tmdb_id !== null && String(scraped.tmdb_id) === String(targetTmdb);
+        const matchImdb = targetImdb && scraped.imdb_id && String(scraped.imdb_id).toLowerCase() === String(targetImdb).toLowerCase();
+        if (matchTmdb || matchImdb) {
+          foundTitle = scraped;
+          break;
+        }
+      }
+      if (!foundTitle) return null;
+      let episodeId = null;
+      if (normalizedType === "tv" && foundTitle.episodes) {
+        const epNum = Number(episode) || 1;
+        const epObj = foundTitle.episodes.find((e) => e.number === epNum);
+        if (!epObj) return null;
+        episodeId = epObj.id;
+      }
+      return yield getCamEmbed(foundTitle.id, episodeId);
+    } catch (e) {
+      console.error("[StreamingCommunity] SCZ embed resolve error:", e.message);
+      return null;
+    }
+  });
+}
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 function getCommonHeaders() {
@@ -366,9 +489,10 @@ function getEmbedHeaders(embedUrl) {
   };
 }
 function getPlaylistHeaders(embedUrl) {
+  const cleanReferer = String(embedUrl || "").replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
   return {
     "User-Agent": USER_AGENT,
-    "Referer": embedUrl,
+    "Referer": cleanReferer,
     "Origin": getStreamingCommunityBaseUrl(),
     "Accept": "*/*",
     "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -527,109 +651,102 @@ function getStreams(id, type, season, episode, providerContext = null) {
         }
       }
       console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-      const response = yield fetch(apiUrl, {
-        headers: commonHeaders,
-        dispatcher: proxyAgent || void 0
-      });
-      if (!response.ok) {
-        console.error(`[StreamingCommunity] Failed to fetch page: ${response.status}`);
+      const [vixEmbedUrl, sczEmbedUrl] = yield Promise.all([
+        fetch(apiUrl, { headers: commonHeaders, dispatcher: proxyAgent || void 0 }).then((r) => r.ok ? r.json() : null).then((payload) => extractEmbedSrcFromApiPayload(payload)).catch(() => null),
+        resolveSczEmbed(metadata, normalizedType, resolvedSeason, episode, id)
+      ]);
+      const embedSources = [];
+      if (vixEmbedUrl) embedSources.push({ url: vixEmbedUrl, source: "vixsrc" });
+      if (sczEmbedUrl && sczEmbedUrl !== vixEmbedUrl) embedSources.push({ url: sczEmbedUrl, source: "scz" });
+      if (embedSources.length === 0) {
+        console.log("[StreamingCommunity] Could not find embed src from any source");
         return [];
       }
-      const apiPayload = yield response.json().catch(() => null);
-      const embedUrl = extractEmbedSrcFromApiPayload(apiPayload);
-      if (!embedUrl) {
-        console.log("[StreamingCommunity] Could not find embed src in API payload");
-        return [];
-      }
-      let embedHtml;
-      try {
-        console.log(`[StreamingCommunity] Fetching embed: ${embedUrl}`);
-        const embedResponse = yield fetch(embedUrl, {
-          headers: getEmbedHeaders(embedUrl),
-          dispatcher: proxyAgent || void 0
-        });
-        if (!embedResponse.ok) {
-          console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
-          return [];
-        }
-        embedHtml = yield embedResponse.text();
-      } catch (e) {
-        console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
-        return [];
-      }
-      if (!embedHtml) return [];
-      const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
-      if (!masterPlaylist) {
-        console.log("[StreamingCommunity] Could not find playlist info in HTML");
-        return [];
-      }
-      const [baseUrl2, existingQuery] = masterPlaylist.url.split("?");
-      const urlWithExt = baseUrl2.endsWith(".m3u8") ? baseUrl2 : `${baseUrl2}.m3u8`;
-      const streamUrl = `${urlWithExt}${existingQuery ? "?" + existingQuery + "&" : "?"}token=${encodeURIComponent(masterPlaylist.token)}&expires=${encodeURIComponent(masterPlaylist.expires)}&h=1&lang=it`;
-      const streamHeaders = getPlaylistHeaders(embedUrl);
-      console.log(`[StreamingCommunity] Final stream URL: ${streamUrl}`);
-      let quality = "1080p";
-      let hasItalianAudio = false;
-      let playlistFetched = false;
-      try {
-        const playlistResponse = yield fetch(streamUrl, {
-          headers: streamHeaders,
-          dispatcher: proxyAgent || void 0
-        });
-        if (!playlistResponse.ok) {
-          console.warn(`[StreamingCommunity] Playlist pre-check failed: ${playlistResponse.status}, stream not playable`);
-          return [];
-        }
-        playlistFetched = true;
-        const playlistText = yield playlistResponse.text();
-        if (playlistText) {
-          hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
-          const detected = checkQualityFromText(playlistText);
-          if (detected) quality = detected;
-          const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-          if (!hasItalianAudio && !originalLanguageItalian) {
-            console.log(`[StreamingCommunity] No Italian audio found. Showing without flag.`);
+      const streams = [];
+      for (const item of embedSources) {
+        const embedUrl = item.url;
+        const isSczSource = item.source === "scz";
+        let embedHtml;
+        try {
+          console.log(`[StreamingCommunity] Fetching embed (${item.source}): ${embedUrl}`);
+          const embedResponse = yield fetch(embedUrl, {
+            headers: getEmbedHeaders(embedUrl),
+            dispatcher: proxyAgent || void 0
+          });
+          if (!embedResponse.ok) {
+            console.error(`[StreamingCommunity] Failed to fetch embed: ${embedResponse.status}`);
+            continue;
           }
+          embedHtml = yield embedResponse.text();
+        } catch (e) {
+          console.error(`[StreamingCommunity] Failed to fetch embed: ${e.message}`);
+          continue;
         }
-      } catch (e) {
-        console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
-        return [];
-      }
-      const normalizedQuality = getQualityFromName(quality);
-      const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
-      const isItalianAudio = playlistFetched ? hasItalianAudio : true;
-      const resultLanguage = isItalianAudio || hasOriginalItalian ? "Italian" : "";
-      if (providerContext == null ? void 0 : providerContext.proxyUrl) {
-        const rawPageUrl = url.endsWith("/") ? url : `${url}/`;
-        console.log(`[StreamingCommunity] Proxy enabled, returning raw page URL: ${rawPageUrl}`);
-        const result2 = {
+        if (!embedHtml) continue;
+        const masterPlaylist = extractMasterPlaylistFromEmbedHtml(embedHtml);
+        if (!masterPlaylist) {
+          console.log("[StreamingCommunity] Could not find playlist info in HTML");
+          continue;
+        }
+        const [playlistRawUrl, existingQuery] = masterPlaylist.url.split("?");
+        const urlWithExt = playlistRawUrl.endsWith(".m3u8") ? playlistRawUrl : `${playlistRawUrl}.m3u8`;
+        const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, "h=1", "lang=it"].filter(Boolean);
+        const rawStreamUrl = `${urlWithExt}?${queryParts.join("&")}`;
+        const streamUrl = rawStreamUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
+        const cleanEmbedUrl = embedUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
+        const streamHeaders = getPlaylistHeaders(cleanEmbedUrl);
+        console.log(`[StreamingCommunity] Final stream URL (${item.source}): ${streamUrl}`);
+        let quality = "1080p";
+        let hasItalianAudio = false;
+        let playlistFetched = false;
+        try {
+          const playlistResponse = yield fetch(streamUrl, {
+            headers: streamHeaders,
+            dispatcher: proxyAgent || void 0
+          });
+          if (!playlistResponse.ok) {
+            console.warn(`[StreamingCommunity] Playlist pre-check failed: ${playlistResponse.status}, stream not playable`);
+            continue;
+          }
+          playlistFetched = true;
+          const playlistText = yield playlistResponse.text();
+          if (playlistText) {
+            hasItalianAudio = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
+            const detected = checkQualityFromText(playlistText);
+            if (detected) quality = detected;
+          }
+        } catch (e) {
+          console.warn(`[StreamingCommunity] Playlist pre-check failed, continuing:`, e);
+          continue;
+        }
+        const normalizedQuality = getQualityFromName(quality);
+        const hasOriginalItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");
+        const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
+        const resultLanguage = isItalianAudio ? "Italian" : "";
+        const result = {
           name: `StreamingCommunity`,
           title: finalDisplayName,
-          url: rawPageUrl,
-          easyProxySourceUrl: rawPageUrl.replace("vixsrc.to", "cromosino.space"),
+          url: streamUrl,
+          easyProxySourceUrl: cleanEmbedUrl,
           quality: normalizedQuality,
           type: "direct",
-          language: resultLanguage,
+          headers: streamHeaders,
           behaviorHints: {
             notWebReady: false
-          }
+          },
+          language: resultLanguage
         };
-        return [formatStream(result2, "StreamingCommunity")].filter((s) => s !== null);
+        const formatted = formatStream(result, "StreamingCommunity");
+        if (formatted) streams.push(formatted);
       }
-      const result = {
-        name: `StreamingCommunity`,
-        title: finalDisplayName,
-        url: streamUrl,
-        easyProxySourceUrl: embedUrl.replace("vixsrc.to", "cromosino.space"),
-        quality: normalizedQuality,
-        type: "direct",
-        headers: streamHeaders,
-        behaviorHints: {
-          notWebReady: false
-        },
-        language: resultLanguage
-      };
-      return [formatStream(result, "StreamingCommunity")].filter((s) => s !== null);
+      const itaStreams = streams.filter((s) => {
+        var _a;
+        return Boolean(s.language) || ((_a = s.title) == null ? void 0 : _a.includes("\u{1F1EE}\u{1F1F9}"));
+      });
+      if (itaStreams.length > 0) {
+        return [itaStreams[0]];
+      }
+      return streams.length > 0 ? [streams[0]] : [];
     } catch (error) {
       console.error("[StreamingCommunity] Error:", error);
       return [];
