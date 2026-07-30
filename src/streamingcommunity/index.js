@@ -115,8 +115,6 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
       }
     }
 
-    if (!foundTitle) return null;
-
     let episodeId = null;
     if (normalizedType === 'tv' && foundTitle.episodes) {
       const epNum = Number(episode) || 1;
@@ -125,7 +123,11 @@ async function resolveSczEmbed(metadata, normalizedType, season, episode, rawId)
       episodeId = epObj.id;
     }
 
-    return await getCamEmbed(foundTitle.id, episodeId);
+    const iframeUrl = `${SC_BASE}/it/iframe/${foundTitle.id}${episodeId ? '?episode_id=' + episodeId : ''}`;
+    const embedUrl = await getCamEmbed(foundTitle.id, episodeId);
+    if (!embedUrl) return null;
+
+    return { embedUrl, iframeUrl };
   } catch (e) {
     console.error('[StreamingCommunity] SCZ embed resolve error:', e.message);
     return null;
@@ -335,17 +337,20 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
 
     // Fetch embed URLs concurrently from both Vixsrc API and StreamingCommunityZ
-    const [vixEmbedUrl, sczEmbedUrl] = await Promise.all([
+    const [vixRes, sczRes] = await Promise.all([
       fetch(apiUrl, { headers: commonHeaders, dispatcher: proxyAgent || undefined })
         .then(r => r.ok ? r.json() : null)
-        .then(payload => extractEmbedSrcFromApiPayload(payload))
+        .then(payload => {
+          const embedUrl = extractEmbedSrcFromApiPayload(payload);
+          return embedUrl ? { embedUrl, iframeUrl: url } : null;
+        })
         .catch(() => null),
       resolveSczEmbed(metadata, normalizedType, resolvedSeason, episode, id)
     ]);
 
     const embedSources = [];
-    if (vixEmbedUrl) embedSources.push({ url: vixEmbedUrl, source: 'vixsrc' });
-    if (sczEmbedUrl && sczEmbedUrl !== vixEmbedUrl) embedSources.push({ url: sczEmbedUrl, source: 'scz' });
+    if (vixRes?.embedUrl) embedSources.push({ ...vixRes, source: 'vixsrc' });
+    if (sczRes?.embedUrl && sczRes.embedUrl !== vixRes?.embedUrl) embedSources.push({ ...sczRes, source: 'scz' });
 
     if (embedSources.length === 0) {
       console.log("[StreamingCommunity] Could not find embed src from any source");
@@ -355,7 +360,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
     const streams = [];
 
     for (const item of embedSources) {
-      const embedUrl = item.url;
+      const embedUrl = item.embedUrl;
       const isSczSource = item.source === 'scz';
       let embedHtml;
       try {
@@ -387,6 +392,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       const rawStreamUrl = `${urlWithExt}?${queryParts.join('&')}`;
       const streamUrl = rawStreamUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
       const cleanEmbedUrl = embedUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
+      const cleanIframeUrl = (item.iframeUrl || cleanEmbedUrl).replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
       const streamHeaders = getPlaylistHeaders(cleanEmbedUrl);
       console.log(`[StreamingCommunity] Final stream URL (${item.source}): ${streamUrl}`);
 
@@ -419,13 +425,11 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       const isItalianAudio = isSczSource || (playlistFetched ? hasItalianAudio : true) || hasOriginalItalian;
       const resultLanguage = isItalianAudio ? 'Italian' : '';
 
-
-
       const result = {
         name: `StreamingCommunity`,
         title: finalDisplayName,
         url: streamUrl,
-        easyProxySourceUrl: cleanEmbedUrl,
+        easyProxySourceUrl: cleanIframeUrl,
         quality: normalizedQuality,
         type: "direct",
         headers: streamHeaders,

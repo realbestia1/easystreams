@@ -450,7 +450,6 @@ function resolveSczEmbed(metadata, normalizedType, season, episode, rawId) {
           break;
         }
       }
-      if (!foundTitle) return null;
       let episodeId = null;
       if (normalizedType === "tv" && foundTitle.episodes) {
         const epNum = Number(episode) || 1;
@@ -458,7 +457,10 @@ function resolveSczEmbed(metadata, normalizedType, season, episode, rawId) {
         if (!epObj) return null;
         episodeId = epObj.id;
       }
-      return yield getCamEmbed(foundTitle.id, episodeId);
+      const iframeUrl = `${SC_BASE}/it/iframe/${foundTitle.id}${episodeId ? "?episode_id=" + episodeId : ""}`;
+      const embedUrl = yield getCamEmbed(foundTitle.id, episodeId);
+      if (!embedUrl) return null;
+      return { embedUrl, iframeUrl };
     } catch (e) {
       console.error("[StreamingCommunity] SCZ embed resolve error:", e.message);
       return null;
@@ -651,20 +653,23 @@ function getStreams(id, type, season, episode, providerContext = null) {
         }
       }
       console.log(`[StreamingCommunity] Fetching API: ${apiUrl}`);
-      const [vixEmbedUrl, sczEmbedUrl] = yield Promise.all([
-        fetch(apiUrl, { headers: commonHeaders, dispatcher: proxyAgent || void 0 }).then((r) => r.ok ? r.json() : null).then((payload) => extractEmbedSrcFromApiPayload(payload)).catch(() => null),
+      const [vixRes, sczRes] = yield Promise.all([
+        fetch(apiUrl, { headers: commonHeaders, dispatcher: proxyAgent || void 0 }).then((r) => r.ok ? r.json() : null).then((payload) => {
+          const embedUrl = extractEmbedSrcFromApiPayload(payload);
+          return embedUrl ? { embedUrl, iframeUrl: url } : null;
+        }).catch(() => null),
         resolveSczEmbed(metadata, normalizedType, resolvedSeason, episode, id)
       ]);
       const embedSources = [];
-      if (vixEmbedUrl) embedSources.push({ url: vixEmbedUrl, source: "vixsrc" });
-      if (sczEmbedUrl && sczEmbedUrl !== vixEmbedUrl) embedSources.push({ url: sczEmbedUrl, source: "scz" });
+      if (vixRes == null ? void 0 : vixRes.embedUrl) embedSources.push(__spreadProps(__spreadValues({}, vixRes), { source: "vixsrc" }));
+      if ((sczRes == null ? void 0 : sczRes.embedUrl) && sczRes.embedUrl !== (vixRes == null ? void 0 : vixRes.embedUrl)) embedSources.push(__spreadProps(__spreadValues({}, sczRes), { source: "scz" }));
       if (embedSources.length === 0) {
         console.log("[StreamingCommunity] Could not find embed src from any source");
         return [];
       }
       const streams = [];
       for (const item of embedSources) {
-        const embedUrl = item.url;
+        const embedUrl = item.embedUrl;
         const isSczSource = item.source === "scz";
         let embedHtml;
         try {
@@ -694,6 +699,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         const rawStreamUrl = `${urlWithExt}?${queryParts.join("&")}`;
         const streamUrl = rawStreamUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
         const cleanEmbedUrl = embedUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
+        const cleanIframeUrl = (item.iframeUrl || cleanEmbedUrl).replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
         const streamHeaders = getPlaylistHeaders(cleanEmbedUrl);
         console.log(`[StreamingCommunity] Final stream URL (${item.source}): ${streamUrl}`);
         let quality = "1080p";
@@ -727,7 +733,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
           name: `StreamingCommunity`,
           title: finalDisplayName,
           url: streamUrl,
-          easyProxySourceUrl: cleanEmbedUrl,
+          easyProxySourceUrl: cleanIframeUrl,
           quality: normalizedQuality,
           type: "direct",
           headers: streamHeaders,
