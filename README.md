@@ -11,10 +11,13 @@ Il progetto è progettato per essere versatile e può essere utilizzato in due m
 -   **AnimeUnity** (Anime)
 -   **AnimeWorld** (Anime)
 -   **AnimeSaturn** (Anime)
--   **GuardaHD** (Film)
 -   **GuardoSerie** (Film & Serie TV)
 -   **StreamingCommunity** (Film & Serie TV)
--   **CB01** (Film & Serie TV)
+-   **AltadefinizioneStreaming** (Film & Serie TV)
+-   **VidxGo** (Film & Serie TV - solo Addon Stremio con EasyProxy)
+-   **Mediaset Infinity** (TV & VOD - solo Addon Stremio con EasyProxy)
+-   **RaiPlay** (TV & VOD - solo Addon Stremio con EasyProxy)
+-   **WittyTV** (TV & VOD - solo Addon Stremio con EasyProxy)
 
 ---
 
@@ -68,28 +71,7 @@ Tuttavia, tieni presente che **alcuni provider potrebbero non funzionare** a cau
 
 Quando l'addon viene eseguito su un server remoto (non in locale), alcuni provider potrebbero riscontrare problemi tecnici dovuti alle protezioni dei siti sorgente.
 
-### EasyProxy e provider ufficiali
 
-L'addon Stremio supporta anche Mediaset Infinity, WittyTV e RaiPlay tramite
-EasyProxy. Questi provider richiedono un indirizzo EasyProxy con password e non
-vengono avviati quando EasyProxy non è configurato.
-
-Mediaset, WittyTV e RaiPlay sono intenzionalmente disponibili soltanto
-nell'addon Stremio: non vengono inseriti nel manifest, nell'aggregatore o nei
-bundle dei provider Nuvio, perché i plugin Nuvio non possono ricevere la
-configurazione EasyProxy richiesta per riprodurli.
-
-
-### ⚡ SuperVideo (Proxy Cloudflare Worker)
-**SuperVideo** utilizza forti protezioni Cloudflare che spesso bloccano i server cloud (403 Forbidden). Per risolvere questo problema, è necessario configurare un **Cloudflare Worker** come proxy.
-
-1.  Crea un nuovo Worker su Cloudflare.
-2.  Incolla il codice contenuto nel file `worker.js` di questo repository.
-3.  Salva e pubblica il worker per ottenere un URL (es. `https://mio-proxy.workers.dev/`).
-4.  Imposta la variabile d'ambiente `CF_PROXY_URL` con l'URL del worker (consigliato):
-    ```text
-    CF_PROXY_URL=https://mio-proxy.workers.dev
-    ```
 ---
 
 ## 🛠️ Sviluppo
