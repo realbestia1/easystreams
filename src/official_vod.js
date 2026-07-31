@@ -181,11 +181,10 @@ function titleIdentityScore(leftTitles, rightTitle) {
 }
 
 function isStrongOfficialSeriesIdentity(target, candidate) {
-  if (!['mediaset', 'witty'].includes(candidate.source)) return true;
   const targetTitles = [target.title, target.originalTitle];
   if (titleIdentityScore(
     targetTitles,
-    candidate.seriesTitle
+    candidate.seriesTitle || candidate.title
   ) < 0.72) return false;
   try {
     const url = new URL(candidate.pageUrl);
