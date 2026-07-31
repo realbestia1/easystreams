@@ -991,9 +991,15 @@ async function getOfficialStreams(provider, id, type, season, episode, context =
           : { available: true, quality: '720p' };
         if (!inspection.available) continue;
         const label = providerLabel(candidate);
+        const siteSeriesTitle = cleanTitle(decodeHtml(candidate.seriesTitle || candidate.title || target.title));
+        const siteMovieTitle = cleanTitle(decodeHtml(candidate.title || candidate.seriesTitle || target.title));
+        const season = candidate.season != null ? candidate.season : target.season;
+        const episode = candidate.episode != null ? candidate.episode : target.episode;
         const title = target.type === 'series'
-          ? `${target.title} S${String(target.season).padStart(2, '0')}E${String(target.episode).padStart(2, '0')}`
-          : target.title;
+          ? (season != null && episode != null
+              ? `${siteSeriesTitle} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+              : siteSeriesTitle)
+          : siteMovieTitle;
         const stream = formatStream({
           url: buildLazyExtractorUrl(candidate, proxyEntries[0]),
           name: label,
