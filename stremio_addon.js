@@ -1602,13 +1602,13 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.2.0',
+    version: '1.3.16',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
     resources: ['stream'],
     types: ['movie', 'series', 'anime'],
-    idPrefixes: ['tt', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb'],
+    idPrefixes: ['tt', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb', 'tvdb'],
     behaviorHints: {
         configurable: true
     },
