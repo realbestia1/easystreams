@@ -1,5 +1,5 @@
 function getStreamingCommunityBaseUrl() {
-  return "https://cromosino.space";
+  return "https://komiknostalgia.id";
 }
 
 const { formatStream } = require('../formatter.js');
@@ -190,7 +190,7 @@ function getEmbedHeaders(embedUrl) {
 }
 
 function getPlaylistHeaders(embedUrl) {
-  const cleanReferer = String(embedUrl || '').replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
+  const cleanReferer = String(embedUrl || '').replace('vixcloud.co', 'komiknostalgia.id').replace('vixsrc.to', 'komiknostalgia.id');
   return {
     "User-Agent": USER_AGENT,
     "Referer": cleanReferer,
@@ -419,9 +419,9 @@ async function getStreams(id, type, season, episode, providerContext = null) {
       const urlWithExt = playlistRawUrl.endsWith('.m3u8') ? playlistRawUrl : `${playlistRawUrl}.m3u8`;
       const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, 'h=1', 'lang=it'].filter(Boolean);
       const rawStreamUrl = `${urlWithExt}?${queryParts.join('&')}`;
-      const streamUrl = rawStreamUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
-      const cleanEmbedUrl = embedUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
-      const cleanIframeUrl = (item.iframeUrl || cleanEmbedUrl).replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
+      const streamUrl = rawStreamUrl.replace('vixcloud.co', 'komiknostalgia.id').replace('vixsrc.to', 'komiknostalgia.id');
+      const cleanEmbedUrl = embedUrl.replace('vixcloud.co', 'komiknostalgia.id').replace('vixsrc.to', 'komiknostalgia.id');
+      const cleanIframeUrl = (item.iframeUrl || cleanEmbedUrl).replace('vixcloud.co', 'komiknostalgia.id').replace('vixsrc.to', 'komiknostalgia.id');
       const streamHeaders = getPlaylistHeaders(cleanEmbedUrl);
       console.log(`[StreamingCommunity] Final stream URL (${item.source}): ${streamUrl}`);
 
