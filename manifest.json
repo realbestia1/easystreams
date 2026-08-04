@@ -1,7 +1,20 @@
 {
   "name": "EasyStreams",
-  "version": "1.3.19",
+  "version": "1.3.20",
   "scrapers": [
+    {
+      "id": "easystreams-partite",
+      "name": "Partite.cc",
+      "version": "1.0.0",
+      "description": "Film e serie TV da Partite.cc",
+      "resources": ["stream"],
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"],
+      "idPrefixes": ["tt"],
+      "filename": "providers/partite.js",
+      "supportedTypes": ["movie", "tv", "series"],
+      "enabled": true
+    },
     {
       "id": "easystreams-guardoserie",
       "name": "Guardoserie",

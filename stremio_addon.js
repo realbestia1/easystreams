@@ -1517,6 +1517,7 @@ const providers = {
     streamingcommunity: require('./src/streamingcommunity/index.js'),
     mediaset: require('./src/mediaset/index.js'),
     raiplay: require('./src/raiplay/index.js'),
+    partite: require('./src/partite/index.js'),
 
 };
 
@@ -1583,11 +1584,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         } else if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie']
-                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming', 'partite'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie'];
         } else {
-            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming', 'partite'];
         }
     } else if (normalizedType === 'anime') {
         plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
@@ -1595,11 +1596,11 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
         if (isImdbRequest) {
             plan = likelyAnime
                 ? ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo']
-                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+                : ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming', 'partite'];
         } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_SERIES) {
             plan = ['animeunity', 'animeworld', 'animesaturn', 'guardoserie', 'vidxgo'];
         } else {
-            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming'];
+            plan = ['mediaset', 'raiplay', 'streamingcommunity', 'vidxgo', 'guardoserie', 'altadefinizionestreaming', 'partite'];
         }
     }
 
