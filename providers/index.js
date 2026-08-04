@@ -8301,7 +8301,7 @@ var require_guardoserie = __commonJS({
       };
     } else {
       let getGuardoserieBaseUrl2 = function() {
-        return "https://guardoserie.study";
+        return guardoserieBaseUrl;
       }, getMappingApiUrl2 = function() {
         return "https://animemapping.realbestia.com";
       }, normalizeConfigBoolean2 = function(value) {
@@ -8479,6 +8479,28 @@ var require_guardoserie = __commonJS({
       const { USER_AGENT, getProxiedUrl } = require_common();
       const { extractLoadm } = require_extractors();
       const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || "").trim().toLowerCase() === "1";
+      const GUARDOSERIE_CONFIG_URL = "https://raw.githubusercontent.com/realbestia1/damains/refs/heads/main/damains.json";
+      let guardoserieBaseUrl = null;
+      let guardoserieConfigLoaded = false;
+      function loadGuardoserieBaseUrl() {
+        return __async(this, null, function* () {
+          if (guardoserieConfigLoaded) return;
+          guardoserieConfigLoaded = true;
+          if (!GUARDOSERIE_CONFIG_URL) return;
+          try {
+            const response = yield fetch(GUARDOSERIE_CONFIG_URL, {
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(5e3)
+            });
+            if (!response.ok) return;
+            const config = yield response.json();
+            const baseUrl = String(config.guardoserie || "").trim().replace(/\/+$/, "");
+            if (/^https?:\/\//i.test(baseUrl)) guardoserieBaseUrl = baseUrl;
+          } catch (e) {
+            console.error("[Guardoserie] Config JSON error:", e.message);
+          }
+        });
+      }
       const TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
       function getIdsFromAnimeProvider(provider, externalId, season, episode, providerContext = null) {
         return __async(this, null, function* () {
@@ -8563,6 +8585,7 @@ var require_guardoserie = __commonJS({
       function getStreams2(id, type, season, episode, providerContext = null) {
         return __async(this, null, function* () {
           var _a, _b;
+          yield loadGuardoserieBaseUrl();
           const benchStart = Date.now();
           const bench = [];
           const mark = (step, meta = {}) => {
@@ -8822,7 +8845,7 @@ var require_guardoserie = __commonJS({
             try {
               let extracted;
               if (playerLink.includes("loadm")) {
-                const domain = "guardoserie.study";
+                const domain = new URL(getGuardoserieBaseUrl2()).hostname;
                 extracted = yield extractLoadm(playerLink, domain);
                 if (!extracted) return [];
                 const qualityResults = yield Promise.all((extracted || []).map((s) => checkQualityFromPlaylist(s.url, s.headers)));

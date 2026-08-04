@@ -28,8 +28,28 @@ if (!IS_SERVER) {
     const { USER_AGENT, getProxiedUrl } = require('../extractors/common');
     const { extractLoadm } = require('../extractors');
     const STEP_BENCH_ENABLED = String(process.env.PROVIDER_STEP_BENCH || '').trim().toLowerCase() === '1';
+    const GUARDOSERIE_CONFIG_URL = 'https://raw.githubusercontent.com/realbestia1/damains/refs/heads/main/damains.json';
+    let guardoserieBaseUrl = null;
+    let guardoserieConfigLoaded = false;
+    async function loadGuardoserieBaseUrl() {
+        if (guardoserieConfigLoaded) return;
+        guardoserieConfigLoaded = true;
+        if (!GUARDOSERIE_CONFIG_URL) return;
+        try {
+            const response = await fetch(GUARDOSERIE_CONFIG_URL, {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(5000)
+            });
+            if (!response.ok) return;
+            const config = await response.json();
+            const baseUrl = String(config.guardoserie || '').trim().replace(/\/+$/, '');
+            if (/^https?:\/\//i.test(baseUrl)) guardoserieBaseUrl = baseUrl;
+        } catch (e) {
+            console.error('[Guardoserie] Config JSON error:', e.message);
+        }
+    }
     function getGuardoserieBaseUrl() {
-        return 'https://guardoserie.study';
+        return guardoserieBaseUrl;
     }
     const TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
     function getMappingApiUrl() {
@@ -361,6 +381,7 @@ if (!IS_SERVER) {
     }
 
     async function getStreams(id, type, season, episode, providerContext = null) {
+        await loadGuardoserieBaseUrl();
         const benchStart = Date.now();
         const bench = [];
         const mark = (step, meta = {}) => {
@@ -653,7 +674,7 @@ if (!IS_SERVER) {
             try {
                 let extracted;
                 if (playerLink.includes('loadm')) {
-                    const domain = 'guardoserie.study';
+                    const domain = new URL(getGuardoserieBaseUrl()).hostname;
                     extracted = await extractLoadm(playerLink, domain);
                     if (!extracted) return [];
                     const qualityResults = await Promise.all((extracted || []).map(s => checkQualityFromPlaylist(s.url, s.headers)));
